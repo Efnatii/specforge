@@ -1,11 +1,11 @@
 export class PrintTemplates {
   static list() {
     return [
-      { id: "TEMPLATE_ALL", title: "All sheets", description: "Print all sheets in workbook order" },
-      { id: "TEMPLATE_COMMON_ONLY", title: "Common only", description: "Only sheet 'Общее'" },
-      { id: "TEMPLATE_ASSEMBLIES_ONLY", title: "Assemblies only", description: "Only assembly sheets" },
-      { id: "TEMPLATE_CONSUMABLES_ONLY", title: "Consumables only", description: "Only consumables sheets" },
-      { id: "TEMPLATE_PAIR_BY_ABBR", title: "Pair by abbr", description: "Consumables + assembly by abbreviation" }
+      { id: "TEMPLATE_ALL", title: "Все листы", description: "Печать всех листов в порядке книги" },
+      { id: "TEMPLATE_COMMON_ONLY", title: "Только Общее", description: "Только лист 'Общее'" },
+      { id: "TEMPLATE_ASSEMBLIES_ONLY", title: "Только сборки", description: "Только листы сборок" },
+      { id: "TEMPLATE_CONSUMABLES_ONLY", title: "Только расходные", description: "Только листы расходных материалов" },
+      { id: "TEMPLATE_PAIR_BY_ABBR", title: "Пара по АББР", description: "Расходные + сборка по выбранной аббревиатуре" }
     ];
   }
 

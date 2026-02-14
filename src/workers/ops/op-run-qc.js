@@ -7,7 +7,7 @@ export async function runQc({ payload, signal, reportProgress }) {
     throw cancelled();
   }
 
-  reportProgress({ completed: 0, total: 1, message: "Run QC" });
+  reportProgress({ completed: 0, total: 1, message: "Проверка QC" });
 
   const schema = new TemplateSchema(payload.schema || {});
   const bindings = new BindingMap(payload.bindings || {});
@@ -22,7 +22,7 @@ export async function runQc({ payload, signal, reportProgress }) {
     numFmtWarnings: payload.numFmtWarnings || []
   });
 
-  reportProgress({ completed: 1, total: 1, message: "QC done" });
+  reportProgress({ completed: 1, total: 1, message: "QC готов" });
   return { qcReport };
 }
 
@@ -31,3 +31,4 @@ function cancelled() {
   err.code = "CANCELLED";
   return err;
 }
+

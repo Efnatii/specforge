@@ -18,7 +18,7 @@ export class QcExporter {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("QC");
 
-    worksheet.addRow(["Level", "Code", "Sheet", "Cell", "Message"]);
+    worksheet.addRow(["Уровень", "Код", "Лист", "Ячейка", "Сообщение"]);
     for (const item of report?.items || []) {
       worksheet.addRow([item.level, item.code, item.sheetName, item.addressA1, item.message]);
     }
@@ -38,3 +38,4 @@ export class QcExporter {
     return `"${text.replace(/"/g, '""')}"`;
   }
 }
+

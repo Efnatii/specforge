@@ -102,7 +102,7 @@ export async function runImportUpdateDiff({ payload, signal, reportProgress }) {
 
           scanned += 1;
           if (scanned % 1000 === 0) {
-            reportProgress({ completed: scanned, total, message: "Scanning diff" });
+            reportProgress({ completed: scanned, total, message: "Сканирование различий" });
             await new Promise((resolve) => setTimeout(resolve, 0));
           }
         }
@@ -114,7 +114,7 @@ export async function runImportUpdateDiff({ payload, signal, reportProgress }) {
     }
   }
 
-  reportProgress({ completed: total, total, message: "Diff ready" });
+  reportProgress({ completed: total, total, message: "Различия готовы" });
 
   return {
     nextEdits,
@@ -143,3 +143,4 @@ function cancelled() {
   err.code = "CANCELLED";
   return err;
 }
+

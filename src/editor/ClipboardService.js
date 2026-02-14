@@ -116,7 +116,8 @@ export class ClipboardService {
     }
 
     Promise.resolve(this.provider.applyMatrixAtTarget(parsed.matrix)).catch((error) => {
-      this.toast?.show(error.message || "Paste failed", "error");
+      this.toast?.show(error.message || "Ошибка вставки", "error");
     });
   }
 }
+

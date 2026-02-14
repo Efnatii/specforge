@@ -1,6 +1,7 @@
 export class ImportModeDialog {
-  constructor(root) {
+  constructor(root, { i18n } = {}) {
     this.root = root;
+    this.i18n = i18n;
   }
 
   open({ reason, softTagFound }) {
@@ -13,28 +14,28 @@ export class ImportModeDialog {
 
       const title = document.createElement("h3");
       title.className = "dialog-title";
-      title.textContent = "Import Update is not compatible";
+      title.textContent = this.i18n.t("dialog.importModeTitle");
 
       const message = document.createElement("div");
       message.className = "dialog-message";
-      message.textContent = reason || "Structure mismatch";
+      message.textContent = reason || this.i18n.t("dialog.importModeReasonFallback");
 
       const hint = document.createElement("div");
       hint.className = "dialog-message";
       hint.textContent = softTagFound
-        ? "File contains SpecForge tag, but structure still does not match baseline."
-        : "SpecForge tag not found. File may be external.";
+        ? this.i18n.t("dialog.importModeTagged")
+        : this.i18n.t("dialog.importModeUntagged");
 
       const buttons = document.createElement("div");
       buttons.className = "dialog-buttons";
 
       const cancel = document.createElement("button");
       cancel.type = "button";
-      cancel.textContent = "Cancel";
+      cancel.textContent = this.i18n.t("common.cancel");
 
       const replace = document.createElement("button");
       replace.type = "button";
-      replace.textContent = "Replace template";
+      replace.textContent = this.i18n.t("dialog.importModeReplace");
 
       cancel.addEventListener("click", () => {
         backdrop.remove();

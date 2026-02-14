@@ -1,6 +1,7 @@
 export class PrintPreviewDialog {
-  constructor(root) {
+  constructor(root, { i18n } = {}) {
     this.root = root;
+    this.i18n = i18n;
   }
 
   open({ templates, sheets, assemblies, defaults }) {
@@ -13,7 +14,7 @@ export class PrintPreviewDialog {
 
       const title = document.createElement("h3");
       title.className = "dialog-title";
-      title.textContent = "Print / Preview";
+      title.textContent = this.i18n.t("dialog.printTitle");
 
       const templateSelect = document.createElement("select");
       templateSelect.className = "dialog-input";
@@ -27,7 +28,7 @@ export class PrintPreviewDialog {
 
       const assemblySelect = document.createElement("select");
       assemblySelect.className = "dialog-input";
-      assemblySelect.innerHTML = "<option value=''>Assembly (optional)</option>";
+      assemblySelect.innerHTML = `<option value=''>${this.i18n.t("dialog.printAssemblyOptional")}</option>`;
       for (const item of assemblies || []) {
         const option = document.createElement("option");
         option.value = item.abbr;
@@ -40,26 +41,28 @@ export class PrintPreviewDialog {
       const useSetup = document.createElement("input");
       useSetup.type = "checkbox";
       useSetup.checked = true;
-      useSetupWrap.append(useSetup, document.createTextNode(" Use sheet pageSetup"));
+      useSetupWrap.append(useSetup, document.createTextNode(` ${this.i18n.t("dialog.printUseSheetSetup")}`));
 
       const summary = document.createElement("div");
       summary.className = "dialog-message";
-      summary.textContent = `Sheets in workbook: ${(sheets || []).map((item) => item.name).join(", ")}`;
+      summary.textContent = this.i18n.t("dialog.printSheetsSummary", {
+        names: (sheets || []).map((item) => item.name).join(", ")
+      });
 
       const actions = document.createElement("div");
       actions.className = "dialog-buttons";
 
       const cancel = document.createElement("button");
       cancel.type = "button";
-      cancel.textContent = "Close";
+      cancel.textContent = this.i18n.t("common.close");
 
       const preview = document.createElement("button");
       preview.type = "button";
-      preview.textContent = "Preview";
+      preview.textContent = this.i18n.t("dialog.printPreview");
 
       const print = document.createElement("button");
       print.type = "button";
-      print.textContent = "Print / Save PDF";
+      print.textContent = this.i18n.t("dialog.printStart");
 
       const payload = () => ({
         templateId: templateSelect.value,
@@ -98,7 +101,7 @@ export class PrintPreviewDialog {
 
     const title = document.createElement("h3");
     title.className = "dialog-title";
-    title.textContent = "Print Preview";
+    title.textContent = this.i18n.t("dialog.printPreviewTitle");
 
     const frame = document.createElement("iframe");
     frame.className = "print-preview-frame";
@@ -109,7 +112,7 @@ export class PrintPreviewDialog {
 
     const close = document.createElement("button");
     close.type = "button";
-    close.textContent = "Close";
+    close.textContent = this.i18n.t("common.close");
     close.addEventListener("click", () => backdrop.remove());
 
     actions.append(close);

@@ -1,56 +1,87 @@
+import { Icon } from "./Icon.js";
+
 export class RightPanel {
-  constructor({ root, progressPanel, changesPanel, qcPanel, findPanel }) {
+  constructor({ root, progressPanel, changesPanel, qcPanel, findPanel, i18n }) {
     this.root = root;
     this.progressPanel = progressPanel;
     this.changesPanel = changesPanel;
     this.qcPanel = qcPanel;
     this.findPanel = findPanel;
-    this.activeTab = "changes";
+    this.i18n = i18n;
+
+    this.activeTab = "assemblies";
     this.selectedAbbr = null;
-    this.refs = {};
     this.onAssemblyChange = null;
     this.onAssemblyAction = null;
+    this.refs = {};
+
     this.mount();
   }
 
   mount() {
     this.root.innerHTML = "";
 
-    const jobsTitle = document.createElement("h2");
-    jobsTitle.className = "panel-title";
-    jobsTitle.textContent = "Jobs";
-
-    const jobsHost = document.createElement("div");
-    jobsHost.className = "progress-panel";
-
     const tabs = document.createElement("div");
     tabs.className = "right-tabs";
 
-    const changesTab = this.makeTabButton("changes", "Changes");
-    const qcTab = this.makeTabButton("qc", "QC");
-    const asmTab = this.makeTabButton("assemblies", "Сборки");
-    const findTab = this.makeTabButton("find", "Find");
-    tabs.append(changesTab, qcTab, asmTab, findTab);
+    const tabDefs = [
+      { id: "assemblies", icon: "list", label: this.i18n.t("panel.assemblies") },
+      { id: "changes", icon: "history", label: this.i18n.t("panel.changes") },
+      { id: "qc", icon: "alert-triangle", label: this.i18n.t("panel.qc") },
+      { id: "jobs", icon: "activity", label: this.i18n.t("panel.jobs") },
+      { id: "find", icon: "search", label: this.i18n.t("panel.find") }
+    ];
 
-    const changesHost = document.createElement("div");
-    changesHost.className = "changes-panel";
+    const hosts = {};
+    const tabButtons = {};
+    const hostClassByTab = {
+      assemblies: "assemblies-panel",
+      changes: "changes-panel",
+      qc: "qc-panel",
+      jobs: "progress-panel",
+      find: "find-panel"
+    };
 
-    const qcHost = document.createElement("div");
-    qcHost.className = "qc-panel";
+    for (const tab of tabDefs) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "right-tab";
+      button.setAttribute("aria-label", tab.label);
+      button.append(Icon({ name: tab.icon, size: 14 }), document.createTextNode(tab.label));
+      button.addEventListener("click", () => this.setActiveTab(tab.id));
+      tabs.appendChild(button);
+      tabButtons[tab.id] = button;
 
-    const assembliesHost = document.createElement("div");
-    assembliesHost.className = "assemblies-panel";
-    const findHost = document.createElement("div");
-    findHost.className = "qc-panel";
+      const host = document.createElement("section");
+      host.className = "right-tab-host";
+      host.classList.add(hostClassByTab[tab.id]);
+      host.dataset.tab = tab.id;
+      host.setAttribute("aria-label", tab.label);
+      hosts[tab.id] = host;
+      this.root.appendChild(host);
+    }
 
-    this.root.append(jobsTitle, jobsHost, tabs, changesHost, qcHost, assembliesHost, findHost);
+    this.root.prepend(tabs);
 
-    this.refs = { jobsHost, changesHost, qcHost, assembliesHost, findHost, changesTab, qcTab, asmTab, findTab };
-    this.progressPanel.container = jobsHost;
-    this.changesPanel.container = changesHost;
-    this.qcPanel.container = qcHost;
-    this.findPanel.container = findHost;
+    this.refs = {
+      tabs,
+      tabButtons,
+      hosts
+    };
 
+    this.progressPanel.container = hosts.jobs;
+    this.changesPanel.container = hosts.changes;
+    this.qcPanel.container = hosts.qc;
+    this.findPanel.container = hosts.find;
+
+    this.applyTabVisibility();
+  }
+
+  setActiveTab(tabId) {
+    if (!this.refs.hosts?.[tabId]) {
+      return;
+    }
+    this.activeTab = tabId;
     this.applyTabVisibility();
   }
 
@@ -68,22 +99,31 @@ export class RightPanel {
   }
 
   renderAssemblies(tkpModel) {
-    const host = this.refs.assembliesHost;
+    const host = this.refs.hosts.assemblies;
     host.innerHTML = "";
 
     const actions = document.createElement("div");
     actions.className = "assembly-actions";
 
     actions.append(
-      this.makeActionButton("Add", () => this.onAssemblyAction?.("add", this.selectedAbbr)),
-      this.makeActionButton("Remove", () => this.onAssemblyAction?.("remove", this.selectedAbbr)),
-      this.makeActionButton("Duplicate", () => this.onAssemblyAction?.("duplicate", this.selectedAbbr)),
-      this.makeActionButton("Sync to workbook (Preview)", () => this.onAssemblyAction?.("sync_preview", this.selectedAbbr))
+      this.makeActionButton(this.i18n.t("assemblies.add"), () => this.onAssemblyAction?.("add", this.selectedAbbr)),
+      this.makeActionButton(this.i18n.t("assemblies.remove"), () => this.onAssemblyAction?.("remove", this.selectedAbbr)),
+      this.makeActionButton(this.i18n.t("assemblies.duplicate"), () => this.onAssemblyAction?.("duplicate", this.selectedAbbr)),
+      this.makeActionButton(this.i18n.t("assemblies.syncPreview"), () => this.onAssemblyAction?.("sync_preview", this.selectedAbbr))
     );
 
     const table = document.createElement("table");
     table.className = "assemblies-table";
-    table.innerHTML = "<thead><tr><th>Use</th><th>ABBR</th><th>Name</th><th>Qty</th><th>Unit</th><th>Comment</th></tr></thead>";
+
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+    for (const key of ["include", "abbr", "name", "qty", "unit", "comment"]) {
+      const th = document.createElement("th");
+      th.textContent = this.i18n.t(`assemblies.${key}`);
+      trh.appendChild(th);
+    }
+    thead.appendChild(trh);
+    table.appendChild(thead);
 
     const body = document.createElement("tbody");
     for (const row of tkpModel.assemblies || []) {
@@ -117,6 +157,7 @@ export class RightPanel {
     input.type = type;
     input.value = row[key] ?? "";
     input.className = "assembly-input";
+    input.setAttribute("aria-label", `${row.abbr || ""} ${key}`.trim());
     input.addEventListener("change", () => this.onAssemblyChange?.(row.abbr, { [key]: type === "number" ? Number(input.value) : input.value }));
     td.appendChild(input);
     return td;
@@ -127,6 +168,7 @@ export class RightPanel {
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = row[key] !== false;
+    input.setAttribute("aria-label", `${row.abbr || ""} ${key}`.trim());
     input.addEventListener("change", () => this.onAssemblyChange?.(row.abbr, { [key]: input.checked }));
     td.appendChild(input);
     return td;
@@ -140,26 +182,12 @@ export class RightPanel {
     return button;
   }
 
-  makeTabButton(tab, label) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "right-tab";
-    button.textContent = label;
-    button.addEventListener("click", () => {
-      this.activeTab = tab;
-      this.applyTabVisibility();
-    });
-    return button;
-  }
-
   applyTabVisibility() {
-    this.refs.changesHost.style.display = this.activeTab === "changes" ? "grid" : "none";
-    this.refs.qcHost.style.display = this.activeTab === "qc" ? "grid" : "none";
-    this.refs.assembliesHost.style.display = this.activeTab === "assemblies" ? "grid" : "none";
-    this.refs.findHost.style.display = this.activeTab === "find" ? "grid" : "none";
-    this.refs.changesTab.classList.toggle("active", this.activeTab === "changes");
-    this.refs.qcTab.classList.toggle("active", this.activeTab === "qc");
-    this.refs.asmTab.classList.toggle("active", this.activeTab === "assemblies");
-    this.refs.findTab.classList.toggle("active", this.activeTab === "find");
+    for (const [tabId, host] of Object.entries(this.refs.hosts || {})) {
+      const active = tabId === this.activeTab;
+      host.style.display = active ? "grid" : "none";
+      this.refs.tabButtons?.[tabId]?.classList.toggle("active", active);
+      this.refs.tabButtons?.[tabId]?.setAttribute("aria-pressed", active ? "true" : "false");
+    }
   }
 }

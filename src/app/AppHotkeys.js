@@ -23,6 +23,18 @@ export class AppHotkeys {
       return;
     }
 
+    if (ctrl && key === "o") {
+      event.preventDefault();
+      this.handlers.onOpenFile?.();
+      return;
+    }
+
+    if (ctrl && key === "f") {
+      event.preventDefault();
+      this.handlers.onFind?.();
+      return;
+    }
+
     if ((ctrl && key === "y") || (ctrl && key === "z" && event.shiftKey)) {
       event.preventDefault();
       this.handlers.onRedo?.();

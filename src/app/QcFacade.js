@@ -19,7 +19,7 @@ export class QcFacade {
 
     const { promise } = this.jobQueue.enqueue({
       type: "RUN_QC",
-      title: "QC scan",
+      title: "QC-сканирование",
       workerOp: "RUN_QC",
       workerPayload: {
         normalizedWorkbook: workbook,
@@ -46,7 +46,7 @@ export class QcFacade {
         numFmtWarnings: state.warnings || []
       });
       this.stateStore.update({ qc: { report } });
-      this.toast.show(`QC worker fallback: ${error.message}`, "info");
+      this.toast.show(`Резервный QC-режим: ${error.message}`, "info");
     }
   }
 
@@ -96,3 +96,6 @@ export class QcFacade {
     saveAs(blob, "qc-report.xlsx");
   }
 }
+
+
+

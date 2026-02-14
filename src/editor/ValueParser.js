@@ -21,7 +21,7 @@ export class ValueParser {
         ok: false,
         value: null,
         displayValue: raw,
-        error: "Expected numeric value",
+        error: "Ожидается числовое значение",
         type: "error"
       };
     }
@@ -76,3 +76,4 @@ export class ValueParser {
     return Number.isFinite(parsed) ? parsed : null;
   }
 }
+

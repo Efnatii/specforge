@@ -35,7 +35,7 @@ export class ReplaceService {
       const sheetByName = new Map((workbook?.sheets || []).map((sheet) => [sheet.name, sheet]));
       const sheetIdByName = new Map((state.workbook.sheets || []).map((sheet) => [sheet.name, sheet.id]));
 
-      const tx = new EditTransaction({ title: "Replace all", stateDriver: this.stateDriver, undoStack: this.undoStack, userAction: "replaceAll" });
+      const tx = new EditTransaction({ title: "Заменить всё", stateDriver: this.stateDriver, undoStack: this.undoStack, userAction: "replaceAll" });
       const summary = { replaced: 0, skippedReadOnly: 0, skippedFormula: 0, skippedInvalid: 0 };
 
       const regex = useRegex ? new RegExp(needle, matchCase ? "g" : "gi") : null;
@@ -102,7 +102,7 @@ export class ReplaceService {
         });
 
         summary.replaced += 1;
-        reportProgress({ completed: i + 1, total: results.length, message: "Replacing" });
+        reportProgress({ completed: i + 1, total: results.length, message: "Замена" });
         if ((i + 1) % 500 === 0) {
           await microYield();
         }
@@ -126,10 +126,10 @@ export class ReplaceService {
     if (results.length > 2000 && this.jobQueue) {
       const { promise } = this.jobQueue.enqueue({
         type: "REPLACE_ALL",
-        title: "Replace all",
+        title: "Заменить всё",
         run: async (_, signal, progress) => {
           if (signal.aborted) {
-            throw new Error("Job aborted");
+            throw new Error("Задача прервана");
           }
           return runReplace(progress);
         }
@@ -143,7 +143,7 @@ export class ReplaceService {
       this.onCellCommitted?.({ sheetName: results[0].sheetName, addressA1: results[0].addressA1, value: null });
     }
 
-    this.toast?.show(`Replace: ${summary.replaced} updated, ${summary.skippedReadOnly} read-only skipped`, "info");
+    this.toast?.show(`Замена: ${summary.replaced} обновлено, ${summary.skippedReadOnly} защищённых пропущено`, "info");
     return summary;
   }
 
@@ -158,3 +158,5 @@ export class ReplaceService {
     return null;
   }
 }
+
+

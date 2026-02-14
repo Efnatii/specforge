@@ -1,9 +1,13 @@
+import { Icon } from "./Icon.js";
+import { Tooltip } from "./Tooltip.js";
+
 const STATUS_ORDER = ["RUNNING", "QUEUED", "FAILED", "CANCELLED", "DONE"];
 
 export class ProgressPanel {
-  constructor({ container, onCancel }) {
+  constructor({ container, onCancel, i18n }) {
     this.container = container;
     this.onCancel = onCancel;
+    this.i18n = i18n;
   }
 
   render(jobsMap) {
@@ -13,7 +17,7 @@ export class ProgressPanel {
     if (jobs.length === 0) {
       const empty = document.createElement("div");
       empty.className = "jobs-empty";
-      empty.textContent = "No jobs yet";
+      empty.textContent = this.i18n.t("jobs.empty");
       this.container.appendChild(empty);
       return;
     }
@@ -33,7 +37,7 @@ export class ProgressPanel {
   }
 
   renderJob(job) {
-    const item = document.createElement("div");
+    const item = document.createElement("article");
     item.className = `job-item status-${String(job.status || "").toLowerCase()}`;
 
     const header = document.createElement("div");
@@ -41,34 +45,67 @@ export class ProgressPanel {
 
     const title = document.createElement("div");
     title.className = "job-title";
-    title.textContent = `${job.title || job.type || "JOB"} [${job.status}]`;
+    title.textContent = this.resolveJobTitle(job);
 
-    header.appendChild(title);
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = this.translateStatus(job.status);
+
+    const left = document.createElement("div");
+    left.className = "job-head-left";
+    left.append(title, badge);
+
+    header.appendChild(left);
 
     if (job.status === "RUNNING" || job.status === "QUEUED") {
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
-      cancelButton.className = "job-cancel";
-      cancelButton.textContent = "Cancel";
+      cancelButton.className = "btn-icon job-cancel";
+      cancelButton.setAttribute("aria-label", this.i18n.t("jobs.cancel"));
+      cancelButton.appendChild(Icon({ name: "x", size: 14 }));
       cancelButton.addEventListener("click", () => this.onCancel(job.id));
-      header.appendChild(cancelButton);
+      header.appendChild(Tooltip.wrap(cancelButton, { text: this.i18n.t("jobs.cancel") }));
     }
 
-    const progress = document.createElement("div");
-    progress.className = "job-progress";
     const completed = Number(job.progress?.completed || 0);
     const total = Math.max(1, Number(job.progress?.total || 1));
-    progress.textContent = `${completed}/${total} - ${job.message || ""}`;
+    const percent = Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
 
-    item.append(header, progress);
+    const progressWrap = document.createElement("div");
+    progressWrap.className = "job-progress-wrap";
+
+    const progressBar = document.createElement("div");
+    progressBar.className = "job-progress-bar";
+
+    const progressFill = document.createElement("div");
+    progressFill.className = "job-progress-fill";
+    progressFill.style.width = `${percent}%`;
+
+    progressBar.appendChild(progressFill);
+
+    const progressText = document.createElement("div");
+    progressText.className = "job-progress";
+    progressText.textContent = `${completed}/${total} - ${job.message || ""}`;
+
+    progressWrap.append(progressBar, progressText);
+    item.append(header, progressWrap);
 
     if (job.error) {
       const error = document.createElement("div");
-      error.className = "job-error";
+      error.className = "job-error warning-like";
       error.textContent = job.error;
       item.appendChild(error);
     }
 
     return item;
+  }
+
+  resolveJobTitle(job) {
+    return job.title || job.type || "JOB";
+  }
+
+  translateStatus(status) {
+    const key = String(status || "").toLowerCase();
+    return this.i18n.t(`jobs.${key}`);
   }
 }

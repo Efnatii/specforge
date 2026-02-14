@@ -10,7 +10,7 @@ export class ChaosService {
   startLongJob() {
     const { promise } = this.jobQueue.enqueue({
       type: "CHAOS_LONG_JOB",
-      title: "Chaos long job",
+      title: "Долгая chaos-задача",
       run: async (_, signal, progress) => {
         const total = 5000;
         for (let i = 0; i <= total; i += 1) {
@@ -68,3 +68,4 @@ export class ChaosService {
     URL.revokeObjectURL(url);
   }
 }
+

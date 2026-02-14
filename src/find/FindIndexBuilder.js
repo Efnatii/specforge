@@ -37,7 +37,7 @@ export class FindIndexBuilder {
       const calcSheet = calcSnapshot.perSheet?.[sheet.name] || {};
       for (const addressA1 of addresses) {
         if (signal?.aborted) {
-          throw new Error("Job aborted");
+          throw new Error("Задача прервана");
         }
 
         const baselineCell = baselineMap.get(addressA1) || null;
@@ -67,13 +67,15 @@ export class FindIndexBuilder {
 
         processed += 1;
         if (processed % 2000 === 0) {
-          reportProgress({ completed: processed, total, message: "Indexing cells" });
+          reportProgress({ completed: processed, total, message: "Индексация ячеек" });
           await microYield();
         }
       }
     }
 
-    reportProgress({ completed: total, total, message: "Find index ready" });
+    reportProgress({ completed: total, total, message: "Индекс поиска готов" });
     return { ts: Date.now(), scope, activeSheetName, entries };
   }
 }
+
+

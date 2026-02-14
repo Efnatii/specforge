@@ -1,8 +1,9 @@
 import { JsonTextEditor } from "./JsonTextEditor.js";
 
 export class BindingsEditorDialog {
-  constructor(root) {
+  constructor(root, { i18n } = {}) {
     this.root = root;
+    this.i18n = i18n;
   }
 
   open({ json, onValidate, onApply, onRevert }) {
@@ -13,7 +14,7 @@ export class BindingsEditorDialog {
       const dialog = document.createElement("div");
       dialog.className = "dialog autofill-dialog";
 
-      const editor = new JsonTextEditor({ title: "Binding Map", initialJson: json });
+      const editor = new JsonTextEditor({ title: this.i18n.t("dialog.bindingsTitle"), initialJson: json, i18n: this.i18n });
       const refs = editor.render(dialog, {
         onValidate,
         onApply: async (parsed) => {
@@ -40,7 +41,7 @@ export class BindingsEditorDialog {
 
       const close = document.createElement("button");
       close.type = "button";
-      close.textContent = "Close";
+      close.textContent = this.i18n.t("configEditor.close") || this.i18n.t("common.close");
       close.addEventListener("click", () => {
         backdrop.remove();
         resolve(false);

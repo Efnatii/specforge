@@ -1,6 +1,7 @@
 export class AutoFillPreviewDialog {
-  constructor(root) {
+  constructor(root, { i18n } = {}) {
     this.root = root;
+    this.i18n = i18n;
   }
 
   open(patchPlan) {
@@ -13,15 +14,15 @@ export class AutoFillPreviewDialog {
 
       const title = document.createElement("h3");
       title.className = "dialog-title";
-      title.textContent = patchPlan.title || "AutoFill Preview";
+      title.textContent = patchPlan.title || this.i18n.t("dialog.autoFillTitle");
 
       const summary = document.createElement("div");
       summary.className = "dialog-message";
-      summary.textContent = `Cells changed: ${patchPlan.stats?.cellsChanged || 0}`;
+      summary.textContent = this.i18n.t("dialog.autoFillCells", { count: patchPlan.stats?.cellsChanged || 0 });
 
       const filter = document.createElement("input");
       filter.type = "text";
-      filter.placeholder = "Filter by sheet";
+      filter.placeholder = this.i18n.t("dialog.autoFillFilter");
       filter.className = "dialog-input";
 
       const list = document.createElement("div");
@@ -41,7 +42,7 @@ export class AutoFillPreviewDialog {
         if (rows.length === 0) {
           const empty = document.createElement("div");
           empty.className = "changes-empty";
-          empty.textContent = "No changes";
+          empty.textContent = this.i18n.t("dialog.autoFillEmpty");
           list.appendChild(empty);
           return;
         }
@@ -62,11 +63,11 @@ export class AutoFillPreviewDialog {
 
       const cancel = document.createElement("button");
       cancel.type = "button";
-      cancel.textContent = "Cancel";
+      cancel.textContent = this.i18n.t("common.cancel");
 
       const apply = document.createElement("button");
       apply.type = "button";
-      apply.textContent = "Apply";
+      apply.textContent = this.i18n.t("common.apply");
 
       cancel.addEventListener("click", () => {
         backdrop.remove();
@@ -87,7 +88,7 @@ export class AutoFillPreviewDialog {
 
   format(value) {
     if (value === null || value === undefined) {
-      return "<empty>";
+      return this.i18n.t("common.empty");
     }
     return String(value);
   }

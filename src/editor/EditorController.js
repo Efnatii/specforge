@@ -389,7 +389,7 @@ export class EditorController {
       let skippedInvalid = 0;
       const bounds = this.gridView.getSheetBounds();
 
-      reportProgress({ completed: 0, total: totalCells, message: "Applying paste" });
+      reportProgress({ completed: 0, total: totalCells, message: "Применение вставки" });
 
       for (let r = 0; r < matrix.length; r += 1) {
         for (let c = 0; c < matrix[r].length; c += 1) {
@@ -399,20 +399,20 @@ export class EditorController {
 
           if (row > bounds.maxRow || col > bounds.maxCol) {
             skippedOutOfBounds += 1;
-            reportProgress({ completed: step, total: totalCells, message: "Applying paste" });
+            reportProgress({ completed: step, total: totalCells, message: "Применение вставки" });
             continue;
           }
 
           const address = this.gridView.getMergedMaster(RangeOps.rcToA1({ r: row, c: col }));
           if (touched.has(address)) {
-            reportProgress({ completed: step, total: totalCells, message: "Applying paste" });
+            reportProgress({ completed: step, total: totalCells, message: "Применение вставки" });
             continue;
           }
           touched.add(address);
           const cellData = this.gridView.getCellData(address, this.getSheetEdits());
           if (!this.templateSchema.isCellEditable(context.sheetName, address, cellData.baselineCell)) {
             skippedReadOnly += 1;
-            reportProgress({ completed: step, total: totalCells, message: "Applying paste" });
+            reportProgress({ completed: step, total: totalCells, message: "Применение вставки" });
             continue;
           }
 
@@ -424,7 +424,7 @@ export class EditorController {
 
           const prevValue = cellData.editCell ? cellData.editCell.value : cellData.baselineCell?.value ?? null;
           if (this.stateDriver.valuesEqual(prevValue, parsed.value)) {
-            reportProgress({ completed: step, total: totalCells, message: "Applying paste" });
+            reportProgress({ completed: step, total: totalCells, message: "Применение вставки" });
             continue;
           }
 
@@ -439,7 +439,7 @@ export class EditorController {
             ts: Date.now()
           });
           applied += 1;
-          reportProgress({ completed: step, total: totalCells, message: "Applying paste" });
+          reportProgress({ completed: step, total: totalCells, message: "Применение вставки" });
 
           if (step % 500 === 0) {
             await microYield();
@@ -447,7 +447,7 @@ export class EditorController {
         }
       }
 
-      const tx = new EditTransaction({ title: "Paste", stateDriver: this.stateDriver, undoStack: this.undoStack, userAction: "paste" });
+      const tx = new EditTransaction({ title: "Вставка", stateDriver: this.stateDriver, undoStack: this.undoStack, userAction: "paste" });
       for (const command of commands) {
         tx.add(command);
       }
@@ -466,17 +466,17 @@ export class EditorController {
         this.onCellCommitted?.({ sheetName: context.sheetName, addressA1: commands[0].addressA1, value: commands[0].nextValue });
       }
 
-      this.toast.show(`Paste: applied ${applied}, read-only ${skippedReadOnly}, out-of-bounds ${skippedOutOfBounds}`, applied ? "success" : "info");
+      this.toast.show(`Вставка: применено ${applied}, защищено ${skippedReadOnly}, вне границ ${skippedOutOfBounds}`, applied ? "success" : "info");
       this.selectRange(RangeOps.rcToA1(target), RangeOps.rcToA1({ r: target.r + matrix.length - 1, c: target.c + matrix[0].length - 1 }));
     };
 
     if (totalCells > 2000 && this.jobQueue) {
       const { promise } = this.jobQueue.enqueue({
         type: "PASTE_RANGE",
-        title: "Paste range",
+        title: "Вставка диапазона",
         run: async (_, signal, progress) => {
           if (signal.aborted) {
-            throw new Error("Job aborted");
+            throw new Error("Задача прервана");
           }
           await applyWork(progress);
         }
@@ -526,7 +526,7 @@ export class EditorController {
       });
     }
 
-    const tx = new EditTransaction({ title: "Clear", stateDriver: this.stateDriver, undoStack: this.undoStack, userAction: "cut" });
+    const tx = new EditTransaction({ title: "Очистка", stateDriver: this.stateDriver, undoStack: this.undoStack, userAction: "cut" });
     for (const command of commands) {
       tx.add(command);
     }
@@ -583,7 +583,7 @@ export class EditorController {
 
     const table = this.tableRangeManager?.resolveTableAtSelection({ sheetName: ctx.sheetName, addressA1: ctx.addressA1 });
     if (!table) {
-      this.toast.show("Selection is outside supported table range", "error");
+      this.toast.show("Выделение вне поддерживаемого диапазона таблицы", "error");
       return;
     }
 
@@ -600,7 +600,7 @@ export class EditorController {
 
     const table = this.tableRangeManager?.resolveTableAtSelection({ sheetName: ctx.sheetName, addressA1: ctx.addressA1 });
     if (!table) {
-      this.toast.show("Selection is outside supported table range", "error");
+      this.toast.show("Выделение вне поддерживаемого диапазона таблицы", "error");
       return;
     }
 
@@ -634,10 +634,10 @@ export class EditorController {
     if (commands.length > 2000 && this.jobQueue) {
       const { promise } = this.jobQueue.enqueue({
         type: action === "insertRow" ? "INSERT_TABLE_ROW" : "DELETE_TABLE_ROW",
-        title: action === "insertRow" ? "Insert row" : "Delete row",
+        title: action === "insertRow" ? "Вставка строки" : "Удаление строки",
         run: async (_, signal, progress) => {
           if (signal.aborted) {
-            throw new Error("Job aborted");
+            throw new Error("Задача прервана");
           }
           await apply(progress);
         }
@@ -723,11 +723,15 @@ export class EditorController {
   }
 
   showProtected(addressA1) {
-    this.toast.show("Cell is protected", "error");
-    this.gridView.setCellError(addressA1, "Protected");
+    this.toast.show("Ячейка защищена", "error");
+    this.gridView.setCellError(addressA1, "Защищено");
     const sheetId = this.stateStore.getState().workbook.activeSheetId;
     if (sheetId) {
-      this.stateDriver.setError(sheetId, addressA1, "Cell is protected");
+      this.stateDriver.setError(sheetId, addressA1, "Ячейка защищена");
     }
   }
 }
+
+
+
+

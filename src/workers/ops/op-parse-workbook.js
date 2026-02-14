@@ -6,7 +6,7 @@ export async function runParseWorkbook({ payload, signal, reportProgress }) {
     throw cancelled();
   }
 
-  reportProgress({ completed: 0, total: 3, message: "Load workbook" });
+  reportProgress({ completed: 0, total: 3, message: "Загрузка книги" });
   const adapter = new WorkbookAdapter();
   const normalizedWorkbook = await adapter.parse(payload.xlsxBuffer);
 
@@ -14,7 +14,7 @@ export async function runParseWorkbook({ payload, signal, reportProgress }) {
     throw cancelled();
   }
 
-  reportProgress({ completed: 1, total: 3, message: "Normalize" });
+  reportProgress({ completed: 1, total: 3, message: "Нормализация" });
   const fp = new TemplateFingerprint();
   const structureFingerprint = fp.buildStructureFingerprint(normalizedWorkbook);
   const bufferHash = await fp.hashBufferSha256(payload.xlsxBuffer);
@@ -23,7 +23,7 @@ export async function runParseWorkbook({ payload, signal, reportProgress }) {
     throw cancelled();
   }
 
-  reportProgress({ completed: 2, total: 3, message: "Finalize" });
+  reportProgress({ completed: 2, total: 3, message: "Завершение" });
 
   return {
     normalizedWorkbook,
@@ -38,3 +38,4 @@ function cancelled() {
   err.code = "CANCELLED";
   return err;
 }
+

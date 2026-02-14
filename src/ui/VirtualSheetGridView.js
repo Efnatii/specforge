@@ -36,14 +36,14 @@ export class VirtualSheetGridView {
 
     if (!workbook?.sheets?.length) {
       this.container.innerHTML = "";
-      this.container.appendChild(this.createPlaceholder("Workbook not loaded"));
+      this.container.appendChild(this.createPlaceholder("Книга не загружена"));
       return;
     }
 
     const sheet = workbook.sheets.find((item) => item.id === activeSheetId) || workbook.sheets[0];
     if (!sheet) {
       this.container.innerHTML = "";
-      this.container.appendChild(this.createPlaceholder("Sheet not found"));
+      this.container.appendChild(this.createPlaceholder("Лист не найден"));
       return;
     }
 
@@ -104,14 +104,11 @@ export class VirtualSheetGridView {
     this.rangeBox = document.createElement("div");
     this.rangeBox.className = "range-box";
     this.rangeBox.style.position = "absolute";
-    this.rangeBox.style.border = "1px solid #2f7ae5";
-    this.rangeBox.style.background = "rgba(47, 122, 229, 0.10)";
     this.rangeBox.style.display = "none";
 
     this.focusBox = document.createElement("div");
     this.focusBox.className = "focus-box";
     this.focusBox.style.position = "absolute";
-    this.focusBox.style.border = "2px solid #2f7ae5";
     this.focusBox.style.display = "none";
 
     this.selectionLayer.append(this.rangeBox, this.focusBox);
@@ -409,3 +406,4 @@ export class VirtualSheetGridView {
     return node;
   }
 }
+

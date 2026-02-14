@@ -60,6 +60,19 @@ npm run preview
 ## Manual E2E
 - See `docs/TestPlan.md` for end-to-end and chaos scenarios.
 
+## Интерфейс (RU, ч/б, icon toolbar)
+- Интерфейс полностью русифицирован через `src/i18n/ru.js`.
+- Используется ч/б дизайн-система на CSS variables (`src/styles.css`).
+- Тулбар переведён на иконки с `aria-label` и tooltip.
+- Компоновка: левый список листов, центральная таблица, правая панель вкладок (`Сборки`, `Изменения`, `QC`, `Задачи`, `Поиск`).
+
+### Горячие клавиши
+- `Ctrl+O` - открыть файл
+- `Ctrl+F` - открыть поиск
+- `Ctrl+Shift+V` - специальная вставка
+- `Ctrl+Z` - отмена
+- `Ctrl+Y` - повтор
+
 ## Notes
 - HyperFormula is used only for formula recalculation; XLSX IO is via ExcelJS.
 - `gpl-v3` license key is configured for HyperFormula. Public distribution should respect GPLv3 compatibility.

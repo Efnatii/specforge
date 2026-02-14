@@ -34,21 +34,21 @@ export class WorkbookPipeline {
 
   async runLoadJob(source, assetUrl, file) {
     const jobType = source === "asset" ? "LOAD_TEMPLATE_ASSET" : "LOAD_TEMPLATE_FILE";
-    const jobTitle = source === "asset" ? "Load template from asset" : "Load template from file";
+    const jobTitle = source === "asset" ? "Загрузка шаблона из assets" : "Загрузка шаблона из файла";
 
     const { promise } = this.jobQueue.enqueue({
       type: jobType,
       title: jobTitle,
       run: async (_, signal, reportProgress) => {
         this.assertNotAborted(signal);
-        reportProgress({ completed: 0, total: 1, message: "Reading input" });
+        reportProgress({ completed: 0, total: 1, message: "Чтение источника" });
 
         const result = source === "asset"
           ? await this.templateLoader.loadFromAsset(assetUrl)
           : await this.templateLoader.loadFromFile(file);
 
         this.assertNotAborted(signal);
-        reportProgress({ completed: 1, total: 1, message: "Buffer ready" });
+        reportProgress({ completed: 1, total: 1, message: "Буфер готов" });
         return result;
       }
     });
@@ -60,7 +60,7 @@ export class WorkbookPipeline {
     const parseBuffer = buffer.slice(0);
     const { promise } = this.jobQueue.enqueue({
       type: "PARSE_WORKBOOK",
-      title: "Parse workbook",
+      title: "Парсинг книги",
       workerOp: "PARSE_WORKBOOK",
       workerPayload: { xlsxBuffer: parseBuffer },
       transfer: [parseBuffer]
@@ -70,3 +70,5 @@ export class WorkbookPipeline {
     return result.normalizedWorkbook || result;
   }
 }
+
+

@@ -46,7 +46,7 @@ export class PasteApplyService {
     const activeSheetId = state.workbook.activeSheetId;
     const activeSheet = this.getWorkbook()?.sheets?.find((item) => item.id === activeSheetId);
     if (!activeSheet || !targetRange) {
-      return { applied: 0, skipped: 0, report: "No target" };
+      return { applied: 0, skipped: 0, report: "Нет целевого диапазона" };
     }
 
     const srcRows = source.length;
@@ -54,7 +54,7 @@ export class PasteApplyService {
     const total = srcRows * srcCols;
 
     const run = async (reportProgress = () => null) => {
-      const tx = new EditTransaction({ title: "Paste special", stateDriver: this.stateDriver, undoStack: this.undoStack, userAction: "pasteSpecial" });
+      const tx = new EditTransaction({ title: "Спецвставка", stateDriver: this.stateDriver, undoStack: this.undoStack, userAction: "pasteSpecial" });
       let applied = 0;
       let skipped = 0;
       const touched = new Set();
@@ -115,7 +115,7 @@ export class PasteApplyService {
           applied += 1;
 
           const done = r * srcCols + c + 1;
-          reportProgress({ completed: done, total: total || 1, message: "Paste special" });
+          reportProgress({ completed: done, total: total || 1, message: "Спецвставка" });
           if (done % 500 === 0) {
             await microYield();
           }
@@ -137,17 +137,17 @@ export class PasteApplyService {
         this.onCellCommitted?.({ sheetName: activeSheet.name, addressA1: RangeOps.rcToA1({ r: targetRange.r1, c: targetRange.c1 }), value: null });
       }
 
-      return { applied, skipped, report: `Applied ${applied}, skipped ${skipped}` };
+      return { applied, skipped, report: `Применено ${applied}, пропущено ${skipped}` };
     };
 
     let result;
     if (total > 2000 && this.jobQueue) {
       const { promise } = this.jobQueue.enqueue({
         type: "PASTE_SPECIAL",
-        title: "Paste special",
+        title: "Спецвставка",
         run: async (_, signal, progress) => {
           if (signal.aborted) {
-            throw new Error("Job aborted");
+            throw new Error("Задача прервана");
           }
           return run(progress);
         }
@@ -172,3 +172,6 @@ export class PasteApplyService {
     return null;
   }
 }
+
+
+

@@ -1,10 +1,11 @@
 export class QcPanel {
-  constructor(container, { onJumpToCell, onScan, onExportCsv, onExportXlsx }) {
+  constructor(container, { onJumpToCell, onScan, onExportCsv, onExportXlsx, i18n }) {
     this.container = container;
     this.onJumpToCell = onJumpToCell;
     this.onScan = onScan;
     this.onExportCsv = onExportCsv;
     this.onExportXlsx = onExportXlsx;
+    this.i18n = i18n;
     this.filter = { level: "all", sheetName: "all" };
   }
 
@@ -14,9 +15,9 @@ export class QcPanel {
     const actions = document.createElement("div");
     actions.className = "qc-actions";
 
-    const scan = this.makeButton("QC Scan", () => this.onScan());
-    const exportCsv = this.makeButton("Export CSV", () => this.onExportCsv());
-    const exportXlsx = this.makeButton("Export XLSX", () => this.onExportXlsx());
+    const scan = this.makeButton(this.i18n.t("qc.scan"), () => this.onScan());
+    const exportCsv = this.makeButton(this.i18n.t("qc.exportCsv"), () => this.onExportCsv());
+    const exportXlsx = this.makeButton(this.i18n.t("qc.exportXlsx"), () => this.onExportXlsx());
 
     actions.append(scan, exportCsv, exportXlsx);
 
@@ -24,7 +25,8 @@ export class QcPanel {
     filters.className = "qc-filters";
 
     const level = document.createElement("select");
-    level.innerHTML = "<option value='all'>All</option><option value='error'>Errors</option><option value='warning'>Warnings</option>";
+    level.className = "dialog-input";
+    level.innerHTML = `<option value='all'>${this.i18n.t("qc.levelAll")}</option><option value='error'>${this.i18n.t("qc.levelErrors")}</option><option value='warning'>${this.i18n.t("qc.levelWarnings")}</option>`;
     level.value = this.filter.level;
     level.addEventListener("change", () => {
       this.filter.level = level.value;
@@ -32,7 +34,8 @@ export class QcPanel {
     });
 
     const bySheet = document.createElement("select");
-    bySheet.innerHTML = "<option value='all'>All Sheets</option>";
+    bySheet.className = "dialog-input";
+    bySheet.innerHTML = `<option value='all'>${this.i18n.t("qc.allSheets")}</option>`;
     for (const sheet of sheets || []) {
       const option = document.createElement("option");
       option.value = sheet.name;
@@ -49,7 +52,10 @@ export class QcPanel {
 
     const summary = document.createElement("div");
     summary.className = "qc-summary";
-    summary.textContent = `Errors: ${report?.summary?.errorsCount || 0} | Warnings: ${report?.summary?.warningsCount || 0}`;
+    summary.textContent = this.i18n.t("qc.summary", {
+      errors: report?.summary?.errorsCount || 0,
+      warnings: report?.summary?.warningsCount || 0
+    });
 
     const list = document.createElement("div");
     list.className = "qc-list";
@@ -58,7 +64,7 @@ export class QcPanel {
     if (items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "changes-empty";
-      empty.textContent = "No QC items";
+      empty.textContent = this.i18n.t("qc.empty");
       list.appendChild(empty);
     } else {
       for (const item of items) {

@@ -30,7 +30,7 @@ export class QcRules {
               code: "ERR_FORMULA",
               sheetName: sheet.name,
               addressA1: cell.address,
-              message: `Formula error: ${calc.error}`
+              message: `Ошибка формулы: ${calc.error}`
             });
           }
         }
@@ -150,7 +150,7 @@ export class QcRules {
           code: "WARN_NEGATIVE_WHERE_NOT_ALLOWED",
           sheetName,
           addressA1,
-          message: `Value ${value} below minimum ${constraint.min}`
+          message: `Value ${value} ниже минимума ${constraint.min}`
         });
       }
     }
@@ -189,3 +189,4 @@ export class QcRules {
     return null;
   }
 }
+

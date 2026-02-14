@@ -20,13 +20,13 @@ export class ClassicSheetGridView {
     this.resetRuntimeMaps();
 
     if (!workbook?.sheets?.length) {
-      this.container.appendChild(this.createPlaceholder("Workbook not loaded"));
+      this.container.appendChild(this.createPlaceholder("Книга не загружена"));
       return;
     }
 
     const sheet = workbook.sheets.find((item) => item.id === activeSheetId) || workbook.sheets[0];
     if (!sheet) {
-      this.container.appendChild(this.createPlaceholder("Sheet not found"));
+      this.container.appendChild(this.createPlaceholder("Лист не найден"));
       return;
     }
 
@@ -233,7 +233,7 @@ export class ClassicSheetGridView {
 
     if (display.kind === "error") {
       cell.classList.add("cell-formula-error");
-      cell.title = formulaError || "Formula error";
+      cell.title = formulaError || "Ошибка формулы";
     }
 
     if (hasNumFmtWarning) {
@@ -310,4 +310,5 @@ export class ClassicSheetGridView {
     return node;
   }
 }
+
 

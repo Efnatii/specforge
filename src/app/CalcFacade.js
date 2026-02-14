@@ -15,7 +15,7 @@ export class CalcFacade {
 
     const { promise } = this.jobQueue.enqueue({
       type: "BUILD_CALC_MODEL",
-      title: "Build calc model",
+      title: "Построение calc-модели",
       run: async (_, signal, reportProgress) => this.calcEngine.buildFromBaseline({
         normalizedWorkbook: workbook,
         edits,
@@ -33,7 +33,7 @@ export class CalcFacade {
         warnings: [...this.stateStore.getState().warnings, ...(result.warnings || [])].slice(-50)
       });
     } catch (error) {
-      this.toast.show(`Calc model build failed: ${error.message}`, "error");
+      this.toast.show(`Ошибка построения calc-модели: ${error.message}`, "error");
     }
   }
 
@@ -59,7 +59,7 @@ export class CalcFacade {
   async recalcAfterMassEdit(workbook, edits) {
     const { promise } = this.jobQueue.enqueue({
       type: "RECALC_SHEET",
-      title: "Recalculate",
+      title: "Пересчёт",
       run: async (_, signal, progress) => this.calcEngine.buildFromBaseline({
         normalizedWorkbook: workbook,
         edits,
@@ -74,3 +74,5 @@ export class CalcFacade {
     this.stateStore.update({ calc: result.calcSnapshot });
   }
 }
+
+

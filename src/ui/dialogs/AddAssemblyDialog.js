@@ -1,6 +1,7 @@
 export class AddAssemblyDialog {
-  constructor(root) {
+  constructor(root, { i18n } = {}) {
     this.root = root;
+    this.i18n = i18n;
   }
 
   open() {
@@ -13,32 +14,32 @@ export class AddAssemblyDialog {
 
       const title = document.createElement("h3");
       title.className = "dialog-title";
-      title.textContent = "Add Assembly";
+      title.textContent = this.i18n.t("dialog.addAssemblyTitle");
 
       const abbrInput = document.createElement("input");
       abbrInput.type = "text";
-      abbrInput.placeholder = "ABBR";
+      abbrInput.placeholder = this.i18n.t("dialog.addAssemblyAbbr");
       abbrInput.className = "dialog-input";
 
       const displayInput = document.createElement("input");
       displayInput.type = "text";
-      displayInput.placeholder = "Display name (optional)";
+      displayInput.placeholder = this.i18n.t("dialog.addAssemblyName");
       displayInput.className = "dialog-input";
 
       const note = document.createElement("div");
       note.className = "dialog-message";
-      note.textContent = "Allowed: letters, numbers, _ and - (spaces become _)";
+      note.textContent = this.i18n.t("dialog.addAssemblyHint");
 
       const buttons = document.createElement("div");
       buttons.className = "dialog-buttons";
 
       const cancel = document.createElement("button");
       cancel.type = "button";
-      cancel.textContent = "Cancel";
+      cancel.textContent = this.i18n.t("common.cancel");
 
       const confirm = document.createElement("button");
       confirm.type = "button";
-      confirm.textContent = "Add";
+      confirm.textContent = this.i18n.t("dialog.addAssemblyConfirm");
 
       cancel.addEventListener("click", () => {
         backdrop.remove();

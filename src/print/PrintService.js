@@ -17,13 +17,13 @@ export class PrintService {
 
   async buildPrintDoc({ baselineBuffer, workbookSnapshot, edits, calcSnapshot, templateId, selectedAbbr, useSheetPageSetup, signal, reportProgress }) {
     this.assertNotAborted(signal);
-    reportProgress?.({ completed: 0, total: 4, message: "Load baseline workbook" });
+    reportProgress?.({ completed: 0, total: 4, message: "Загрузка baseline книги" });
 
     const baselineWb = new ExcelJS.Workbook();
     await baselineWb.xlsx.load(baselineBuffer);
 
     this.assertNotAborted(signal);
-    reportProgress?.({ completed: 1, total: 4, message: "Resolve print template" });
+    reportProgress?.({ completed: 1, total: 4, message: "Выбор шаблона печати" });
 
     const resolved = this.templates.resolve({
       templateId,
@@ -52,7 +52,7 @@ export class PrintService {
     }
 
     this.assertNotAborted(signal);
-    reportProgress?.({ completed: 2, total: 4, message: "Render printable HTML" });
+    reportProgress?.({ completed: 2, total: 4, message: "Рендер печатного HTML" });
 
     const setup = sheetsHtml[0]?.pageSetup || {
       paper: { widthMm: 210, heightMm: 297 },
@@ -65,7 +65,7 @@ export class PrintService {
     const htmlString = this.renderer.renderDocument({ sheets: sheetsHtml, cssText });
 
     this.assertNotAborted(signal);
-    reportProgress?.({ completed: 3, total: 4, message: "Document ready" });
+    reportProgress?.({ completed: 3, total: 4, message: "Документ готов" });
 
     return {
       htmlString,
@@ -103,7 +103,9 @@ export class PrintService {
 
   assertNotAborted(signal) {
     if (signal?.aborted) {
-      throw new Error("Job aborted");
+      throw new Error("Задача прервана");
     }
   }
 }
+
+

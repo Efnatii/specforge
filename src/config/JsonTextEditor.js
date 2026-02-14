@@ -1,7 +1,8 @@
 export class JsonTextEditor {
-  constructor({ title, initialJson }) {
+  constructor({ title, initialJson, i18n }) {
     this.title = title;
     this.initialJson = initialJson || {};
+    this.i18n = i18n;
   }
 
   render(root, handlers = {}) {
@@ -22,17 +23,17 @@ export class JsonTextEditor {
     const buttons = document.createElement("div");
     buttons.className = "dialog-buttons";
 
-    const validate = this.makeBtn("Validate", () => {
+    const validate = this.makeBtn(this.i18n.t("configEditor.validate"), () => {
       try {
         const parsed = JSON.parse(textarea.value);
         handlers.onValidate?.(parsed);
-        message.textContent = "Valid";
+        message.textContent = this.i18n.t("dialog.jsonValid");
       } catch (error) {
         message.textContent = error.message;
       }
     });
 
-    const apply = this.makeBtn("Apply", () => {
+    const apply = this.makeBtn(this.i18n.t("configEditor.apply"), () => {
       try {
         const parsed = JSON.parse(textarea.value);
         handlers.onApply?.(parsed);
@@ -41,9 +42,9 @@ export class JsonTextEditor {
       }
     });
 
-    const revert = this.makeBtn("Revert", () => handlers.onRevert?.());
-    const exportBtn = this.makeBtn("Export JSON", () => handlers.onExport?.(textarea.value));
-    const importBtn = this.makeBtn("Import JSON", () => handlers.onImport?.());
+    const revert = this.makeBtn(this.i18n.t("configEditor.revert"), () => handlers.onRevert?.());
+    const exportBtn = this.makeBtn(this.i18n.t("configEditor.exportJson"), () => handlers.onExport?.(textarea.value));
+    const importBtn = this.makeBtn(this.i18n.t("configEditor.importJson"), () => handlers.onImport?.());
 
     buttons.append(validate, apply, revert, exportBtn, importBtn);
     root.append(title, textarea, message, buttons);

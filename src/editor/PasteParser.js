@@ -16,7 +16,7 @@ export class PasteParser {
     const cols = matrix.reduce((max, row) => Math.max(max, row.length), 0);
 
     if (rows * cols > this.maxCellsPerPaste) {
-      throw new Error(`Paste is too large (${rows * cols} cells), limit is ${this.maxCellsPerPaste}`);
+      throw new Error(`Вставка слишком большая (${rows * cols} ячеек), лимит ${this.maxCellsPerPaste}`);
     }
 
     for (const row of matrix) {
@@ -28,3 +28,4 @@ export class PasteParser {
     return { matrix, rows, cols };
   }
 }
+

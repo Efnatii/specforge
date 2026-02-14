@@ -1,7 +1,8 @@
 export class ChaosPanel {
-  constructor(root, chaosService) {
+  constructor(root, chaosService, { i18n } = {}) {
     this.root = root;
     this.chaosService = chaosService;
+    this.i18n = i18n;
   }
 
   mount() {
@@ -11,23 +12,23 @@ export class ChaosPanel {
 
     const title = document.createElement("h3");
     title.className = "dialog-title";
-    title.textContent = "Chaos Tools";
+    title.textContent = this.i18n.t("chaos.title");
 
     const throttle = document.createElement("input");
     throttle.type = "number";
     throttle.className = "dialog-input";
-    throttle.placeholder = "Worker delay ms";
+    throttle.placeholder = this.i18n.t("chaos.workerDelay");
     throttle.value = "0";
 
     const buttons = document.createElement("div");
     buttons.className = "dialog-buttons";
 
     buttons.append(
-      this.btn("Start long job", () => this.chaosService.startLongJob()),
-      this.btn("Reload in 2s", () => this.chaosService.reloadWhileRunning()),
-      this.btn("Set throttle", () => this.chaosService.setThrottle(Number(throttle.value || 0))),
-      this.btn("Fail next attempt", () => this.chaosService.failNextJobAttempt()),
-      this.btn("Export debug", () => this.chaosService.exportDebugBundle())
+      this.btn(this.i18n.t("chaos.startLong"), () => this.chaosService.startLongJob()),
+      this.btn(this.i18n.t("chaos.reloadIn2s"), () => this.chaosService.reloadWhileRunning()),
+      this.btn(this.i18n.t("chaos.setThrottle"), () => this.chaosService.setThrottle(Number(throttle.value || 0))),
+      this.btn(this.i18n.t("chaos.failNext"), () => this.chaosService.failNextJobAttempt()),
+      this.btn(this.i18n.t("chaos.exportDebug"), () => this.chaosService.exportDebugBundle())
     );
 
     host.append(title, throttle, buttons);

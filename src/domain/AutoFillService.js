@@ -35,7 +35,7 @@ export class AutoFillService {
   async previewWorkbookToModel({ workbookSnapshot, editsOverlay }) {
     const draft = this.tkpSyncService.readModelFromWorkbook({ workbookSnapshot, editsOverlay });
     return {
-      title: "Sync workbook to model",
+      title: "Синхронизация книги в модель",
       changes: [],
       stats: { cellsChanged: 0 },
       modelDraft: draft
@@ -62,3 +62,4 @@ export class AutoFillService {
     return nextEdits;
   }
 }
+

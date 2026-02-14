@@ -9,7 +9,7 @@ export class TkpSyncService {
 
     const commonSheet = workbookSnapshot.sheets.find((sheet) => sheet.name === map.commonSheet.name);
     if (!commonSheet) {
-      throw new Error(`Common sheet '${map.commonSheet.name}' not found`);
+      throw new Error(`Лист '${map.commonSheet.name}' не найден`);
     }
 
     this.pushChange(changes, commonSheet, editsOverlay, map.commonSheet.meta.orderNo, tkpModel.meta.orderNo, "sync meta.orderNo");
@@ -18,7 +18,7 @@ export class TkpSyncService {
 
     const rows = tkpModel.assemblies.filter((item) => item.include !== false);
     if (rows.length > map.commonSheet.assembliesTable.maxRows) {
-      throw new Error(`Assemblies exceed maxRows (${map.commonSheet.assembliesTable.maxRows})`);
+      throw new Error(`Количество сборок превышает maxRows (${map.commonSheet.assembliesTable.maxRows})`);
     }
 
     for (let i = 0; i < map.commonSheet.assembliesTable.maxRows; i += 1) {
@@ -41,7 +41,7 @@ export class TkpSyncService {
     }
 
     return {
-      title: "Sync model to workbook",
+      title: "Синхронизация модели в книгу",
       changes,
       stats: { cellsChanged: changes.length }
     };
@@ -51,7 +51,7 @@ export class TkpSyncService {
     const map = this.bindingMap.get();
     const common = workbookSnapshot.sheets.find((sheet) => sheet.name === map.commonSheet.name);
     if (!common) {
-      throw new Error(`Common sheet '${map.commonSheet.name}' not found`);
+      throw new Error(`Лист '${map.commonSheet.name}' не найден`);
     }
 
     const result = {
@@ -164,3 +164,5 @@ export class TkpSyncService {
     return a === b || (a == null && b == null);
   }
 }
+
+
