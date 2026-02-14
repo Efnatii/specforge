@@ -1,0 +1,5108 @@
+{
+  "Общая": {
+    "target": "xl/worksheets/sheet1.xml",
+    "maxCol": 9,
+    "maxRow": 3,
+    "cells": [
+      {
+        "a": "A1",
+        "t": "s",
+        "s": 1,
+        "v": "№ п/п",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B1",
+        "t": "s",
+        "s": 1,
+        "v": "Наименование, марка",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C1",
+        "t": "s",
+        "s": 1,
+        "v": "Ед. изм.",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D1",
+        "t": "s",
+        "s": 1,
+        "v": "Кол-во",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E1",
+        "t": "s",
+        "s": 2,
+        "v": "Цена",
+        "f": null,
+        "fmt": "#,##0\\ _р_.",
+        "numFmtId": 164
+      },
+      {
+        "a": "F1",
+        "t": "s",
+        "s": 1,
+        "v": "Ставка налога, %",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G1",
+        "t": "s",
+        "s": 1,
+        "v": "Стоимость без НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H1",
+        "t": "s",
+        "s": 1,
+        "v": "Сумма НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I1",
+        "t": "s",
+        "s": 1,
+        "v": "Стоимость\nс НДС.",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A2",
+        "t": null,
+        "s": 1,
+        "v": "1",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B2",
+        "t": "s",
+        "s": 3,
+        "v": "<Полное название cборки>",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C2",
+        "t": "s",
+        "s": 4,
+        "v": "к-т",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D2",
+        "t": null,
+        "s": 5,
+        "v": "1",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E2",
+        "t": null,
+        "s": 6,
+        "v": "0",
+        "f": "'Осн. мат. <Аббрев. сборки>'!K13",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "F2",
+        "t": null,
+        "s": 7,
+        "v": "0.22",
+        "f": null,
+        "fmt": "builtin:9",
+        "numFmtId": 9
+      },
+      {
+        "a": "G2",
+        "t": null,
+        "s": 6,
+        "v": "0",
+        "f": "I2-H2",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "H2",
+        "t": null,
+        "s": 8,
+        "v": "0",
+        "f": "I2*F2",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "I2",
+        "t": null,
+        "s": 6,
+        "v": "0",
+        "f": "E2",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "A3",
+        "t": null,
+        "s": 9,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B3",
+        "t": null,
+        "s": 10,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C3",
+        "t": null,
+        "s": 4,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D3",
+        "t": null,
+        "s": 4,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E3",
+        "t": null,
+        "s": 11,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "F3",
+        "t": "s",
+        "s": 12,
+        "v": "ИТОГО:",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G3",
+        "t": null,
+        "s": 13,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "H3",
+        "t": null,
+        "s": 13,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "I3",
+        "t": null,
+        "s": 13,
+        "v": "0",
+        "f": "I2",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      }
+    ],
+    "merges": [],
+    "cols": [
+      {
+        "min": "1",
+        "max": "1",
+        "width": "4.109375",
+        "customWidth": "1"
+      },
+      {
+        "min": "2",
+        "max": "2",
+        "width": "17.88671875",
+        "customWidth": "1"
+      },
+      {
+        "min": "3",
+        "max": "3",
+        "width": "3",
+        "customWidth": "1"
+      },
+      {
+        "min": "4",
+        "max": "4",
+        "width": "3.33203125",
+        "customWidth": "1"
+      },
+      {
+        "min": "5",
+        "max": "5",
+        "width": "10.77734375",
+        "customWidth": "1"
+      },
+      {
+        "min": "6",
+        "max": "6",
+        "width": "5.88671875",
+        "customWidth": "1"
+      },
+      {
+        "min": "7",
+        "max": "7",
+        "width": "12.44140625",
+        "customWidth": "1"
+      },
+      {
+        "min": "8",
+        "max": "8",
+        "width": "11.6640625",
+        "customWidth": "1"
+      },
+      {
+        "min": "9",
+        "max": "9",
+        "width": "12.6640625",
+        "customWidth": "1"
+      }
+    ],
+    "defaultRowHeight": 14.4,
+    "rowHeights": {
+      "1": 20.4,
+      "2": 20.4
+    },
+    "view": {
+      "zoomScale": 100,
+      "xSplit": 0,
+      "ySplit": 0
+    }
+  },
+  "Расх. мат. <Аббрев. сборки>": {
+    "target": "xl/worksheets/sheet2.xml",
+    "maxCol": 21,
+    "maxRow": 6,
+    "cells": [
+      {
+        "a": "A1",
+        "t": "s",
+        "s": 68,
+        "v": "0091-0821 <Полное назание cборки> (0254) СП расходный материал изм. 14.02.2026",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "J1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "K1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "L1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "M1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "N1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "O1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "P1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "Q1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "R1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A2",
+        "t": "s",
+        "s": 14,
+        "v": "№ п\\п",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B2",
+        "t": "s",
+        "s": 14,
+        "v": "Обознач. На схеме",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C2",
+        "t": "s",
+        "s": 14,
+        "v": "Наименование товара (услуги)",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D2",
+        "t": "s",
+        "s": 14,
+        "v": "Производитель",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E2",
+        "t": "s",
+        "s": 14,
+        "v": "Артикул производителя",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F2",
+        "t": "s",
+        "s": 14,
+        "v": "Кол-во",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G2",
+        "t": "s",
+        "s": 14,
+        "v": "Ед. Изм.",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, Без НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, С НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "J2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, Без НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "K2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, с НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "L2",
+        "t": "s",
+        "s": 14,
+        "v": "Наценка, %",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "M2",
+        "t": "s",
+        "s": 14,
+        "v": "Скидка, %",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "N2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, Без НДС, со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "O2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, С НДС, со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "P2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, Без НДС, Со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "Q2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, С НДС, Со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "R2",
+        "t": "s",
+        "s": 15,
+        "v": "Поставщик",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S2",
+        "t": "s",
+        "s": 15,
+        "v": "Примечание",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A3",
+        "t": null,
+        "s": 21,
+        "v": "1",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B3",
+        "t": null,
+        "s": 32,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C3",
+        "t": null,
+        "s": 22,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R3",
+        "t": null,
+        "s": 63,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S3",
+        "t": null,
+        "s": 63,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A4",
+        "t": null,
+        "s": 50,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B4",
+        "t": null,
+        "s": 50,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C4",
+        "t": null,
+        "s": 51,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R4",
+        "t": null,
+        "s": 54,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S4",
+        "t": null,
+        "s": 54,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A5",
+        "t": null,
+        "s": 21,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B5",
+        "t": null,
+        "s": 21,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C5",
+        "t": null,
+        "s": 49,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K5",
+        "t": "s",
+        "s": 25,
+        "v": "Итого без скидки:",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q5",
+        "t": "s",
+        "s": 25,
+        "v": "Со скидкой:",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R5",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S5",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "T5",
+        "t": null,
+        "s": 26,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "U5",
+        "t": null,
+        "s": 26,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C6",
+        "t": "s",
+        "s": 27,
+        "v": "ИТОГО",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D6",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E6",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I6",
+        "t": null,
+        "s": 29,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J6",
+        "t": null,
+        "s": 29,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K6",
+        "t": null,
+        "s": 30,
+        "v": "0",
+        "f": "CEILING((SUM(K1:K2)),1)",
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "L6",
+        "t": null,
+        "s": 19,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "M6",
+        "t": null,
+        "s": 19,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "N6",
+        "t": null,
+        "s": 19,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "O6",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "P6",
+        "t": null,
+        "s": 30,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "Q6",
+        "t": null,
+        "s": 30,
+        "v": "0",
+        "f": "CEILING((SUM(Q1:Q2)),1)",
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "R6",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S6",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "T6",
+        "t": null,
+        "s": 26,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "U6",
+        "t": null,
+        "s": 26,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      }
+    ],
+    "merges": [
+      "A1:G1"
+    ],
+    "cols": [
+      {
+        "min": "1",
+        "max": "1",
+        "width": "4.88671875",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "2",
+        "max": "2",
+        "width": "9.109375",
+        "customWidth": "1"
+      },
+      {
+        "min": "3",
+        "max": "3",
+        "width": "61.5546875",
+        "customWidth": "1"
+      },
+      {
+        "min": "4",
+        "max": "4",
+        "width": "20.5546875",
+        "customWidth": "1"
+      },
+      {
+        "min": "5",
+        "max": "5",
+        "width": "28",
+        "customWidth": "1"
+      },
+      {
+        "min": "6",
+        "max": "6",
+        "width": "6",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "7",
+        "max": "7",
+        "width": "6.6640625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "8",
+        "max": "8",
+        "width": "10.77734375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "9",
+        "max": "9",
+        "width": "9.6640625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "10",
+        "max": "10",
+        "width": "12.21875",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "11",
+        "max": "11",
+        "width": "12.44140625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "12",
+        "max": "12",
+        "width": "9",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "13",
+        "max": "13",
+        "width": "8.33203125",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "14",
+        "max": "14",
+        "width": "12.77734375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "15",
+        "max": "15",
+        "width": "11.6640625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "16",
+        "max": "16",
+        "width": "13.77734375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "17",
+        "max": "17",
+        "width": "13.5546875",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "18",
+        "max": "18",
+        "width": "36.88671875",
+        "customWidth": "1"
+      },
+      {
+        "min": "19",
+        "max": "19",
+        "width": "39.109375",
+        "customWidth": "1"
+      }
+    ],
+    "defaultRowHeight": 14.4,
+    "rowHeights": {
+      "1": 33.6,
+      "2": 30.6
+    },
+    "view": {
+      "zoomScale": 70,
+      "xSplit": 7,
+      "ySplit": 2
+    }
+  },
+  "Осн. мат. <Аббрев. сборки>": {
+    "target": "xl/worksheets/sheet3.xml",
+    "maxCol": 19,
+    "maxRow": 13,
+    "cells": [
+      {
+        "a": "A1",
+        "t": "s",
+        "s": 69,
+        "v": "0091-0821 <Полное назание cборки> (0254) СП основной материал изм. 14.02.2026",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B1",
+        "t": null,
+        "s": 69,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C1",
+        "t": null,
+        "s": 69,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D1",
+        "t": null,
+        "s": 69,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E1",
+        "t": null,
+        "s": 69,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F1",
+        "t": null,
+        "s": 69,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G1",
+        "t": null,
+        "s": 69,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "J1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "K1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "L1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "M1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "N1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "O1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "P1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "Q1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "R1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S1",
+        "t": null,
+        "s": 57,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A2",
+        "t": "s",
+        "s": 14,
+        "v": "№ п\\п",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B2",
+        "t": "s",
+        "s": 14,
+        "v": "Обознач. На схеме",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C2",
+        "t": "s",
+        "s": 14,
+        "v": "Наименование товара (услуги)",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D2",
+        "t": "s",
+        "s": 14,
+        "v": "Производитель",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E2",
+        "t": "s",
+        "s": 14,
+        "v": "Артикул производителя",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F2",
+        "t": "s",
+        "s": 14,
+        "v": "Кол-во",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G2",
+        "t": "s",
+        "s": 14,
+        "v": "Ед. Изм.",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, Без НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, С НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "J2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, Без НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "K2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, с НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "L2",
+        "t": "s",
+        "s": 14,
+        "v": "Наценка, %",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "M2",
+        "t": "s",
+        "s": 14,
+        "v": "Скидка, %",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "N2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, Без НДС, со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "O2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, С НДС, со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "P2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, Без НДС, Со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "Q2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, С НДС, Со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "R2",
+        "t": "s",
+        "s": 16,
+        "v": "Поставщик",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S2",
+        "t": "s",
+        "s": 16,
+        "v": "Примечание",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A3",
+        "t": null,
+        "s": 35,
+        "v": "1",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B3",
+        "t": null,
+        "s": 64,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C3",
+        "t": null,
+        "s": 36,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D3",
+        "t": null,
+        "s": 37,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E3",
+        "t": null,
+        "s": 37,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F3",
+        "t": null,
+        "s": 37,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G3",
+        "t": null,
+        "s": 37,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H3",
+        "t": null,
+        "s": 65,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "I3",
+        "t": null,
+        "s": 66,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "J3",
+        "t": null,
+        "s": 66,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "K3",
+        "t": null,
+        "s": 66,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "L3",
+        "t": null,
+        "s": 67,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "M3",
+        "t": null,
+        "s": 67,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "N3",
+        "t": null,
+        "s": 66,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "O3",
+        "t": null,
+        "s": 66,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "P3",
+        "t": null,
+        "s": 66,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "Q3",
+        "t": null,
+        "s": 66,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "R3",
+        "t": null,
+        "s": 37,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S3",
+        "t": null,
+        "s": 37,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A4",
+        "t": null,
+        "s": 50,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B4",
+        "t": null,
+        "s": 50,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C4",
+        "t": null,
+        "s": 51,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R4",
+        "t": null,
+        "s": 56,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S4",
+        "t": null,
+        "s": 56,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A5",
+        "t": null,
+        "s": 35,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B5",
+        "t": null,
+        "s": 35,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C5",
+        "t": null,
+        "s": 42,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D5",
+        "t": null,
+        "s": 34,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E5",
+        "t": null,
+        "s": 34,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F5",
+        "t": null,
+        "s": 34,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G5",
+        "t": null,
+        "s": 34,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H5",
+        "t": null,
+        "s": 34,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I5",
+        "t": null,
+        "s": 38,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J5",
+        "t": null,
+        "s": 38,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K5",
+        "t": "s",
+        "s": 25,
+        "v": "Без скидки:",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L5",
+        "t": null,
+        "s": 38,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M5",
+        "t": null,
+        "s": 38,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N5",
+        "t": null,
+        "s": 38,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O5",
+        "t": null,
+        "s": 38,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P5",
+        "t": null,
+        "s": 38,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q5",
+        "t": "s",
+        "s": 25,
+        "v": "Со скидкой:",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R5",
+        "t": null,
+        "s": 43,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S5",
+        "t": null,
+        "s": 43,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A6",
+        "t": null,
+        "s": 21,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B6",
+        "t": null,
+        "s": 21,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C6",
+        "t": "s",
+        "s": 22,
+        "v": "Расходный материал",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I6",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J6",
+        "t": null,
+        "s": 44,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K6",
+        "t": null,
+        "s": 59,
+        "v": "0",
+        "f": "'Расх. мат. <Аббрев. сборки>'!$K$6",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "L6",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M6",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N6",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O6",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P6",
+        "t": null,
+        "s": 45,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "Q6",
+        "t": null,
+        "s": 59,
+        "v": "0",
+        "f": "'Расх. мат. <Аббрев. сборки>'!$Q$6",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "R6",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S6",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A7",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B7",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C7",
+        "t": "s",
+        "s": 39,
+        "v": "Итого основное оборудование и материалы",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D7",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E7",
+        "t": null,
+        "s": 40,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F7",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G7",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H7",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I7",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "J7",
+        "t": null,
+        "s": 44,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K7",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "SUM(K3:K3)+K6",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "L7",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M7",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N7",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O7",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P7",
+        "t": null,
+        "s": 45,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "Q7",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "Q6+SUM(Q3:Q3)",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "R7",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S7",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A8",
+        "t": null,
+        "s": 34,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B8",
+        "t": null,
+        "s": 34,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C8",
+        "t": null,
+        "s": 46,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D8",
+        "t": null,
+        "s": 47,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E8",
+        "t": null,
+        "s": 48,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F8",
+        "t": "s",
+        "s": 41,
+        "v": "коэфф.",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G8",
+        "t": "s",
+        "s": 41,
+        "v": "кол-во час.",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H8",
+        "t": "s",
+        "s": 41,
+        "v": "ставка ч.",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I8",
+        "t": "s",
+        "s": 25,
+        "v": "налог",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J8",
+        "t": "s",
+        "s": 25,
+        "v": "итого",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K8",
+        "t": "s",
+        "s": 25,
+        "v": "итого с коэфф.",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L8",
+        "t": null,
+        "s": 33,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M8",
+        "t": null,
+        "s": 33,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N8",
+        "t": null,
+        "s": 33,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O8",
+        "t": null,
+        "s": 33,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P8",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q8",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R8",
+        "t": null,
+        "s": 43,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S8",
+        "t": null,
+        "s": 43,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A9",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B9",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C9",
+        "t": "s",
+        "s": 39,
+        "v": "Разработка схемы",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D9",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E9",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F9",
+        "t": null,
+        "s": 58,
+        "v": "1.25",
+        "f": null,
+        "fmt": "builtin:9",
+        "numFmtId": 9
+      },
+      {
+        "a": "G9",
+        "t": null,
+        "s": 17,
+        "v": "0",
+        "f": "0",
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H9",
+        "t": null,
+        "s": 59,
+        "v": "0",
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "I9",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "H9*0.6",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "J9",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "G9*(H9+I9)",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "K9",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "J9*F9",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "L9",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M9",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N9",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O9",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P9",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q9",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R9",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S9",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A10",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B10",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C10",
+        "t": "s",
+        "s": 39,
+        "v": "Работа по сборке",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D10",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E10",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F10",
+        "t": null,
+        "s": 58,
+        "v": "1.25",
+        "f": null,
+        "fmt": "builtin:9",
+        "numFmtId": 9
+      },
+      {
+        "a": "G10",
+        "t": null,
+        "s": 17,
+        "v": "0",
+        "f": "0",
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H10",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": null,
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "I10",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "H10*0.6",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "J10",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "G10*(H10+I10)",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "K10",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "J10*F10",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "L10",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M10",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N10",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O10",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P10",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q10",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R10",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S10",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A11",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B11",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C11",
+        "t": "s",
+        "s": 39,
+        "v": "Прибыль",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D11",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E11",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F11",
+        "t": null,
+        "s": 58,
+        "v": "0.3",
+        "f": null,
+        "fmt": "builtin:9",
+        "numFmtId": 9
+      },
+      {
+        "a": "G11",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H11",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I11",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J11",
+        "t": null,
+        "s": 44,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K11",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "(K10+K9+K7)*F11",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "L11",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M11",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N11",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O11",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P11",
+        "t": null,
+        "s": 45,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "Q11",
+        "t": null,
+        "s": 60,
+        "v": "0",
+        "f": "(Q7+K9+K10)*F11",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "R11",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S11",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A12",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B12",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C12",
+        "t": null,
+        "s": 39,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D12",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E12",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F12",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G12",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H12",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I12",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J12",
+        "t": null,
+        "s": 44,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K12",
+        "t": "s",
+        "s": 25,
+        "v": "Итого без скидки:",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L12",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M12",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N12",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O12",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P12",
+        "t": null,
+        "s": 45,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "Q12",
+        "t": "s",
+        "s": 25,
+        "v": "Итого со скидки:",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R12",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S12",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A13",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B13",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C13",
+        "t": "s",
+        "s": 39,
+        "v": "ИТОГО",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D13",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E13",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F13",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G13",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H13",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I13",
+        "t": null,
+        "s": 18,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J13",
+        "t": null,
+        "s": 44,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K13",
+        "t": null,
+        "s": 61,
+        "v": "0",
+        "f": "CEILING((SUM(K7:K11)),1)",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "L13",
+        "t": null,
+        "s": 19,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "M13",
+        "t": null,
+        "s": 19,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "N13",
+        "t": null,
+        "s": 19,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "O13",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "P13",
+        "t": null,
+        "s": 45,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "Q13",
+        "t": null,
+        "s": 61,
+        "v": "0",
+        "f": "Q11+Q7+K9+K10",
+        "fmt": "#,##0.00\\ \"₽\"",
+        "numFmtId": 165
+      },
+      {
+        "a": "R13",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S13",
+        "t": null,
+        "s": 23,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      }
+    ],
+    "merges": [
+      "A1:G1"
+    ],
+    "cols": [
+      {
+        "min": "1",
+        "max": "1",
+        "width": "4.6640625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "2",
+        "max": "2",
+        "width": "8.33203125",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "3",
+        "max": "3",
+        "width": "57.5546875",
+        "customWidth": "1"
+      },
+      {
+        "min": "4",
+        "max": "4",
+        "width": "16.5546875",
+        "customWidth": "1"
+      },
+      {
+        "min": "5",
+        "max": "5",
+        "width": "24.33203125",
+        "customWidth": "1"
+      },
+      {
+        "min": "6",
+        "max": "6",
+        "width": "5.77734375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "7",
+        "max": "7",
+        "width": "7.77734375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "8",
+        "max": "8",
+        "width": "7.5546875",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "9",
+        "max": "10",
+        "width": "8.88671875",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "11",
+        "max": "11",
+        "width": "12.109375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "12",
+        "max": "12",
+        "width": "8.88671875",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "13",
+        "max": "13",
+        "width": "8.109375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "14",
+        "max": "14",
+        "width": "13.6640625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "15",
+        "max": "15",
+        "width": "12.44140625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "16",
+        "max": "16",
+        "width": "13.77734375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "17",
+        "max": "17",
+        "width": "14.33203125",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "18",
+        "max": "18",
+        "width": "28",
+        "customWidth": "1"
+      },
+      {
+        "min": "19",
+        "max": "19",
+        "width": "28.5546875",
+        "customWidth": "1"
+      }
+    ],
+    "defaultRowHeight": 14.4,
+    "rowHeights": {
+      "1": 33.6,
+      "2": 34.2,
+      "3": 16.2
+    },
+    "view": {
+      "zoomScale": 70,
+      "xSplit": 7,
+      "ySplit": 2
+    }
+  },
+  "Расходники": {
+    "target": "xl/worksheets/sheet4.xml",
+    "maxCol": 21,
+    "maxRow": 6,
+    "cells": [
+      {
+        "a": "A1",
+        "t": "s",
+        "s": 68,
+        "v": "0091-0821 (0254) СП общий расходный материал изм. 14.02.2026",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G1",
+        "t": null,
+        "s": 68,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "J1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "K1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "L1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "M1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "N1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "O1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "P1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "Q1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "R1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S1",
+        "t": null,
+        "s": 55,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A2",
+        "t": "s",
+        "s": 14,
+        "v": "№ п\\п",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B2",
+        "t": "s",
+        "s": 14,
+        "v": "Обознач. На схеме",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C2",
+        "t": "s",
+        "s": 14,
+        "v": "Наименование товара (услуги)",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D2",
+        "t": "s",
+        "s": 14,
+        "v": "Производитель",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E2",
+        "t": "s",
+        "s": 14,
+        "v": "Артикул производителя",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F2",
+        "t": "s",
+        "s": 14,
+        "v": "Кол-во",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G2",
+        "t": "s",
+        "s": 14,
+        "v": "Ед. Изм.",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, Без НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, С НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "J2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, Без НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "K2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, с НДС",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "L2",
+        "t": "s",
+        "s": 14,
+        "v": "Наценка, %",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "M2",
+        "t": "s",
+        "s": 14,
+        "v": "Скидка, %",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "N2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, Без НДС, со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "O2",
+        "t": "s",
+        "s": 14,
+        "v": "Цена, С НДС, со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "P2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, Без НДС, Со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "Q2",
+        "t": "s",
+        "s": 14,
+        "v": "Сумма, С НДС, Со скидкой и без наценки",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "R2",
+        "t": "s",
+        "s": 15,
+        "v": "Поставщик",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S2",
+        "t": "s",
+        "s": 15,
+        "v": "Примечание",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A3",
+        "t": null,
+        "s": 21,
+        "v": "1",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B3",
+        "t": null,
+        "s": 32,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C3",
+        "t": null,
+        "s": 22,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H3",
+        "t": null,
+        "s": 31,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q3",
+        "t": null,
+        "s": 62,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R3",
+        "t": null,
+        "s": 63,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S3",
+        "t": null,
+        "s": 63,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A4",
+        "t": null,
+        "s": 50,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B4",
+        "t": null,
+        "s": 50,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C4",
+        "t": null,
+        "s": 51,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H4",
+        "t": null,
+        "s": 52,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q4",
+        "t": null,
+        "s": 53,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R4",
+        "t": null,
+        "s": 54,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S4",
+        "t": null,
+        "s": 54,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A5",
+        "t": null,
+        "s": 21,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B5",
+        "t": null,
+        "s": 21,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C5",
+        "t": null,
+        "s": 49,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H5",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K5",
+        "t": "s",
+        "s": 25,
+        "v": "Итого без скидки:",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "L5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "M5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "N5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "O5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "P5",
+        "t": null,
+        "s": 20,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "Q5",
+        "t": "s",
+        "s": 25,
+        "v": "Со скидкой:",
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "R5",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S5",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "T5",
+        "t": null,
+        "s": 26,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "U5",
+        "t": null,
+        "s": 26,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "A6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "B6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "C6",
+        "t": "s",
+        "s": 27,
+        "v": "ИТОГО",
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "D6",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "E6",
+        "t": null,
+        "s": 28,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "F6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "G6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "H6",
+        "t": null,
+        "s": 17,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "I6",
+        "t": null,
+        "s": 29,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "J6",
+        "t": null,
+        "s": 29,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:2",
+        "numFmtId": 2
+      },
+      {
+        "a": "K6",
+        "t": null,
+        "s": 30,
+        "v": "0",
+        "f": "CEILING((SUM(K1:K2)),1)",
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "L6",
+        "t": null,
+        "s": 19,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "M6",
+        "t": null,
+        "s": 19,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "N6",
+        "t": null,
+        "s": 19,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:10",
+        "numFmtId": 10
+      },
+      {
+        "a": "O6",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "P6",
+        "t": null,
+        "s": 30,
+        "v": null,
+        "f": null,
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "Q6",
+        "t": null,
+        "s": 30,
+        "v": "0",
+        "f": "CEILING((SUM(Q1:Q2)),1)",
+        "fmt": "#,##0.00\\ \"р.\"",
+        "numFmtId": 166
+      },
+      {
+        "a": "R6",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "S6",
+        "t": null,
+        "s": 24,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "T6",
+        "t": null,
+        "s": 26,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      },
+      {
+        "a": "U6",
+        "t": null,
+        "s": 26,
+        "v": null,
+        "f": null,
+        "fmt": "builtin:0",
+        "numFmtId": 0
+      }
+    ],
+    "merges": [
+      "A1:G1"
+    ],
+    "cols": [
+      {
+        "min": "1",
+        "max": "1",
+        "width": "4.88671875",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "2",
+        "max": "2",
+        "width": "9.109375",
+        "customWidth": "1"
+      },
+      {
+        "min": "3",
+        "max": "3",
+        "width": "61.5546875",
+        "customWidth": "1"
+      },
+      {
+        "min": "4",
+        "max": "4",
+        "width": "20.5546875",
+        "customWidth": "1"
+      },
+      {
+        "min": "5",
+        "max": "5",
+        "width": "28",
+        "customWidth": "1"
+      },
+      {
+        "min": "6",
+        "max": "6",
+        "width": "6",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "7",
+        "max": "7",
+        "width": "6.6640625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "8",
+        "max": "8",
+        "width": "10.77734375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "9",
+        "max": "9",
+        "width": "9.6640625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "10",
+        "max": "10",
+        "width": "12.21875",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "11",
+        "max": "11",
+        "width": "12.44140625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "12",
+        "max": "12",
+        "width": "9",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "13",
+        "max": "13",
+        "width": "8.33203125",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "14",
+        "max": "14",
+        "width": "12.77734375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "15",
+        "max": "15",
+        "width": "11.6640625",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "16",
+        "max": "16",
+        "width": "13.77734375",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "17",
+        "max": "17",
+        "width": "13.5546875",
+        "bestFit": "1",
+        "customWidth": "1"
+      },
+      {
+        "min": "18",
+        "max": "18",
+        "width": "36.88671875",
+        "customWidth": "1"
+      },
+      {
+        "min": "19",
+        "max": "19",
+        "width": "39.109375",
+        "customWidth": "1"
+      }
+    ],
+    "defaultRowHeight": 14.4,
+    "rowHeights": {
+      "1": 33.6,
+      "2": 30.6
+    },
+    "view": {
+      "zoomScale": 70,
+      "xSplit": 7,
+      "ySplit": 2
+    }
+  }
+}
