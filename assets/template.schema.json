@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "sheets": [
+    {
+      "match": { "nameEquals": "Общее" },
+      "editable": [
+        { "a1": "B4" },
+        { "range": "B10:D10" },
+        { "range": "A20:H200" }
+      ]
+    },
+    {
+      "match": { "nameStartsWith": "Расход. мат." },
+      "editable": [
+        { "range": "A1:K500" }
+      ]
+    },
+    {
+      "match": { "any": true },
+      "editable": [
+        { "range": "A1:XFD1048576" }
+      ]
+    }
+  ]
+}

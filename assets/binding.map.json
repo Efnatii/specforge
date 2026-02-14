@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "commonSheet": {
+    "name": "Общее",
+    "meta": {
+      "orderNo": "B2",
+      "requestNo": "F2",
+      "modifiedDate": "J2"
+    },
+    "assembliesTable": {
+      "startRow": 12,
+      "maxRows": 200,
+      "cols": {
+        "abbr": "A",
+        "name": "B",
+        "qty": "H",
+        "unit": "I",
+        "comment": "J"
+      }
+    }
+  },
+  "assemblySheet": {
+    "header": {
+      "abbr": "B2",
+      "name": "B3",
+      "qty": "H2"
+    }
+  },
+  "consumablesSheet": {
+    "header": {
+      "abbr": "B2",
+      "name": "B3",
+      "qty": "H2"
+    }
+  }
+}
