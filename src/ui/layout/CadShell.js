@@ -1,6 +1,4 @@
 import { Icon } from "../common/Icon.js";
-import { TopMenuBar } from "./TopMenuBar.js";
-import { RibbonBar } from "./RibbonBar.js";
 import { DockPanel } from "./DockPanel.js";
 import { Splitter } from "./Splitter.js";
 import { StatusBar } from "./StatusBar.js";
@@ -9,14 +7,14 @@ import { CommandSearch } from "../command/CommandSearch.js";
 const MIN_DOCK = 180;
 const MAX_LEFT = 460;
 const MAX_RIGHT = 520;
+const MIN_CENTER = 520;
+const SPLITTER_WIDTH_TOTAL = 8;
 
 export class CadShell {
   constructor(root, options = {}) {
     this.root = root;
     this.i18n = options.i18n;
     this.registry = options.registry;
-    this.menuConfig = options.menuConfig || [];
-    this.ribbonTabs = options.ribbonTabs || [];
     this.layoutState = options.layoutState || { leftDockWidth: 260, rightDockWidth: 360 };
     this.onLayoutChange = options.onLayoutChange;
     this.onOpenFile = options.onOpenFile;
@@ -31,22 +29,16 @@ export class CadShell {
     const shell = document.createElement("div");
     shell.className = "cad-shell";
 
-    const topMenuHost = document.createElement("div");
-    topMenuHost.className = "cad-top-menu-host";
-
-    const ribbonLine = document.createElement("div");
-    ribbonLine.className = "cad-ribbon-line";
+    const commandBar = document.createElement("div");
+    commandBar.className = "cad-command-bar";
 
     const quickAccess = document.createElement("div");
     quickAccess.className = "cad-quick-access";
 
-    const ribbonHost = document.createElement("div");
-    ribbonHost.className = "cad-ribbon-host";
-
     const commandSearchHost = document.createElement("div");
     commandSearchHost.className = "cad-command-search-host";
 
-    ribbonLine.append(quickAccess, ribbonHost, commandSearchHost);
+    commandBar.append(quickAccess, commandSearchHost);
 
     const body = document.createElement("div");
     body.className = "cad-body";
@@ -111,11 +103,9 @@ export class CadShell {
     const toastRoot = document.createElement("div");
     toastRoot.className = "toast-root";
 
-    shell.append(topMenuHost, ribbonLine, body, statusHost, modalRoot, toastRoot);
+    shell.append(commandBar, body, statusHost, modalRoot, toastRoot);
     this.root.appendChild(shell);
 
-    this.topMenuBar = new TopMenuBar({ container: topMenuHost, i18n: this.i18n, menuConfig: this.menuConfig, registry: this.registry });
-    this.ribbonBar = new RibbonBar({ container: ribbonHost, i18n: this.i18n, tabs: this.ribbonTabs, registry: this.registry });
     this.commandSearch = new CommandSearch({ container: commandSearchHost, registry: this.registry, i18n: this.i18n });
 
     this.leftDock = new DockPanel({
@@ -123,9 +113,7 @@ export class CadShell {
       side: "left",
       i18n: this.i18n,
       tabs: [
-        { id: "sheets", titleKey: "dock.sheets", icon: "file" },
-        { id: "tree", titleKey: "dock.tree", icon: "tree" },
-        { id: "tasks", titleKey: "dock.tasks", icon: "tasks" }
+        { id: "sheets", titleKey: "dock.sheets", icon: "file" }
       ]
     });
 
@@ -143,7 +131,6 @@ export class CadShell {
     });
 
     this.statusBar = new StatusBar({ container: statusHost, i18n: this.i18n, onZoomIn: this.onZoomIn, onZoomOut: this.onZoomOut });
-    this.topMenuBar.render();
 
     this.refs = {
       shell,
@@ -155,8 +142,8 @@ export class CadShell {
       leftDockWrap,
       rightDockWrap,
       tabs: this.leftDock.getTabHost("sheets"),
-      leftTree: this.leftDock.getTabHost("tree"),
-      leftTasks: this.leftDock.getTabHost("tasks"),
+      leftTree: null,
+      leftTasks: null,
       rightPanelHost: this.rightDock.getTabHost("assemblies"),
       rightTabHosts: {
         assemblies: this.rightDock.getTabHost("assemblies"),
@@ -178,16 +165,12 @@ export class CadShell {
     return this.refs;
   }
 
-  renderRibbon(state) {
-    this.topMenuBar.render();
-    this.ribbonBar.render(state);
-  }
+  renderRibbon() {}
 
   renderQuickAccess(commands = []) {
     this.refs.quickAccess.innerHTML = "";
     commands.forEach((command) => {
-      const button = this.makeIconButton(command.icon, command.titleKey, () => this.registry.execute(command.id));
-      button.classList.add("quick-access-btn");
+      const button = this.makeQuickAccessButton(command, () => this.registry.execute(command.id));
       this.refs.quickAccess.appendChild(button);
     });
   }
@@ -231,6 +214,7 @@ export class CadShell {
   }
 
   applyLayout() {
+    this.normalizeLayoutState();
     this.refs.shell.style.setProperty("--leftDockWidth", `${this.layoutState.leftDockWidth}px`);
     this.refs.shell.style.setProperty("--rightDockWidth", `${this.layoutState.rightDockWidth}px`);
   }
@@ -247,6 +231,48 @@ export class CadShell {
     button.appendChild(Icon({ name: icon, size: 14 }));
     button.addEventListener("click", onClick);
     return button;
+  }
+
+  makeQuickAccessButton(command, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "quick-access-btn";
+    const label = this.i18n.t(command.titleKey || command.id || "");
+    button.setAttribute("aria-label", label);
+    button.title = label;
+    button.appendChild(Icon({ name: command.icon || "panel", size: 14 }));
+
+    const text = document.createElement("span");
+    text.className = "quick-access-label";
+    text.textContent = label;
+    button.appendChild(text);
+
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  normalizeLayoutState() {
+    let left = Number(this.layoutState.leftDockWidth);
+    let right = Number(this.layoutState.rightDockWidth);
+    left = Number.isFinite(left) ? left : 260;
+    right = Number.isFinite(right) ? right : 360;
+
+    left = clamp(left, MIN_DOCK, MAX_LEFT);
+    right = clamp(right, MIN_DOCK, MAX_RIGHT);
+
+    const shellWidth = Number(this.refs.shell?.getBoundingClientRect?.().width || 0);
+    if (shellWidth > 1200) {
+      const maxCombined = Math.max(MIN_DOCK * 2, shellWidth - MIN_CENTER - SPLITTER_WIDTH_TOTAL);
+      if (left + right > maxCombined) {
+        const overflow = left + right - maxCombined;
+        const rightShrink = Math.min(right - MIN_DOCK, overflow);
+        right -= rightShrink;
+        left -= Math.min(left - MIN_DOCK, overflow - rightShrink);
+      }
+    }
+
+    this.layoutState.leftDockWidth = left;
+    this.layoutState.rightDockWidth = right;
   }
 
   createEmptyState() {
@@ -286,4 +312,8 @@ export class CadShell {
     box.append(icon, title, steps, cta, hint);
     return box;
   }
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }

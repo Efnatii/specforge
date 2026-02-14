@@ -23,136 +23,61 @@ body {
   --leftDockWidth: 260px;
   --rightDockWidth: 360px;
   display: grid;
-  grid-template-rows: 30px 96px minmax(0, 1fr) 28px;
+  grid-template-rows: 42px minmax(0, 1fr) 28px;
   min-height: 100%;
   border: 1px solid var(--border2);
 }
 
-.cad-top-menu-host {
-  background: var(--panel2);
+.cad-command-bar {
+  background: var(--panel);
   border-bottom: 1px solid var(--border2);
-}
-
-.top-menu-bar {
   display: flex;
-  align-items: stretch;
-  height: 100%;
-}
-
-.top-menu-item {
-  position: relative;
-}
-
-.top-menu-button,
-.top-menu-action {
-  border: none;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  height: 100%;
-  padding: 0 10px;
-}
-
-.top-menu-button:hover,
-.top-menu-action:hover {
-  background: var(--hover);
-}
-
-.top-menu-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  min-width: 220px;
-  z-index: 15;
-  display: grid;
-  background: var(--panel);
-  border: 1px solid var(--border2);
-}
-
-.top-menu-action {
-  text-align: left;
-  min-height: 28px;
-  border-right: none;
-  border-bottom: 1px solid var(--border);
-}
-
-.cad-ribbon-line {
-  background: var(--panel);
-  border-bottom: 1px solid var(--border2);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 340px;
-  align-items: stretch;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
 }
 
 .cad-quick-access {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
-  padding: 6px;
-  border-right: 1px solid var(--border);
-}
-
-.quick-access-btn {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--border);
-  border-radius: 0;
-}
-
-.cad-ribbon-host {
   min-width: 0;
-}
-
-.ribbon-bar {
-  display: grid;
-  grid-template-rows: 30px minmax(0, 1fr);
-}
-
-.ribbon-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-}
-
-.ribbon-tab-btn {
-  height: 30px;
-  padding: 0 10px;
-  border: none;
-  border-right: 1px solid var(--border);
-  background: transparent;
-}
-
-.ribbon-tab-btn:hover {
-  background: var(--hover);
-}
-
-.ribbon-tab-btn.active {
-  background: var(--active);
-  color: var(--activeFg);
-}
-
-.ribbon-groups {
-  display: flex;
-  align-items: stretch;
   overflow-x: auto;
 }
 
-.ribbon-group {
-  display: grid;
-  grid-template-rows: 1fr auto;
-  min-width: 140px;
-  padding: 4px 6px;
-  border-right: 1px solid var(--border2);
-}
-
-.ribbon-group-actions {
-  display: flex;
-  gap: 4px;
+.quick-access-btn {
+  height: 30px;
+  min-width: max-content;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 0 10px 0 8px;
+  display: inline-flex;
   align-items: center;
+  gap: 6px;
 }
 
-.ribbon-group-title {
-  font-size: 11px;
-  color: var(--muted);
-  text-align: center;
+.quick-access-btn:hover {
+  background: var(--hover);
+}
+
+.quick-access-label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cad-command-search-host {
+  position: relative;
+  margin-left: auto;
+  width: min(420px, 38vw);
+}
+
+.command-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  background: #fff;
+  height: 30px;
 }
 
 .btn-icon,
@@ -181,21 +106,6 @@ body {
   background: var(--active);
   color: var(--activeFg);
   border-color: var(--active);
-}
-
-.cad-command-search-host {
-  position: relative;
-  border-left: 1px solid var(--border);
-  padding: 6px;
-}
-
-.command-search {
-  position: relative;
-  display: flex;
-  align-items: center;
-  border: 1px solid var(--border);
-  background: #fff;
-  height: 24px;
 }
 
 .command-search.open {
@@ -541,16 +451,17 @@ body {
 
 @media (max-width: 1200px) {
   .cad-shell {
-    grid-template-rows: 30px 120px minmax(0, 1fr) 28px;
+    grid-template-rows: auto minmax(0, 1fr) 28px;
   }
 
-  .cad-ribbon-line {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: auto auto;
+  .cad-command-bar {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   .cad-command-search-host {
-    grid-column: 1 / -1;
+    width: 100%;
+    margin-left: 0;
   }
 
   .cad-body {
