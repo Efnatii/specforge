@@ -39,6 +39,14 @@ export class IdbStore {
     await this.set(key, value);
   }
 
+  async getMany(keys = []) {
+    const out = {};
+    for (const key of keys) {
+      out[key] = await this.get(key);
+    }
+    return out;
+  }
+
   async delete(key) {
     const db = await this.open();
     await this.runTransaction(db, "readwrite", (store) => store.delete(key));

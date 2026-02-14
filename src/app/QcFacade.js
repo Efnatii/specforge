@@ -20,30 +20,33 @@ export class QcFacade {
     const { promise } = this.jobQueue.enqueue({
       type: "RUN_QC",
       title: "QC scan",
-      run: async (_, signal, progress) => {
-        if (signal.aborted) {
-          throw new Error("Job aborted");
-        }
-
-        progress({ completed: 0, total: 1, message: "Running QC rules" });
-        const report = this.qcService.run({
-          workbook,
-          edits: state.edits,
-          calcSnapshot: state.calc,
-          schema: this.templateSchema,
-          editorErrors: state.editor.errors || {},
-          numFmtWarnings: state.warnings || []
-        });
-        progress({ completed: 1, total: 1, message: "QC complete" });
-        return report;
+      workerOp: "RUN_QC",
+      workerPayload: {
+        normalizedWorkbook: workbook,
+        edits: state.edits,
+        calcSnapshot: state.calc,
+        schema: this.templateSchema?.schema || {},
+        bindings: {},
+        editorErrors: state.editor.errors || {},
+        numFmtWarnings: state.warnings || []
       }
     });
 
     try {
-      const report = await promise;
+      const result = await promise;
+      const report = result.qcReport || result;
       this.stateStore.update({ qc: { report } });
     } catch (error) {
-      this.toast.show(`QC failed: ${error.message}`, "error");
+      const report = this.qcService.run({
+        workbook,
+        edits: state.edits,
+        calcSnapshot: state.calc,
+        schema: this.templateSchema,
+        editorErrors: state.editor.errors || {},
+        numFmtWarnings: state.warnings || []
+      });
+      this.stateStore.update({ qc: { report } });
+      this.toast.show(`QC worker fallback: ${error.message}`, "info");
     }
   }
 

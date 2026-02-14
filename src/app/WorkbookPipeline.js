@@ -57,21 +57,16 @@ export class WorkbookPipeline {
   }
 
   async runParseJob(buffer) {
+    const parseBuffer = buffer.slice(0);
     const { promise } = this.jobQueue.enqueue({
       type: "PARSE_WORKBOOK",
       title: "Parse workbook",
-      run: async (_, signal, reportProgress) => {
-        this.assertNotAborted(signal);
-        reportProgress({ completed: 0, total: 1, message: "Parsing XLSX" });
-
-        const workbook = await this.workbookAdapter.parse(buffer);
-
-        this.assertNotAborted(signal);
-        reportProgress({ completed: 1, total: 1, message: "Workbook parsed" });
-        return workbook;
-      }
+      workerOp: "PARSE_WORKBOOK",
+      workerPayload: { xlsxBuffer: parseBuffer },
+      transfer: [parseBuffer]
     });
 
-    return promise;
+    const result = await promise;
+    return result.normalizedWorkbook || result;
   }
 }

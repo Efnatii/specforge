@@ -7,9 +7,11 @@ const STATUS = {
 };
 
 export class JobQueue {
-  constructor({ stateStore, maxAttempts = 2 }) {
+  constructor({ stateStore, maxAttempts = 2, idbStore = null, jobRunner = null }) {
     this.stateStore = stateStore;
     this.maxAttempts = maxAttempts;
+    this.idbStore = idbStore;
+    this.jobRunner = jobRunner;
     this.pendingItems = [];
     this.activeItem = null;
   }
@@ -19,6 +21,9 @@ export class JobQueue {
     const attemptsLimit = Number.isInteger(jobDefinition.maxAttempts)
       ? Math.max(1, jobDefinition.maxAttempts)
       : this.maxAttempts;
+    const maxTotalTimeMs = Number.isFinite(jobDefinition.maxTotalTimeMs)
+      ? Math.max(1000, Number(jobDefinition.maxTotalTimeMs))
+      : 10 * 60 * 1000;
 
     const jobState = {
       id: jobId,
@@ -32,7 +37,11 @@ export class JobQueue {
       message: "Queued",
       error: null,
       attempts: 0,
-      maxAttempts: attemptsLimit
+      maxAttempts: attemptsLimit,
+      maxTotalTimeMs,
+      createdTs: Date.now(),
+      startedTs: null,
+      lastHeartbeatTs: null
     };
 
     this.setJobState(jobState);
@@ -52,9 +61,14 @@ export class JobQueue {
     return { jobId, promise };
   }
 
+  setRunner(jobRunner) {
+    this.jobRunner = jobRunner;
+  }
+
   cancel(jobId) {
     if (this.activeItem && this.activeItem.id === jobId) {
       this.activeItem.controller.abort();
+      this.jobRunner?.cancel(jobId);
       return true;
     }
 
@@ -104,23 +118,34 @@ export class JobQueue {
       this.patchJob(id, {
         status: STATUS.RUNNING,
         attempts: attempt,
+        startedTs: Date.now(),
         message: attempt === 1 ? "Running" : `Running (attempt ${attempt}/${attemptsLimit})`,
         error: null
       });
 
       try {
         const reportProgress = (progressPatch) => this.handleProgress(id, progressPatch);
-        const result = await definition.run(
-          {
+        const result = definition.workerOp && this.jobRunner
+          ? await this.jobRunner.runJob({
             jobId: id,
             type: definition.type,
-            title: definition.title,
+            op: definition.workerOp,
+            payload: definition.workerPayload || {},
+            transfer: definition.transfer || [],
             attempt,
-            maxAttempts: attemptsLimit
-          },
-          controller.signal,
-          reportProgress
-        );
+            progress: this.activeItem.progress
+          }, { onProgress: reportProgress })
+          : await definition.run(
+            {
+              jobId: id,
+              type: definition.type,
+              title: definition.title,
+              attempt,
+              maxAttempts: attemptsLimit
+            },
+            controller.signal,
+            reportProgress
+          );
 
         this.patchJob(id, {
           status: STATUS.DONE,
@@ -148,11 +173,14 @@ export class JobQueue {
           return;
         }
 
-        if (attempt < attemptsLimit) {
+        const elapsed = Date.now() - Number(this.getJobs()?.[id]?.createdTs || Date.now());
+        const maxTotal = Number(this.getJobs()?.[id]?.maxTotalTimeMs || maxTotalTimeMs);
+        if (attempt < attemptsLimit && elapsed < maxTotal) {
           this.patchJob(id, {
             status: STATUS.QUEUED,
             message: `Retry queued (${attempt + 1}/${attemptsLimit})`
           });
+          await this.backoffDelay(attempt);
           continue;
         }
 
@@ -194,6 +222,7 @@ export class JobQueue {
 
     this.patchJob(jobId, {
       progress: this.activeItem.progress,
+      lastHeartbeatTs: Date.now(),
       message: progressPatch.message || "Running"
     });
   }
@@ -226,6 +255,13 @@ export class JobQueue {
         [jobState.id]: jobState
       }
     });
+    this.idbStore?.set("jobsSnapshot", this.stateStore.getState().jobs).catch(() => null);
+  }
+
+  async backoffDelay(attempt) {
+    const base = Math.min(4000, 300 * 2 ** Math.max(0, attempt - 1));
+    const jitter = Math.floor(Math.random() * 150);
+    await new Promise((resolve) => setTimeout(resolve, base + jitter));
   }
 }
 

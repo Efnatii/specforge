@@ -46,6 +46,18 @@ export class TemplateBufferStore {
     };
   }
 
+  getBaselineBufferForTransfer() {
+    if (!this.buffer) {
+      return null;
+    }
+
+    const copy = this.buffer.slice(0);
+    return {
+      buffer: copy,
+      meta: this.meta ? { ...this.meta } : null
+    };
+  }
+
   async clear() {
     this.buffer = null;
     this.meta = null;

@@ -21,6 +21,7 @@ export class Toolbar {
     const pasteSpecialButton = this.createButton("Paste Special", () => this.callbacks.onPasteSpecial());
     const schemaButton = this.createButton("Edit Schema", () => this.callbacks.onEditSchema());
     const bindingsButton = this.createButton("Edit Bindings", () => this.callbacks.onEditBindings());
+    const chaosButton = this.createButton("Chaos", () => this.callbacks.onChaos?.());
 
     const orderNo = this.createInput("Order No", "orderNo");
     const requestNo = this.createInput("Request No", "requestNo");
@@ -49,6 +50,7 @@ export class Toolbar {
       pasteSpecialButton,
       schemaButton,
       bindingsButton,
+      chaosButton,
       orderNo,
       requestNo,
       title,
@@ -72,6 +74,7 @@ export class Toolbar {
       pasteSpecialButton,
       schemaButton,
       bindingsButton,
+      chaosButton,
       fileInput,
       importUpdateInput,
       importReplaceInput,
