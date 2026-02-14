@@ -1,8 +1,8 @@
-import { Icon } from "./Icon.js";
-
 export class RightPanel {
-  constructor({ root, progressPanel, changesPanel, qcPanel, findPanel, i18n }) {
+  constructor({ root, tabHosts, onTabChange, progressPanel, changesPanel, qcPanel, findPanel, i18n }) {
     this.root = root;
+    this.tabHosts = tabHosts;
+    this.onTabChange = onTabChange;
     this.progressPanel = progressPanel;
     this.changesPanel = changesPanel;
     this.qcPanel = qcPanel;
@@ -19,62 +19,26 @@ export class RightPanel {
   }
 
   mount() {
-    this.root.innerHTML = "";
-
-    const tabs = document.createElement("div");
-    tabs.className = "right-tabs";
-
-    const tabDefs = [
-      { id: "assemblies", icon: "list", label: this.i18n.t("panel.assemblies") },
-      { id: "changes", icon: "history", label: this.i18n.t("panel.changes") },
-      { id: "qc", icon: "alert-triangle", label: this.i18n.t("panel.qc") },
-      { id: "jobs", icon: "activity", label: this.i18n.t("panel.jobs") },
-      { id: "find", icon: "search", label: this.i18n.t("panel.find") }
-    ];
-
-    const hosts = {};
-    const tabButtons = {};
-    const hostClassByTab = {
-      assemblies: "assemblies-panel",
-      changes: "changes-panel",
-      qc: "qc-panel",
-      jobs: "progress-panel",
-      find: "find-panel"
-    };
-
-    for (const tab of tabDefs) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "right-tab";
-      button.setAttribute("aria-label", tab.label);
-      button.append(Icon({ name: tab.icon, size: 14 }), document.createTextNode(tab.label));
-      button.addEventListener("click", () => this.setActiveTab(tab.id));
-      tabs.appendChild(button);
-      tabButtons[tab.id] = button;
-
-      const host = document.createElement("section");
-      host.className = "right-tab-host";
-      host.classList.add(hostClassByTab[tab.id]);
-      host.dataset.tab = tab.id;
-      host.setAttribute("aria-label", tab.label);
-      hosts[tab.id] = host;
-      this.root.appendChild(host);
+    if (this.tabHosts) {
+      this.refs.hosts = this.tabHosts;
+      this.progressPanel.container = this.tabHosts.jobs;
+      this.changesPanel.container = this.tabHosts.changes;
+      this.qcPanel.container = this.tabHosts.qc;
+      this.findPanel.container = this.tabHosts.find;
+      this.onTabChange?.(this.activeTab);
+      return;
     }
 
-    this.root.prepend(tabs);
-
-    this.refs = {
-      tabs,
-      tabButtons,
-      hosts
+    this.root.innerHTML = "";
+    const host = document.createElement("section");
+    this.root.appendChild(host);
+    this.refs.hosts = {
+      assemblies: host,
+      changes: host,
+      qc: host,
+      jobs: host,
+      find: host
     };
-
-    this.progressPanel.container = hosts.jobs;
-    this.changesPanel.container = hosts.changes;
-    this.qcPanel.container = hosts.qc;
-    this.findPanel.container = hosts.find;
-
-    this.applyTabVisibility();
   }
 
   setActiveTab(tabId) {
@@ -82,7 +46,10 @@ export class RightPanel {
       return;
     }
     this.activeTab = tabId;
-    this.applyTabVisibility();
+    this.onTabChange?.(tabId);
+    if (!this.tabHosts) {
+      this.applyTabVisibility();
+    }
   }
 
   setAssemblyHandlers({ onAssemblyChange, onAssemblyAction }) {
@@ -184,10 +151,7 @@ export class RightPanel {
 
   applyTabVisibility() {
     for (const [tabId, host] of Object.entries(this.refs.hosts || {})) {
-      const active = tabId === this.activeTab;
-      host.style.display = active ? "grid" : "none";
-      this.refs.tabButtons?.[tabId]?.classList.toggle("active", active);
-      this.refs.tabButtons?.[tabId]?.setAttribute("aria-pressed", active ? "true" : "false");
+      host.style.display = tabId === this.activeTab ? "grid" : "none";
     }
   }
 }

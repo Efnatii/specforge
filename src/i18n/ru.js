@@ -233,6 +233,101 @@ export const ruDict = {
     setThrottle: "Применить задержку",
     failNext: "Сломать следующую попытку",
     exportDebug: "Экспорт debug bundle"
+  },
+  cad: {
+    topMenu: "Верхнее меню"
+  },
+  workspace: {
+    label: "Рабочая область",
+    noSheet: "Лист не выбран",
+    zoom: "Масштаб {value}x"
+  },
+  dock: {
+    pin: "Закрепить панель",
+    collapse: "Свернуть панель",
+    sheets: "Листы",
+    tree: "Дерево",
+    tasks: "Задачи",
+    assemblies: "Сборки",
+    changes: "Изменения",
+    qc: "QC",
+    jobs: "Задачи",
+    find: "Поиск"
+  },
+  status: {
+    template: "Шаблон: {name}",
+    noFile: "нет файла",
+    edits: "Правки: {value}",
+    yes: "да",
+    no: "нет",
+    jobs: "Задачи: {running} / {total}",
+    zoomValue: "{value}x",
+    zoomIn: "Приблизить",
+    zoomOut: "Отдалить",
+    commandSearchHint: "Alt+/ - поиск команд",
+    cell: "Ячейка: {cell}"
+  },
+  menu: {
+    file: "Файл",
+    edit: "Правка",
+    select: "Выделить",
+    view: "Вид",
+    insert: "Вставка",
+    format: "Оформление",
+    diagnostics: "Диагностика",
+    manage: "Управление",
+    config: "Настройка",
+    help: "Справка"
+  },
+  ribbon: {
+    project: "Проект/Книга",
+    io: "Импорт/Экспорт",
+    edit: "Редактирование",
+    assemblies: "Сборки",
+    qc: "Диагностика",
+    view: "Вид",
+    settings: "Настройки"
+  },
+  ribbonGroup: {
+    project: "Проект",
+    search: "Поиск",
+    import: "Импорт",
+    export: "Экспорт",
+    edits: "Правки",
+    assemblies: "Сборки",
+    qc: "QC",
+    zoom: "Масштаб",
+    panels: "Панели",
+    settings: "Система"
+  },
+  commands: {
+    openFile: "Открыть XLSX",
+    importUpdate: "Импорт обновлений",
+    importReplace: "Заменить шаблон",
+    export: "Экспорт в Excel",
+    print: "Печать/PDF",
+    undo: "Отменить",
+    redo: "Повторить",
+    insertRow: "Вставить строку",
+    deleteRow: "Удалить строку",
+    pasteSpecial: "Спецвставка",
+    addAssembly: "Добавить сборку",
+    autofillPreview: "Автозаполнение",
+    workbookToModel: "Книга в модель",
+    qcScan: "QC Scan",
+    qcExport: "Экспорт QC",
+    find: "Найти",
+    jobsPanel: "Панель задач",
+    zoomIn: "Масштаб +",
+    zoomOut: "Масштаб -",
+    schema: "Редактор схемы",
+    bindings: "Редактор привязок",
+    reset: "Сброс",
+    commandSearch: "Поиск команд"
+  },
+  commandSearch: {
+    label: "Поиск по командам",
+    placeholder: "Поиск по командам (Alt+/)"
   }
 };
 

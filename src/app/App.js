@@ -15,7 +15,6 @@ import { WorkbookExporter } from "../xlsx/WorkbookExporter.js";
 import { WorkbookImporter } from "../xlsx/WorkbookImporter.js";
 import { SheetFactory } from "../xlsx/SheetFactory.js";
 import { Layout } from "../ui/Layout.js";
-import { Toolbar } from "../ui/Toolbar.js";
 import { RightPanel } from "../ui/RightPanel.js";
 import { SheetTabs } from "../ui/SheetTabs.js";
 import { SheetGridView } from "../ui/SheetGridView.js";
@@ -39,7 +38,6 @@ import { RowShiftService } from "../editor/RowShiftService.js";
 import { PasteApplyService } from "../editor/PasteApplyService.js";
 import { PasteSpecialDialog } from "../editor/PasteSpecialDialog.js";
 import { WorkbookPipeline } from "./WorkbookPipeline.js";
-import { AppHotkeys } from "./AppHotkeys.js";
 import { CalcEngine } from "../calc/CalcEngine.js";
 import { CalcFacade } from "./CalcFacade.js";
 import { QcService } from "../qc/QcService.js";
@@ -66,14 +64,17 @@ import { ChaosService } from "../devtools/ChaosService.js";
 import { ChaosPanel } from "../devtools/ChaosPanel.js";
 import { I18n } from "../i18n/I18n.js";
 import { ruDict } from "../i18n/ru.js";
+import { CommandRegistry } from "../ui/command/CommandRegistry.js";
+import { Hotkeys } from "../ui/command/Hotkeys.js";
 
 const CACHE_SNAPSHOT_KEY = "lastSnapshot";
 const CACHE_WORKBOOK_KEY = "lastWorkbook";
+const UI_LAYOUT_KEY = "uiLayout";
 const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`; };
 const emptyQc = { ts: 0, summary: { errorsCount: 0, warningsCount: 0 }, items: [] };
 
 function createInitialState() {
-  return { boot: { phase: "BOOT" }, template: { source: null, name: null, loadedAtTs: null, bufferHash: null, structureFingerprint: null }, workbook: { sheets: [], activeSheetId: null }, render: { zoom: 1 }, jobs: {}, editor: { selection: { sheetId: null, addressA1: null, anchorAddressA1: null, focusAddressA1: null, range: null, mode: "cell" }, editMode: false, lastError: null, errors: {} }, edits: {}, audit: { recent: [] }, calc: { perSheet: {} }, qc: { report: emptyQc }, tkp: TkpModel.createDefault(), find: { needle: "", replace: "", scope: "sheet", matchCase: false, wholeCell: false, useRegex: false, results: [], activeIndex: -1 }, exportMeta: { orderNo: "0091-0821", requestNo: "0254", title: "КП Общая", modifiedDate: today() }, warnings: [] };
+  return { boot: { phase: "BOOT" }, template: { source: null, name: null, loadedAtTs: null, bufferHash: null, structureFingerprint: null }, workbook: { sheets: [], activeSheetId: null }, render: { zoom: 1 }, jobs: {}, editor: { selection: { sheetId: null, addressA1: null, anchorAddressA1: null, focusAddressA1: null, range: null, mode: "cell" }, editMode: false, lastError: null, errors: {} }, edits: {}, audit: { recent: [] }, calc: { perSheet: {} }, qc: { report: emptyQc }, tkp: TkpModel.createDefault(), find: { needle: "", replace: "", scope: "sheet", matchCase: false, wholeCell: false, useRegex: false, results: [], activeIndex: -1 }, exportMeta: { orderNo: "0091-0821", requestNo: "0254", title: "КП Общая", modifiedDate: today() }, warnings: [], ui: { layout: { leftDockWidth: 260, rightDockWidth: 360 } } };
 }
 
 export class App {
@@ -104,17 +105,23 @@ export class App {
       templateSchema: this.templateSchema
     });
     this.sheetFactory = new SheetFactory(this.workbookAdapter);
+    this.fileInputs = this.createFileInputs();
+    this.commandRegistry = new CommandRegistry({ stateStore: this.stateStore, context: { i18n: this.i18n } });
 
     this.layout = new Layout(rootElement, {
       i18n: this.i18n,
-      onOpenFile: () => this.toolbar?.openLoadPicker(),
-      onLoadDefaultAsset: () => this.loadDefaultAssetFromEmptyState()
+      registry: this.commandRegistry,
+      menuConfig: this.getTopMenuConfig(),
+      ribbonTabs: this.getRibbonConfig(),
+      layoutState: this.stateStore.getState().ui.layout,
+      onLayoutChange: (layout) => this.updateLayoutState(layout),
+      onOpenFile: () => this.openFilePicker("load"),
+      onLoadDefaultAsset: () => this.loadDefaultAssetFromEmptyState(),
+      onZoomIn: () => this.adjustZoom(0.05),
+      onZoomOut: () => this.adjustZoom(-0.05)
     });
     this.layoutRefs = this.layout.render();
     this.toast = new Toast(this.layoutRefs.toastRoot);
-
-    this.toolbar = new Toolbar(this.layoutRefs.toolbarHost, this.toolbarCallbacks(), { i18n: this.i18n });
-    this.toolbar.render();
     this.sheetTabs = new SheetTabs({ container: this.layoutRefs.tabs, eventBus: this.eventBus, i18n: this.i18n });
     this.sheetGridView = new SheetGridView({ container: this.layoutRefs.viewport });
 
@@ -137,6 +144,8 @@ export class App {
     }, { i18n: this.i18n });
     this.rightPanel = new RightPanel({
       root: this.layoutRefs.rightPanelHost,
+      tabHosts: this.layoutRefs.rightTabHosts,
+      onTabChange: (tabId) => this.layoutRefs.setRightDockTab?.(tabId),
       progressPanel: this.progressPanel,
       changesPanel: this.changesPanel,
       qcPanel: this.qcPanel,
@@ -159,12 +168,15 @@ export class App {
     this.editorController = new EditorController({ eventBus: this.eventBus, stateStore: this.stateStore, templateSchema: this.templateSchema, gridView: this.sheetGridView, cellEditorOverlay: this.cellEditorOverlay, undoStack: this.undoStack, valueParser: this.valueParser, toast: this.toast, getWorkbook: () => this.currentWorkbook, stateDriver: this.editorStateDriver, onCellCommitted: (p) => this.handleCellCommitted(p), jobQueue: this.jobQueue, clipboardService: this.clipboardService, tableRangeManager: this.tableRangeManager, rowShiftService: this.rowShiftService });
     this.pasteApplyService = new PasteApplyService({ templateSchema: this.templateSchema, valueParser: this.valueParser, stateDriver: this.editorStateDriver, undoStack: this.undoStack, getWorkbook: () => this.currentWorkbook, getState: () => this.stateStore.getState(), onCellCommitted: (p) => this.handleCellCommitted(p), jobQueue: this.jobQueue, toast: this.toast });
     this.replaceService = new ReplaceService({ templateSchema: this.templateSchema, valueParser: this.valueParser, stateDriver: this.editorStateDriver, undoStack: this.undoStack, getWorkbook: () => this.currentWorkbook, getState: () => this.stateStore.getState(), onCellCommitted: (p) => this.handleCellCommitted(p), jobQueue: this.jobQueue, toast: this.toast });
-    this.appHotkeys = new AppHotkeys({ root: this.layoutRefs.viewport, handlers: { onUndo: () => this.editorController.undo(), onRedo: () => this.editorController.redo(), onOpenFile: () => this.toolbar.openLoadPicker(), onFind: () => this.rightPanel.setActiveTab("find"), onInsertRow: () => this.editorController.insertRowInTable(), onDeleteRow: () => this.editorController.deleteRowInTable(), onPasteSpecial: () => this.runPasteSpecial() } });
-    this.pipeline = new WorkbookPipeline({ jobQueue: this.jobQueue, templateLoader: this.templateLoader, workbookAdapter: this.workbookAdapter, onBeforeLoad: () => this.stateStore.update({ boot: { phase: "LOADING_TEMPLATE" } }), onAfterLoad: async (wb, meta, buffer) => this.installBaseline(wb, buffer, meta, true), onError: (e) => this.toast.show(this.i18n.t("appMessages.loadFailed", { message: e.message }), "error", 5000), assertNotAborted: (signal) => this.assertNotAborted(signal) }); this.bootManager = new BootManager({ idbStore: this.idbStore, templateBufferStore: this.templateBufferStore, stateStore: this.stateStore, onLoadWorkbookFromBuffer: (workbook) => { this.currentWorkbook = workbook; } });
+    this.pipeline = new WorkbookPipeline({ jobQueue: this.jobQueue, templateLoader: this.templateLoader, workbookAdapter: this.workbookAdapter, onBeforeLoad: () => this.stateStore.update({ boot: { phase: "LOADING_TEMPLATE" } }), onAfterLoad: async (wb, meta, buffer) => this.installBaseline(wb, buffer, meta, true), onError: (e) => this.toast.show(this.i18n.t("appMessages.loadFailed", { message: e.message }), "error", 5000), assertNotAborted: (signal) => this.assertNotAborted(signal) });
+    this.bootManager = new BootManager({ idbStore: this.idbStore, templateBufferStore: this.templateBufferStore, stateStore: this.stateStore, onLoadWorkbookFromBuffer: (workbook) => { this.currentWorkbook = workbook; } });
+    this.registerCommands();
+    this.layout.renderQuickAccess(this.getQuickAccessCommands());
+    this.hotkeys = new Hotkeys({ target: window, commandRegistry: this.commandRegistry, onCommandSearch: () => this.layout.openCommandSearch() });
   }
 
   async start() {
-    this.bindEvents(); this.editorController.start(); this.appHotkeys.bind(); this.render(this.stateStore.getState()); await this.configStore.init(); await this.loadSchema(); await this.loadBindingMap(); const model = await this.assemblyRegistry.restore().catch(() => TkpModel.createDefault()); this.stateStore.update({ tkp: model }); const recovery = await this.bootManager.boot().catch(() => null); if (recovery?.recovery && (recovery.recovery.requeued || recovery.recovery.failed)) { this.toast.show(this.i18n.t("appMessages.recovery", { requeued: recovery.recovery.requeued, failed: recovery.recovery.failed }), "info", 6000); }
+    this.bindEvents(); this.editorController.start(); this.hotkeys.bind(); this.render(this.stateStore.getState()); await this.restoreLayoutState(); await this.configStore.init(); await this.loadSchema(); await this.loadBindingMap(); const model = await this.assemblyRegistry.restore().catch(() => TkpModel.createDefault()); this.stateStore.update({ tkp: model }); const recovery = await this.bootManager.boot().catch(() => null); if (recovery?.recovery && (recovery.recovery.requeued || recovery.recovery.failed)) { this.toast.show(this.i18n.t("appMessages.recovery", { requeued: recovery.recovery.requeued, failed: recovery.recovery.failed }), "info", 6000); }
     if (await this.tryRestoreFromCache()) { await this.restoreEdits(); await this.calcFacade.buildCalcModel(this.currentWorkbook, this.stateStore.getState().edits); if (this.shouldShowDevtools()) { this.mountChaosPanel(); } return; }
     try { await this.pipeline.loadFromAsset(import.meta.env.BASE_URL); } catch { this.stateStore.update({ boot: { phase: "ERROR" } }); }
     if (this.shouldShowDevtools()) { this.mountChaosPanel(); }
@@ -178,15 +190,128 @@ export class App {
   }
 
   render(state) {
-    this.layout.updateHeader(state); this.toolbar.setExportMeta(state.exportMeta); this.toolbar.setAvailability({ hasBaseline: Boolean(this.templateBufferStore.getBaselineBuffer()) }); this.sheetTabs.render(state.workbook.sheets, state.workbook.activeSheetId);
+    this.layout.updateHeader(state); this.sheetTabs.render(state.workbook.sheets, state.workbook.activeSheetId);
     const activeName = state.workbook.sheets.find((s) => s.id === state.workbook.activeSheetId)?.name; const qcWarnings = (state.qc.report?.items || []).filter((i) => i.sheetName === activeName);
     this.sheetGridView.render(this.currentWorkbook, state.workbook.activeSheetId, state.render.zoom, state.edits[state.workbook.activeSheetId] || {}, state.editor, state.calc.perSheet?.[activeName] || {}, qcWarnings);
     const fmtWarnings = this.sheetGridView.takeNumFmtWarnings(); if (fmtWarnings.length) { const set = new Set(state.warnings || []); const add = fmtWarnings.filter((w) => !set.has(w)); if (add.length) { this.stateStore.update({ warnings: [...state.warnings, ...add].slice(-120) }); } }
     this.rightPanel.render({ jobs: state.jobs, changes: state.audit.recent, qcReport: state.qc.report, sheets: state.workbook.sheets, tkpModel: state.tkp, findState: state.find });
   }
 
-  toolbarCallbacks() {
-    return { onLoadFile: () => this.toolbar.openLoadPicker(), onLoadFilePicked: async (f) => { try { await this.pipeline.loadFromFile(f); } catch {} }, onReset: async () => this.reset(), onExport: async () => this.runExport(), onImportUpdate: () => this.toolbar.openImportUpdatePicker(), onImportUpdatePicked: async (f) => this.runImportUpdate(f), onImportReplace: () => this.toolbar.openImportReplacePicker(), onImportReplacePicked: async (f) => this.runImportReplace(f), onAddAssembly: async () => this.runAddAssembly(), onAutoFillPreview: async () => this.runAutoFillPreview(), onWorkbookToModelPreview: async () => this.runWorkbookToModelPreview(), onPrintPreview: async () => this.runPrintPreviewFlow(), onFindPanelToggle: () => this.rightPanel.setActiveTab("find"), onPasteSpecial: async () => this.runPasteSpecial(), onEditSchema: async () => this.runSchemaEditor(), onEditBindings: async () => this.runBindingsEditor(), onChaos: () => this.mountChaosPanel(), onExportMetaChanged: (exportMeta) => { this.stateStore.update({ exportMeta }); this.assemblyRegistry.setModel({ ...this.assemblyRegistry.getModel(), meta: { ...this.assemblyRegistry.getModel().meta, ...exportMeta } }); } };
+  createFileInputs() {
+    const create = (handler) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".xlsx";
+      input.className = "file-input-hidden";
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (file) {
+          await handler(file);
+        }
+        input.value = "";
+      });
+      document.body.appendChild(input);
+      return input;
+    };
+    return {
+      load: create(async (file) => { try { await this.pipeline.loadFromFile(file); } catch {} }),
+      importUpdate: create(async (file) => this.runImportUpdate(file)),
+      importReplace: create(async (file) => this.runImportReplace(file))
+    };
+  }
+
+  openFilePicker(type) {
+    this.fileInputs[type]?.click();
+  }
+
+  registerCommands() {
+    const hasWorkbook = (state) => Boolean(state?.workbook?.sheets?.length);
+
+    this.commandRegistry.registerMany([
+      { id: "file.open", titleKey: "commands.openFile", icon: "folder-open", hotkey: "Ctrl+O", run: () => this.openFilePicker("load") },
+      { id: "file.importUpdate", titleKey: "commands.importUpdate", icon: "upload", whenEnabled: hasWorkbook, run: () => this.openFilePicker("importUpdate") },
+      { id: "file.importReplace", titleKey: "commands.importReplace", icon: "file-up", run: () => this.openFilePicker("importReplace") },
+      { id: "file.export", titleKey: "commands.export", icon: "download", hotkey: "Ctrl+S", whenEnabled: hasWorkbook, run: () => this.runExport() },
+      { id: "file.print", titleKey: "commands.print", icon: "printer", whenEnabled: hasWorkbook, run: () => this.runPrintPreviewFlow() },
+      { id: "edit.undo", titleKey: "commands.undo", icon: "rotate-ccw", hotkey: "Ctrl+Z", whenEnabled: hasWorkbook, run: () => this.editorController.undo() },
+      { id: "edit.redo", titleKey: "commands.redo", icon: "history", hotkey: "Ctrl+Y", whenEnabled: hasWorkbook, run: () => this.editorController.redo() },
+      { id: "edit.insertRow", titleKey: "commands.insertRow", icon: "plus", hotkey: "Ctrl+Shift++", whenEnabled: hasWorkbook, run: () => this.editorController.insertRowInTable() },
+      { id: "edit.deleteRow", titleKey: "commands.deleteRow", icon: "minus", hotkey: "Ctrl+-", whenEnabled: hasWorkbook, run: () => this.editorController.deleteRowInTable() },
+      { id: "edit.pasteSpecial", titleKey: "commands.pasteSpecial", icon: "columns", hotkey: "Ctrl+Shift+V", whenEnabled: hasWorkbook, run: () => this.runPasteSpecial() },
+      { id: "assemblies.add", titleKey: "commands.addAssembly", icon: "plus", whenEnabled: hasWorkbook, run: () => this.runAddAssembly() },
+      { id: "assemblies.preview", titleKey: "commands.autofillPreview", icon: "wand", whenEnabled: hasWorkbook, run: () => this.runAutoFillPreview() },
+      { id: "assemblies.modelSync", titleKey: "commands.workbookToModel", icon: "clipboard-import", whenEnabled: hasWorkbook, run: () => this.runWorkbookToModelPreview() },
+      { id: "qc.scan", titleKey: "commands.qcScan", icon: "alert-triangle", whenEnabled: hasWorkbook, run: () => this.qcFacade.runScan(this.currentWorkbook) },
+      { id: "qc.exportXlsx", titleKey: "commands.qcExport", icon: "download", whenEnabled: hasWorkbook, run: () => this.qcFacade.exportXlsx() },
+      { id: "view.find", titleKey: "commands.find", icon: "search", hotkey: "Ctrl+F", whenEnabled: hasWorkbook, run: () => this.rightPanel.setActiveTab("find") },
+      { id: "view.jobs", titleKey: "commands.jobsPanel", icon: "activity", run: () => this.rightPanel.setActiveTab("jobs") },
+      { id: "view.zoomIn", titleKey: "commands.zoomIn", icon: "zoom-in", run: () => this.adjustZoom(0.05) },
+      { id: "view.zoomOut", titleKey: "commands.zoomOut", icon: "zoom-out", run: () => this.adjustZoom(-0.05) },
+      { id: "manage.schema", titleKey: "commands.schema", icon: "settings", run: () => this.runSchemaEditor() },
+      { id: "manage.bindings", titleKey: "commands.bindings", icon: "list", run: () => this.runBindingsEditor() },
+      { id: "manage.reset", titleKey: "commands.reset", icon: "rotate-ccw", run: () => this.reset() },
+      { id: "help.search", titleKey: "commands.commandSearch", icon: "search", hotkey: "Alt+/", run: () => this.layout.openCommandSearch() }
+    ]);
+  }
+
+  getQuickAccessCommands() {
+    return [
+      { id: "file.open", titleKey: "commands.openFile", icon: "folder-open" },
+      { id: "file.export", titleKey: "commands.export", icon: "download" },
+      { id: "edit.undo", titleKey: "commands.undo", icon: "rotate-ccw" },
+      { id: "edit.redo", titleKey: "commands.redo", icon: "history" },
+      { id: "help.search", titleKey: "commands.commandSearch", icon: "search" }
+    ];
+  }
+
+  getTopMenuConfig() {
+    return [
+      { id: "file", titleKey: "menu.file", commands: ["file.open", "file.importUpdate", "file.importReplace", "file.export", "file.print", "manage.reset"] },
+      { id: "edit", titleKey: "menu.edit", commands: ["edit.undo", "edit.redo", "edit.insertRow", "edit.deleteRow", "edit.pasteSpecial"] },
+      { id: "select", titleKey: "menu.select", commands: ["view.find"] },
+      { id: "view", titleKey: "menu.view", commands: ["view.zoomIn", "view.zoomOut", "view.jobs"] },
+      { id: "insert", titleKey: "menu.insert", commands: ["assemblies.add"] },
+      { id: "format", titleKey: "menu.format", commands: ["assemblies.preview"] },
+      { id: "diag", titleKey: "menu.diagnostics", commands: ["qc.scan", "qc.exportXlsx"] },
+      { id: "manage", titleKey: "menu.manage", commands: ["manage.schema", "manage.bindings"] },
+      { id: "config", titleKey: "menu.config", commands: ["manage.schema", "manage.bindings"] },
+      { id: "help", titleKey: "menu.help", commands: ["help.search"] }
+    ];
+  }
+
+  getRibbonConfig() {
+    return [
+      { id: "project", title: "ribbon.project", groups: [{ titleKey: "ribbonGroup.project", commands: ["file.open", "file.importReplace"] }, { titleKey: "ribbonGroup.search", commands: ["view.find", "help.search"] }] },
+      { id: "io", title: "ribbon.io", groups: [{ titleKey: "ribbonGroup.import", commands: ["file.open", "file.importUpdate", "file.importReplace"] }, { titleKey: "ribbonGroup.export", commands: ["file.export", "file.print"] }] },
+      { id: "edit", title: "ribbon.edit", groups: [{ titleKey: "ribbonGroup.edits", commands: ["edit.undo", "edit.redo", "edit.insertRow", "edit.deleteRow", "edit.pasteSpecial"] }] },
+      { id: "assemblies", title: "ribbon.assemblies", groups: [{ titleKey: "ribbonGroup.assemblies", commands: ["assemblies.add", "assemblies.preview", "assemblies.modelSync"] }] },
+      { id: "qc", title: "ribbon.qc", groups: [{ titleKey: "ribbonGroup.qc", commands: ["qc.scan", "qc.exportXlsx"] }] },
+      { id: "view", title: "ribbon.view", groups: [{ titleKey: "ribbonGroup.zoom", commands: ["view.zoomIn", "view.zoomOut"] }, { titleKey: "ribbonGroup.panels", commands: ["view.jobs", "view.find"] }] },
+      { id: "settings", title: "ribbon.settings", groups: [{ titleKey: "ribbonGroup.settings", commands: ["manage.schema", "manage.bindings", "manage.reset"] }] }
+    ];
+  }
+
+  adjustZoom(delta) {
+    const current = Number(this.stateStore.getState().render.zoom || 1);
+    const next = Math.min(3, Math.max(0.25, Math.round((current + delta) * 100) / 100));
+    this.stateStore.update({ render: { zoom: next } });
+  }
+
+  updateLayoutState(layout) {
+    this.stateStore.update({ ui: { layout } });
+    this.idbStore.set(UI_LAYOUT_KEY, layout).catch(() => null);
+  }
+
+  async restoreLayoutState() {
+    const saved = await this.idbStore.get(UI_LAYOUT_KEY).catch(() => null);
+    if (!saved || typeof saved !== "object") {
+      return;
+    }
+    this.stateStore.update({ ui: { layout: saved } });
+    if (this.layout?.shell) {
+      this.layout.shell.layoutState = { ...this.layout.shell.layoutState, ...saved };
+      this.layout.shell.applyLayout();
+    }
   }
 
   async loadBindingMap() { const effective = this.configStore.getEffectiveBindings(); this.bindingMap = effective.bindings; this.tableRangeManager = new TableRangeManager({ bindingMap: this.bindingMap }); this.editorController.tableRangeManager = this.tableRangeManager; this.tkpSyncService = new TkpSyncService(this.bindingMap); this.autoFillService.tkpSyncService = this.tkpSyncService; }
@@ -240,7 +365,7 @@ export class App {
 
   async tryRestoreFromCache() { const [snapshot, workbook, baseline] = await Promise.all([this.idbStore.get(CACHE_SNAPSHOT_KEY), this.idbStore.get(CACHE_WORKBOOK_KEY), this.templateBufferStore.restore()]).catch(() => [null, null, null]); if (!snapshot || !workbook?.sheets?.length) { return false; } this.currentWorkbook = workbook; const fp = snapshot.template?.structureFingerprint || this.templateFingerprint.buildStructureFingerprint(workbook); this.stateStore.update({ ...snapshot, template: { ...snapshot.template, structureFingerprint: fp, ...(baseline?.meta || {}) }, calc: { perSheet: {} }, qc: { report: emptyQc }, editor: { ...(snapshot.editor || {}), errors: snapshot.editor?.errors || {} }, tkp: this.assemblyRegistry.getModel() }); return true; }
 
-  async persistSnapshot() { const s = this.stateStore.getState(); await this.idbStore.set(CACHE_SNAPSHOT_KEY, { boot: { phase: s.boot.phase }, template: s.template, workbook: s.workbook, render: s.render, exportMeta: s.exportMeta, editor: { errors: s.editor.errors }, tkp: s.tkp }); if (this.currentWorkbook) { await this.idbStore.set(CACHE_WORKBOOK_KEY, this.currentWorkbook); } }
+  async persistSnapshot() { const s = this.stateStore.getState(); await this.idbStore.set(CACHE_SNAPSHOT_KEY, { boot: { phase: s.boot.phase }, template: s.template, workbook: s.workbook, render: s.render, exportMeta: s.exportMeta, editor: { errors: s.editor.errors }, tkp: s.tkp, ui: s.ui }); if (this.currentWorkbook) { await this.idbStore.set(CACHE_WORKBOOK_KEY, this.currentWorkbook); } }
 
   async runFind(query) {
     if (!this.currentWorkbook) { return; }

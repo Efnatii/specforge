@@ -1,4 +1,5 @@
 import "./styles.css";
+import "./styles/cad-theme.css";
 import { App } from "./app/App.js";
 
 const root = document.querySelector("#app");
