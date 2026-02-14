@@ -38,6 +38,28 @@ npm run build
 npm run preview
 ```
 
+## GitHub Pages (Actions)
+1. Open repository `Settings -> Pages`.
+2. Set `Source` to `GitHub Actions`.
+3. Push to `main` or run workflow manually.
+4. Workflow file: `.github/workflows/pages.yml`.
+5. Build smoke checks verify `dist/index.html` before deploy.
+
+## GitHub Pages Troubleshooting
+1. White screen + `index.html` contains `<script src="/src/main.js">` means Pages is serving source files, not `dist`; switch Pages source to `GitHub Actions`.
+2. Asset 404 on `/<repo>/assets/*` usually means wrong Vite `base`; use repository base path (for this repo: `/specforge/`).
+3. If deep SPA routes fail on reload, keep `dist/404.html` fallback (generated from built `index.html`).
+4. Keep `dist/.nojekyll` to avoid Jekyll processing issues in Pages hosting.
+5. Run `npm run smoke:pages` after build to validate asset paths and referenced files.
+
+## Recovery + Workers
+- Heavy jobs can run via Web Workers (`src/workers/*`) through RPC protocol v1.
+- Job leases are stored in IndexedDB and recovered on boot; stale `RUNNING` jobs are re-queued or failed by recovery policy.
+- Dev chaos tools can be enabled with `?devtools=1`.
+
+## Manual E2E
+- See `docs/TestPlan.md` for end-to-end and chaos scenarios.
+
 ## Notes
 - HyperFormula is used only for formula recalculation; XLSX IO is via ExcelJS.
 - `gpl-v3` license key is configured for HyperFormula. Public distribution should respect GPLv3 compatibility.
