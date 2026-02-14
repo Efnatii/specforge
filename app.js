@@ -29,6 +29,7 @@ const dom = {
   btnAddAssembly: document.getElementById("btnAddAssembly"),
   btnAddPosition: document.getElementById("btnAddPosition"),
   btnToggleProjCons: document.getElementById("btnToggleConsumablesSheet"),
+  btnImportExcel: document.getElementById("btnImportExcel"),
   btnExportJson: document.getElementById("btnExportJson"),
   btnImportJson: document.getElementById("btnImportJson"),
   btnExportXlsx: document.getElementById("btnExportXlsx"),
@@ -312,14 +313,25 @@ function makeAssembly(index = 1) {
 }
 
 function deriveAbbr(name) {
-  const clean = String(name || "").replace(/[^\p{L}\p{N}\s-]+/gu, " ").trim();
-  if (!clean) return "СБР";
-  const words = clean.split(/\s+/).filter(Boolean);
-  if (words.length === 1) {
-    return words[0];
+  const src = String(name || "").replace(/\s+/g, " ").trim();
+  if (!src) return "СБР";
+
+  const tokens = src.split(" ").filter(Boolean);
+  if (!tokens.length) return "СБР";
+
+  let i = 0;
+  let initials = "";
+  while (i < tokens.length && /^[\p{L}]+$/u.test(tokens[i])) {
+    initials += tokens[i][0].toUpperCase();
+    i += 1;
   }
-  const abbr = words.map((w) => w[0]).join("").toUpperCase();
-  return String(abbr).replace(/[^\p{L}\p{N}-]+/gu, "");
+
+  if (initials && i < tokens.length) {
+    return `${initials}${tokens.slice(i).join(" ")}`.trim();
+  }
+  if (initials) return initials;
+  if (tokens.length === 1) return tokens[0];
+  return src;
 }
 
 function keepAbbr(value) {
@@ -932,7 +944,7 @@ function renderTree() {
   p.push(`<div class="tree-item ${selected(sel, { type: "settings" }) ? "is-selected" : ""}" data-node="settings">Общие настройки</div>`);
 
   for (const a of app.state.assemblies) {
-    p.push(`<details open><summary>${esc(a.fullName || "Сборка")} [${esc(a.abbreviation)}]</summary>`);
+    p.push(`<details open><summary><span class="tree-summary-label">${esc(a.fullName || "Сборка")} [${esc(a.abbreviation)}]</span><button type="button" class="tree-mini-btn" data-tree-action="dup-assembly" data-id="${a.id}" title="Дублировать сборку" aria-label="Дублировать сборку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 5h10v10" /></svg></button></summary>`);
     p.push(`<div class="tree-item ${selected(sel, { type: "assembly", id: a.id }) ? "is-selected" : ""}" data-node="assembly" data-id="${a.id}">Параметры</div>`);
     p.push(`<div class="tree-item ${selected(sel, { type: "list", id: a.id, list: "main" }) ? "is-selected" : ""}" data-node="list" data-id="${a.id}" data-list="main">Осн. материалы (${a.main.length})</div>`);
     for (const pos of a.main) p.push(`<div class="tree-item small ${selected(sel, { type: "pos", id: a.id, list: "main", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="pos" data-id="${a.id}" data-list="main" data-pos="${pos.id}">• ${esc(pos.name || "Позиция")}</div>`);
@@ -1089,8 +1101,15 @@ function bindEvents() {
     renderAll();
   };
 
+  dom.btnImportExcel.onclick = () => {
+    dom.importFile.accept = ".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12";
+    dom.importFile.click();
+  };
   dom.btnExportJson.onclick = exportJson;
-  dom.btnImportJson.onclick = () => dom.importFile.click();
+  dom.btnImportJson.onclick = () => {
+    dom.importFile.accept = "application/json,.json,.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12";
+    dom.importFile.click();
+  };
   dom.btnExportXlsx.onclick = exportXlsx;
 
   dom.importFile.onchange = importJson;
@@ -1170,6 +1189,16 @@ function bindEvents() {
   });
 }
 function onTreeClick(e) {
+  const actionBtn = e.target.closest("[data-tree-action]");
+  if (actionBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (actionBtn.dataset.treeAction === "dup-assembly") {
+      duplicateAssembly(actionBtn.dataset.id);
+    }
+    return;
+  }
+
   const n = e.target.closest("[data-node]");
   if (!n) return;
   const t = n.dataset.node;
@@ -1266,6 +1295,7 @@ function onInspectorChange(e) {
     const f = t.dataset.field;
     if (f === "abbrManual" || f === "separateConsumables") {
       a[f] = Boolean(t.checked);
+      if (f === "abbrManual" && !a.abbrManual) a.abbreviation = deriveAbbr(a.fullName);
       if (f === "separateConsumables" && a.separateConsumables && !a.consumable.length) a.consumable = [makePosition()];
     } else if (f === "fullName") {
       a.fullName = String(t.value || "").trim();
@@ -1336,6 +1366,43 @@ function addPosition(assemblyId, list) {
   app.ui.treeSel = { type: "pos", id: assemblyId, list, pos: p.id };
   renderAll();
   toast("Позиция добавлена");
+}
+
+function duplicateAssembly(assemblyId) {
+  const src = assemblyById(assemblyId);
+  if (!src) return;
+
+  const copy = {
+    ...src,
+    id: uid(),
+    fullName: nextCopyAssemblyName(src.fullName || "Сборка"),
+    main: Array.isArray(src.main) && src.main.length ? src.main.map((p) => ({ ...p, id: uid() })) : [makePosition()],
+    consumable: Array.isArray(src.consumable) && src.consumable.length ? src.consumable.map((p) => ({ ...p, id: uid() })) : [makePosition()],
+    labor: { ...src.labor },
+    manualConsNoDisc: num(src.manualConsNoDisc, 0),
+    manualConsDisc: num(src.manualConsDisc, 0),
+  };
+
+  const srcIdx = app.state.assemblies.findIndex((a) => a.id === src.id);
+  if (srcIdx >= 0) app.state.assemblies.splice(srcIdx + 1, 0, copy);
+  else app.state.assemblies.push(copy);
+
+  app.ui.treeSel = { type: "assembly", id: copy.id };
+  app.ui.activeSheetId = `assembly:${copy.id}:main`;
+  renderAll();
+  toast("Сборка продублирована");
+}
+
+function nextCopyAssemblyName(base) {
+  const src = String(base || "").trim() || "Сборка";
+  const used = new Set(app.state.assemblies.map((a) => String(a.fullName || "").trim()));
+
+  let name = `${src} (копия)`;
+  if (!used.has(name)) return name;
+
+  let i = 2;
+  while (used.has(`${src} (копия ${i})`)) i += 1;
+  return `${src} (копия ${i})`;
 }
 
 function deletePosition(assemblyId, list, posId) {

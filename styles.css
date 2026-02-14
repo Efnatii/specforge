@@ -117,6 +117,7 @@ button {
   padding: 5px 8px;
   border-bottom: 1px solid var(--line-strong);
   background: linear-gradient(180deg, #fcfcfc 0%, #dfdfdf 100%);
+  overflow-x: auto;
 }
 
 .toolbar-spacer {
@@ -141,6 +142,7 @@ button {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .icon-btn:hover {
@@ -266,6 +268,11 @@ button {
   border-bottom: 1px solid #ececec;
   position: relative;
   padding-left: 18px;
+  padding-right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .tree summary::before {
@@ -277,6 +284,42 @@ button {
 
 .tree details[open] > summary::before {
   content: "-";
+}
+
+.tree .tree-summary-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree .tree-mini-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #4c4c4c;
+  background: #fff;
+  color: #111;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.tree .tree-mini-btn:hover {
+  background: #111;
+  color: #fff;
+}
+
+.tree .tree-mini-btn svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .tree .tree-item {
@@ -360,6 +403,14 @@ button {
   color: #111;
   padding: 6px 10px;
   cursor: pointer;
+}
+
+.toolbar-text-btn {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .btn-flat:hover {
@@ -447,6 +498,10 @@ button {
 @media (max-width: 980px) {
   :root {
     --sidebar-w: 300px;
+  }
+
+  .toolbar-dev {
+    display: none;
   }
 
   .settings-grid {
