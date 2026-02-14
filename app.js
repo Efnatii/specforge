@@ -315,9 +315,15 @@ function deriveAbbr(name) {
   const clean = String(name || "").replace(/[^\p{L}\p{N}\s-]+/gu, " ").trim();
   if (!clean) return "СБР";
   const words = clean.split(/\s+/).filter(Boolean);
-  let abbr = words.map((w) => w[0]).join("").toUpperCase();
-  if (abbr.length < 2) abbr = clean.replace(/\s+/g, "").slice(0, 4).toUpperCase();
+  if (words.length === 1) {
+    return words[0];
+  }
+  const abbr = words.map((w) => w[0]).join("").toUpperCase();
   return String(abbr).replace(/[^\p{L}\p{N}-]+/gu, "");
+}
+
+function keepAbbr(value) {
+  return String(value ?? "").trim();
 }
 
 function pctToDec(v) {
@@ -463,7 +469,7 @@ function buildNamePlan() {
   const used = new Set([SHEET_NAMES.summary]);
   const plan = {};
   for (const a of app.state.assemblies) {
-    const abbr = deriveAbbr(a.abbreviation || a.fullName);
+    const abbr = keepAbbr(a.abbreviation) || deriveAbbr(a.fullName);
     if (a.separateConsumables) {
       plan[a.id] = {
         mainName: uniqueSheetName(`Осн. мат. ${abbr}`, used),
@@ -1121,8 +1127,18 @@ function bindEvents() {
     if (!s) return;
     const curr = currentZoom(s);
     const next = clamp(curr * (e.deltaY < 0 ? 1.08 : 0.92), 0.45, 2.1);
+    if (Math.abs(next - curr) < 0.0001) return;
+
+    const rect = dom.viewport.getBoundingClientRect();
+    const mouseViewportX = e.clientX - rect.left;
+    const mouseViewportY = e.clientY - rect.top;
+    const worldX = (dom.viewport.scrollLeft + mouseViewportX) / curr;
+    const worldY = (dom.viewport.scrollTop + mouseViewportY) / curr;
+
     app.ui.zoomBySheet[s.id] = next;
     dom.canvas.style.setProperty("--sheet-zoom", String(next));
+    dom.viewport.scrollLeft = worldX * next - mouseViewportX;
+    dom.viewport.scrollTop = worldY * next - mouseViewportY;
     toast(`Масштаб: ${Math.round(next * 100)}%`);
   }, { passive: false });
 
@@ -1255,7 +1271,7 @@ function onInspectorChange(e) {
       a.fullName = String(t.value || "").trim();
       if (!a.abbrManual) a.abbreviation = deriveAbbr(a.fullName);
     } else if (f === "abbreviation") {
-      a.abbreviation = deriveAbbr(String(t.value || ""));
+      a.abbreviation = keepAbbr(t.value);
     } else {
       a[f] = num(t.value);
     }
@@ -1545,7 +1561,7 @@ async function importExcelState(file) {
   const settings = { ...defaults.settings };
   let titleParsed = false;
 
-  const summaryWs = wb.getWorksheet(SHEET_NAMES.summary);
+  const summaryWs = wb.worksheets.find((ws) => isSummarySheetName(ws?.name));
   if (summaryWs) {
     const vat = excelNum(summaryWs.getCell("F2").value);
     if (Number.isFinite(vat)) settings.vatRate = normalizePercentDecimal(vat);
@@ -1560,10 +1576,10 @@ async function importExcelState(file) {
   for (const ws of wb.worksheets) {
     const name = String(ws.name || "").trim();
     if (!name) continue;
-    if (name === SHEET_NAMES.summary) continue;
+    if (isSummarySheetName(name)) continue;
 
-    if (/^Расх\.\s*мат\.\s*/i.test(name)) {
-      const abbr = name.replace(/^Расх\.\s*мат\.\s*/i, "").trim();
+    if (isConsumableAssemblySheetName(name)) {
+      const abbr = stripConsumablePrefix(name);
       consByAbbr.set(abbr, ws);
       if (!titleParsed) {
         titleParsed = applySettingsFromTitle(settings, excelText(ws.getCell("A1").value));
@@ -1571,8 +1587,8 @@ async function importExcelState(file) {
       continue;
     }
 
-    if (/^Осн\.\s*мат\.\s*/i.test(name)) {
-      const abbr = name.replace(/^Осн\.\s*мат\.\s*/i, "").trim();
+    if (isMainAssemblySheetName(name)) {
+      const abbr = stripMainPrefix(name);
       mainSheets.push({ ws, abbr, separate: true });
       if (!titleParsed) {
         titleParsed = applySettingsFromTitle(settings, excelText(ws.getCell("A1").value));
@@ -1580,7 +1596,7 @@ async function importExcelState(file) {
       continue;
     }
 
-    if (/^Расходники/i.test(name)) {
+    if (isProjectConsumablesSheetName(name)) {
       projectWs = ws;
       if (!titleParsed) {
         titleParsed = applySettingsFromTitle(settings, excelText(ws.getCell("A1").value));
@@ -1600,7 +1616,7 @@ async function importExcelState(file) {
     const fullName = parseAssemblyFullName(excelText(ws.getCell("A1").value), settings, item.abbr);
     const assembly = makeAssembly(assemblies.length + 1);
     assembly.fullName = fullName;
-    assembly.abbreviation = deriveAbbr(item.abbr || fullName);
+    assembly.abbreviation = keepAbbr(item.abbr) || deriveAbbr(fullName);
     assembly.abbrManual = true;
 
     const parsedMain = parseSheetPositions(ws, settings.vatRate, "main");
@@ -1647,42 +1663,59 @@ async function importExcelState(file) {
 
 function parseSheetPositions(ws, vatRate, kind) {
   if (!ws) return [];
+  const layout = detectPositionLayout(ws);
+  const maxRows = Math.max(ws.rowCount, layout.startRow + 3);
   const out = [];
-  const maxRows = Math.max(ws.rowCount, 6);
+  let started = false;
+  let emptyRun = 0;
 
-  for (let r = 3; r <= maxRows; r += 1) {
-    const cTxt = excelText(ws.getCell(`C${r}`).value).trim().toLowerCase();
-    if (!cTxt) {
-      const hasAny = excelText(ws.getCell(`B${r}`).value) || excelText(ws.getCell(`D${r}`).value);
-      if (!hasAny) continue;
+  for (let r = layout.startRow; r <= maxRows; r += 1) {
+    const rowText = rowLooseText(ws, r, layout.maxCols);
+    if (isPositionsStopRow(rowText, kind)) {
+      if (started) break;
+      continue;
     }
 
-    if (kind === "main" && (cTxt.includes("разработка схемы") || cTxt.includes("расходный материал"))) break;
-    if (kind === "consumable" && cTxt.includes("итого")) break;
+    const idx = excelCellNum(ws, r, layout.cols.idx);
+    const schematic = excelCellText(ws, r, layout.cols.schematic);
+    const name = excelCellText(ws, r, layout.cols.name);
+    const manufacturer = excelCellText(ws, r, layout.cols.manufacturer);
+    const article = excelCellText(ws, r, layout.cols.article);
+    const qtyRaw = excelCellNum(ws, r, layout.cols.qty);
+    const unit = excelCellText(ws, r, layout.cols.unit);
+    const priceCatalogRaw = excelCellNum(ws, r, layout.cols.priceCatalog);
+    const basePriceRaw = excelCellNum(ws, r, layout.cols.basePrice);
 
-    const idx = excelNum(ws.getCell(`A${r}`).value);
-    if (!Number.isFinite(idx)) continue;
+    const hasIdentity = Boolean(schematic || name || manufacturer || article);
+    const hasNumbers = Number.isFinite(idx) || Number.isFinite(qtyRaw) || Number.isFinite(priceCatalogRaw) || Number.isFinite(basePriceRaw);
+    if (!hasIdentity && !hasNumbers) {
+      emptyRun += 1;
+      if (started && emptyRun >= 3) break;
+      continue;
+    }
+    emptyRun = 0;
 
-    const markup = normalizePercentDecimal(excelNum(ws.getCell(`L${r}`).value));
-    const discount = normalizePercentDecimal(excelNum(ws.getCell(`M${r}`).value));
-    const priceI = excelNum(ws.getCell(`I${r}`).value);
-    const priceH = excelNum(ws.getCell(`H${r}`).value);
-    const fromH = Number.isFinite(priceH) ? priceH * (1 + markup) * (1 + vatRate) : NaN;
-    const catalogPrice = Number.isFinite(priceI) ? priceI : (Number.isFinite(fromH) ? fromH : 0);
+    const markup = normalizePercentDecimal(excelCellNum(ws, r, layout.cols.markup));
+    const discount = normalizePercentDecimal(excelCellNum(ws, r, layout.cols.discount));
+    const fromBase = Number.isFinite(basePriceRaw) ? basePriceRaw * (1 + markup) * (1 + vatRate) : NaN;
+    const catalogPrice = Number.isFinite(priceCatalogRaw) ? priceCatalogRaw : (Number.isFinite(fromBase) ? fromBase : 0);
+
+    if (!Number.isFinite(idx) && !hasIdentity) continue;
+    started = true;
 
     out.push({
       id: uid(),
-      schematic: excelText(ws.getCell(`B${r}`).value),
-      name: excelText(ws.getCell(`C${r}`).value),
-      manufacturer: excelText(ws.getCell(`D${r}`).value),
-      article: excelText(ws.getCell(`E${r}`).value),
-      qty: num(excelNum(ws.getCell(`F${r}`).value), 1),
-      unit: excelText(ws.getCell(`G${r}`).value) || "шт",
+      schematic,
+      name,
+      manufacturer,
+      article,
+      qty: num(qtyRaw, 1),
+      unit: unit || "шт",
       priceCatalogVatMarkup: round2(catalogPrice),
       markup,
       discount,
-      supplier: excelText(ws.getCell(`R${r}`).value),
-      note: excelText(ws.getCell(`S${r}`).value),
+      supplier: excelCellText(ws, r, layout.cols.supplier),
+      note: excelCellText(ws, r, layout.cols.note),
     });
   }
 
@@ -1692,21 +1725,28 @@ function parseSheetPositions(ws, vatRate, kind) {
 function parseLabor(ws) {
   const result = {};
   const maxRows = Math.max(ws.rowCount, 20);
+  const maxCols = Math.max(19, ws.actualColumnCount || ws.columnCount || 19);
 
-  for (let r = 1; r <= maxRows; r += 1) {
-    const txt = excelText(ws.getCell(`C${r}`).value).trim().toLowerCase();
-    if (!txt) continue;
-    if (txt.includes("разработка схемы")) {
-      result.devCoeff = normalizeCoeff(excelNum(ws.getCell(`F${r}`).value));
-      result.devHours = num(excelNum(ws.getCell(`G${r}`).value), 0);
-      result.devRate = num(excelNum(ws.getCell(`H${r}`).value), 0);
-    } else if (txt.includes("работа по сборке")) {
-      result.assmCoeff = normalizeCoeff(excelNum(ws.getCell(`F${r}`).value));
-      result.assmHours = num(excelNum(ws.getCell(`G${r}`).value), 0);
-      result.assmRate = num(excelNum(ws.getCell(`H${r}`).value), 0);
-    } else if (txt.includes("прибыль")) {
-      result.profitCoeff = normalizePercentDecimal(excelNum(ws.getCell(`F${r}`).value));
-    }
+  const dev = findCellByText(ws, /разработка\s*схем/i, maxRows, maxCols);
+  if (dev) {
+    const nums = rowNumbers(ws, dev.row, dev.col + 1, maxCols);
+    if (nums.length > 0) result.devCoeff = normalizeCoeff(nums[0]);
+    if (nums.length > 1) result.devHours = num(nums[1], 0);
+    if (nums.length > 2) result.devRate = num(nums[2], 0);
+  }
+
+  const assm = findCellByText(ws, /работа\s*по\s*сборке/i, maxRows, maxCols);
+  if (assm) {
+    const nums = rowNumbers(ws, assm.row, assm.col + 1, maxCols);
+    if (nums.length > 0) result.assmCoeff = normalizeCoeff(nums[0]);
+    if (nums.length > 1) result.assmHours = num(nums[1], 0);
+    if (nums.length > 2) result.assmRate = num(nums[2], 0);
+  }
+
+  const profit = findCellByText(ws, /прибыл/i, maxRows, maxCols);
+  if (profit) {
+    const nums = rowNumbers(ws, profit.row, profit.col + 1, maxCols);
+    if (nums.length > 0) result.profitCoeff = normalizePercentDecimal(nums[0]);
   }
 
   return result;
@@ -1714,16 +1754,215 @@ function parseLabor(ws) {
 
 function parseManualConsumables(ws) {
   const maxRows = Math.max(ws.rowCount, 20);
-  for (let r = 1; r <= maxRows; r += 1) {
-    const txt = excelText(ws.getCell(`C${r}`).value).trim().toLowerCase();
-    if (txt.includes("расходный материал")) {
-      return {
-        noDisc: num(excelNum(ws.getCell(`K${r}`).value), 0),
-        disc: num(excelNum(ws.getCell(`Q${r}`).value), 0),
-      };
-    }
+  const maxCols = Math.max(19, ws.actualColumnCount || ws.columnCount || 19);
+  const hit = findCellByText(ws, /расходн\w*\s*материал/i, maxRows, maxCols);
+  if (!hit) return { noDisc: 0, disc: 0 };
+
+  const fixedNoDisc = excelCellNum(ws, hit.row, 11);
+  const fixedDisc = excelCellNum(ws, hit.row, 17);
+  if (Number.isFinite(fixedNoDisc) || Number.isFinite(fixedDisc)) {
+    return {
+      noDisc: num(fixedNoDisc, 0),
+      disc: num(fixedDisc, 0),
+    };
+  }
+
+  const nums = rowNumbers(ws, hit.row, hit.col + 1, maxCols);
+  if (nums.length >= 2) {
+    return {
+      noDisc: num(nums[0], 0),
+      disc: num(nums[nums.length - 1], 0),
+    };
+  }
+  if (nums.length === 1) {
+    return { noDisc: num(nums[0], 0), disc: num(nums[0], 0) };
   }
   return { noDisc: 0, disc: 0 };
+}
+
+function isSummarySheetName(name) {
+  return /^общ/i.test(String(name || "").trim());
+}
+
+function isMainAssemblySheetName(name) {
+  return /^осн\.?\s*мат\.?/i.test(String(name || "").trim());
+}
+
+function isConsumableAssemblySheetName(name) {
+  return /^расх\.?\s*мат\.?/i.test(String(name || "").trim());
+}
+
+function isProjectConsumablesSheetName(name) {
+  return /^расходник/i.test(String(name || "").trim());
+}
+
+function stripMainPrefix(name) {
+  return String(name || "").replace(/^осн\.?\s*мат\.?\s*/i, "").trim();
+}
+
+function stripConsumablePrefix(name) {
+  return String(name || "").replace(/^расх\.?\s*мат\.?\s*/i, "").trim();
+}
+
+function parseHeaderText(v) {
+  return String(v || "")
+    .toLowerCase()
+    .replace(/\r?\n+/g, " ")
+    .replace(/[^\p{L}\p{N}%]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function headerHasAny(text, aliases) {
+  return aliases.some((a) => text.includes(a));
+}
+
+function isCatalogPriceHeader(text) {
+  if (!text.includes("цена")) return false;
+  if (text.includes("без скид") || text.includes("нацен") || text.includes("с ндс")) return true;
+  return false;
+}
+
+function isBasePriceHeader(text) {
+  return text.includes("цена") && text.includes("без ндс") && !text.includes("с ндс");
+}
+
+function detectPositionLayout(ws) {
+  const defaults = {
+    idx: 1,
+    schematic: 2,
+    name: 3,
+    manufacturer: 4,
+    article: 5,
+    qty: 6,
+    unit: 7,
+    basePrice: 8,
+    priceCatalog: 9,
+    markup: 12,
+    discount: 13,
+    supplier: 18,
+    note: 19,
+  };
+  const maxRows = Math.min(Math.max(ws.rowCount, 12), 50);
+  const maxCols = Math.max(19, ws.actualColumnCount || ws.columnCount || 19);
+
+  let best = null;
+  for (let r = 1; r <= maxRows; r += 1) {
+    const cols = {};
+    let score = 0;
+    for (let c = 1; c <= maxCols; c += 1) {
+      const txt = parseHeaderText(excelText(ws.getCell(r, c).value));
+      if (!txt) continue;
+
+      if (!cols.idx && (txt.includes("п п") || txt.includes("№") || txt === "n")) {
+        cols.idx = c;
+        score += 2;
+      }
+      if (!cols.schematic && headerHasAny(txt, ["обознач", "схем", "чертеж"])) {
+        cols.schematic = c;
+        score += 1;
+      }
+      if (!cols.name && headerHasAny(txt, ["наименование", "марка", "позиция"])) {
+        cols.name = c;
+        score += 2;
+      }
+      if (!cols.manufacturer && headerHasAny(txt, ["производ", "бренд", "завод"])) {
+        cols.manufacturer = c;
+        score += 1;
+      }
+      if (!cols.article && headerHasAny(txt, ["артикул", "код", "каталож", "партномер"])) {
+        cols.article = c;
+        score += 1;
+      }
+      if (!cols.qty && headerHasAny(txt, ["кол во", "колич", "qty"])) {
+        cols.qty = c;
+        score += 2;
+      }
+      if (!cols.unit && headerHasAny(txt, ["ед изм", "единиц", "unit"])) {
+        cols.unit = c;
+        score += 1;
+      }
+      if (!cols.markup && txt.includes("нацен")) {
+        cols.markup = c;
+        score += 1;
+      }
+      if (!cols.discount && txt.includes("скид")) {
+        cols.discount = c;
+        score += 1;
+      }
+      if (!cols.supplier && txt.includes("поставщ")) cols.supplier = c;
+      if (!cols.note && (txt.includes("примеч") || txt.includes("коммент"))) cols.note = c;
+
+      if (!cols.priceCatalog && isCatalogPriceHeader(txt)) {
+        cols.priceCatalog = c;
+        score += 2;
+      } else if (!cols.basePrice && isBasePriceHeader(txt)) {
+        cols.basePrice = c;
+        score += 1;
+      } else if (!cols.priceCatalog && txt.includes("цена")) {
+        cols.priceCatalog = c;
+        score += 1;
+      }
+    }
+
+    if (!best || score > best.score) best = { row: r, cols, score };
+  }
+
+  const useDetected = best && best.score >= 4;
+  const cols = { ...defaults, ...(useDetected ? best.cols : {}) };
+  if (!cols.basePrice) cols.basePrice = defaults.basePrice;
+  if (!cols.priceCatalog) cols.priceCatalog = defaults.priceCatalog;
+
+  return {
+    headerRow: useDetected ? best.row : 2,
+    startRow: (useDetected ? best.row : 2) + 1,
+    maxCols,
+    cols,
+  };
+}
+
+function rowLooseText(ws, row, maxCols) {
+  const out = [];
+  for (let c = 1; c <= maxCols; c += 1) {
+    const t = excelText(ws.getCell(row, c).value);
+    if (t) out.push(t);
+  }
+  return parseHeaderText(out.join(" "));
+}
+
+function isPositionsStopRow(text, kind) {
+  if (!text) return false;
+  if (kind === "main" && (text.includes("разработка схем") || text.includes("расходный материал"))) return true;
+  return text.includes("итого");
+}
+
+function excelCellText(ws, row, col) {
+  if (!Number.isFinite(col) || col <= 0) return "";
+  return excelText(ws.getCell(row, col).value);
+}
+
+function excelCellNum(ws, row, col) {
+  if (!Number.isFinite(col) || col <= 0) return NaN;
+  return excelNum(ws.getCell(row, col).value);
+}
+
+function findCellByText(ws, pattern, maxRows, maxCols) {
+  for (let r = 1; r <= maxRows; r += 1) {
+    for (let c = 1; c <= maxCols; c += 1) {
+      const txt = parseHeaderText(excelText(ws.getCell(r, c).value));
+      if (txt && pattern.test(txt)) return { row: r, col: c };
+    }
+  }
+  return null;
+}
+
+function rowNumbers(ws, row, fromCol, maxCols) {
+  const nums = [];
+  for (let c = Math.max(1, fromCol); c <= maxCols; c += 1) {
+    const n = excelNum(ws.getCell(row, c).value);
+    if (Number.isFinite(n)) nums.push(n);
+  }
+  return nums;
 }
 
 function applySettingsFromTitle(settings, titleRaw) {
@@ -1823,10 +2062,11 @@ function normVat(v, fallback) {
 
 function normAssembly(a, i) {
   const b = makeAssembly(i);
+  const rawAbbr = keepAbbr(a?.abbreviation);
   return {
     id: String(a?.id || uid()),
     fullName: String(a?.fullName || b.fullName),
-    abbreviation: deriveAbbr(a?.abbreviation || b.abbreviation),
+    abbreviation: rawAbbr || b.abbreviation,
     abbrManual: Boolean(a?.abbrManual),
     separateConsumables: Boolean(a?.separateConsumables),
     main: normPosList(a?.main),
