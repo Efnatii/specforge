@@ -5,6 +5,7 @@ const SHEET_NAMES = {
   consumable: "Расх. мат. <Аббрев. сборки>",
   projectConsumable: "Расходники",
 };
+const DEV_LABEL = "Гороховицкий Егор Русланович";
 
 const dom = {
   app: document.getElementById("app"),
@@ -278,7 +279,7 @@ function makePosition() {
     article: "",
     qty: 1,
     unit: "шт",
-    priceWithoutVat: 0,
+    priceCatalogVatMarkup: 0,
     markup: 0,
     discount: 0,
     supplier: "",
@@ -316,7 +317,7 @@ function deriveAbbr(name) {
   const words = clean.split(/\s+/).filter(Boolean);
   let abbr = words.map((w) => w[0]).join("").toUpperCase();
   if (abbr.length < 2) abbr = clean.replace(/\s+/g, "").slice(0, 4).toUpperCase();
-  return String(abbr).replace(/[^\p{L}\p{N}-]+/gu, "").slice(0, 12);
+  return String(abbr).replace(/[^\p{L}\p{N}-]+/gu, "");
 }
 
 function pctToDec(v) {
@@ -329,22 +330,25 @@ function decToPct(v) {
 
 function calcItem(raw, vat) {
   const qty = num(raw.qty);
-  const p = num(raw.priceWithoutVat);
+  const pCatalog = num(raw.priceCatalogVatMarkup ?? raw.priceWithoutVat);
   const m = num(raw.markup);
   const d = num(raw.discount);
 
-  const priceNoVat = p * (1 + m);
+  const divider = (1 + vat) * (1 + m);
+  const baseNoVat = divider > 0 ? pCatalog / divider : 0;
+  const priceNoVat = baseNoVat * (1 + m);
   const priceVat = priceNoVat * (1 + vat);
   const sumNoVat = qty * priceNoVat;
   const sumVat = qty * priceVat;
 
-  const discPriceNoVat = p * (1 - d);
+  const discPriceNoVat = baseNoVat * (1 - d);
   const discPriceVat = discPriceNoVat * (1 + vat);
   const discSumNoVat = qty * discPriceNoVat;
   const discSumVat = qty * discPriceVat;
 
   return {
     raw,
+    baseNoVat,
     priceNoVat,
     priceVat,
     sumNoVat,
@@ -523,17 +527,17 @@ function changeLabel() {
 function mainTitle(a) {
   const s = app.state.settings;
   const tag = a.separateConsumables ? "СП основной материал" : "СП";
-  return `${s.orderNumber} ${a.fullName || "<Полное название cборки>"} (${s.requestNumber}) ${tag} ${changeLabel()}`;
+  return `${s.orderNumber} ${a.fullName || "<Полное название cборки>"} (${s.requestNumber}) ${tag} ${changeLabel()} | ${DEV_LABEL}`;
 }
 
 function consumableTitle(a) {
   const s = app.state.settings;
-  return `${s.orderNumber} ${a.fullName || "<Полное название cборки>"} (${s.requestNumber}) СП расходный материал ${changeLabel()}`;
+  return `${s.orderNumber} ${a.fullName || "<Полное название cборки>"} (${s.requestNumber}) СП расходный материал ${changeLabel()} | ${DEV_LABEL}`;
 }
 
 function projectConsumableTitle() {
   const s = app.state.settings;
-  return `${s.orderNumber} Расходники (${s.requestNumber}) СП расходный материал ${changeLabel()}`;
+  return `${s.orderNumber} Расходники (${s.requestNumber}) СП расходный материал ${changeLabel()} | ${DEV_LABEL}`;
 }
 function buildSummarySheet(entries, t) {
   const rows = [];
@@ -576,7 +580,7 @@ function buildSummarySheet(entries, t) {
     cols: t.cols,
     rows,
     merges: [],
-    freeze: { x: t.view.xSplit, y: t.view.ySplit },
+    freeze: { x: 0, y: 0 },
     zoom: t.view.zoom,
     meta: { totalRow: trn },
   };
@@ -606,7 +610,7 @@ function buildMainSheet(id, name, assembly, metrics, t, consRef, title) {
     setR(r, 5, it.raw.article);
     setR(r, 6, it.raw.qty);
     setR(r, 7, it.raw.unit);
-    setR(r, 8, round2(it.raw.priceWithoutVat));
+    setR(r, 8, round2(it.baseNoVat));
     setR(r, 9, round2(it.priceVat), `H${rn}*(1+L${rn})*(1+${vat})`);
     setR(r, 10, round2(it.sumNoVat), `F${rn}*H${rn}*(1+L${rn})`);
     setR(r, 11, round2(it.sumVat), `F${rn}*I${rn}`);
@@ -698,7 +702,7 @@ function buildMainSheet(id, name, assembly, metrics, t, consRef, title) {
     cols: t.cols,
     rows,
     merges: ["A1:G1"],
-    freeze: { x: t.view.xSplit, y: t.view.ySplit },
+    freeze: { x: 0, y: 0 },
     zoom: t.view.zoom,
     meta: { totalRow: r13n },
   };
@@ -729,7 +733,7 @@ function buildConsumableSheet(id, name, positions, t, title) {
     setR(r, 5, it.raw.article);
     setR(r, 6, it.raw.qty);
     setR(r, 7, it.raw.unit);
-    setR(r, 8, round2(it.raw.priceWithoutVat));
+    setR(r, 8, round2(it.baseNoVat));
     setR(r, 9, round2(it.priceVat), `H${rn}*(1+L${rn})*(1+${vat})`);
     setR(r, 10, round2(it.sumNoVat), `F${rn}*H${rn}*(1+L${rn})`);
     setR(r, 11, round2(it.sumVat), `F${rn}*I${rn}`);
@@ -766,7 +770,7 @@ function buildConsumableSheet(id, name, positions, t, title) {
     cols: t.cols,
     rows,
     merges: ["A1:G1"],
-    freeze: { x: t.view.xSplit, y: t.view.ySplit },
+    freeze: { x: 0, y: 0 },
     zoom: t.view.zoom,
     meta: { totalRow: r6n },
   };
@@ -820,8 +824,6 @@ function renderSheet() {
   t.appendChild(cg);
 
   const merge = buildMergeMeta(s.merges);
-  const left = offsets(s.cols);
-  const top = offsets(s.rows.map((r) => r.height));
 
   const body = document.createElement("tbody");
 
@@ -842,16 +844,6 @@ function renderSheet() {
 
       const st = app.template.styles[cell.styleId];
       if (st?.align?.wrap) td.classList.add("wrap");
-
-      if (s.freeze.y && ri <= s.freeze.y) {
-        td.classList.add("frozen-top");
-        td.style.top = `${top[ri - 1]}px`;
-      }
-      if (s.freeze.x && ci <= s.freeze.x) {
-        td.classList.add("frozen-left");
-        td.style.left = `${left[ci - 1]}px`;
-      }
-      if (s.freeze.x && s.freeze.y && ri <= s.freeze.y && ci <= s.freeze.x) td.classList.add("frozen-corner");
 
       const m = merge.start.get(k);
       if (m) {
@@ -1026,8 +1018,8 @@ function renderAssemblyInspector(a) {
     <div class="grid">
       <label>Полное название<input data-role="assembly" data-id="${a.id}" data-field="fullName" value="${esc(a.fullName)}" /></label>
       <label>Аббревиатура<input data-role="assembly" data-id="${a.id}" data-field="abbreviation" value="${esc(a.abbreviation)}" /></label>
-      <label><input data-role="assembly" data-id="${a.id}" data-field="abbrManual" type="checkbox" ${a.abbrManual ? "checked" : ""} /> Ручная аббревиатура</label>
-      <label><input data-role="assembly" data-id="${a.id}" data-field="separateConsumables" type="checkbox" ${a.separateConsumables ? "checked" : ""} /> Отдельный лист расходных материалов</label>
+      <label class="check-line"><input data-role="assembly" data-id="${a.id}" data-field="abbrManual" type="checkbox" ${a.abbrManual ? "checked" : ""} /> Ручная аббревиатура</label>
+      <label class="check-line"><input data-role="assembly" data-id="${a.id}" data-field="separateConsumables" type="checkbox" ${a.separateConsumables ? "checked" : ""} /> Отдельный лист расходных материалов</label>
       ${a.separateConsumables ? "" : `<label>Расх. материал без скидки<input data-role="assembly" data-id="${a.id}" data-field="manualConsNoDisc" type="number" step="0.01" value="${a.manualConsNoDisc}" /></label><label>Расх. материал со скидкой<input data-role="assembly" data-id="${a.id}" data-field="manualConsDisc" type="number" step="0.01" value="${a.manualConsDisc}" /></label>`}
       <div class="meta">Разработка схемы</div>
       <div class="row"><label>Коэфф.<input data-role="labor" data-id="${a.id}" data-field="devCoeff" type="number" step="0.01" value="${a.labor.devCoeff}" /></label><label>Часы<input data-role="labor" data-id="${a.id}" data-field="devHours" type="number" step="0.1" value="${a.labor.devHours}" /></label></div>
@@ -1051,7 +1043,7 @@ function renderPositionInspector(p, id, list) {
       <label>Производитель<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="manufacturer" value="${esc(p.manufacturer)}" /></label>
       <label>Артикул<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="article" value="${esc(p.article)}" /></label>
       <div class="row"><label>Кол-во<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="qty" type="number" step="0.01" value="${p.qty}" /></label><label>Ед. изм.<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="unit" value="${esc(p.unit)}" /></label></div>
-      <label>Цена без НДС<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="priceWithoutVat" type="number" step="0.01" value="${p.priceWithoutVat}" /></label>
+      <label>Цена без скидки, с наценкой и с НДС<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="priceCatalogVatMarkup" type="number" step="0.01" value="${p.priceCatalogVatMarkup}" /></label>
       <div class="row"><label>Наценка, %<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="markup" type="number" step="0.01" value="${decToPct(p.markup)}" /></label><label>Скидка, %<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="discount" type="number" step="0.01" value="${decToPct(p.discount)}" /></label></div>
       <label>Поставщик<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="supplier" value="${esc(p.supplier)}" /></label>
       <label>Примечание<textarea data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="note">${esc(p.note)}</textarea></label>
@@ -1121,6 +1113,7 @@ function bindEvents() {
   dom.viewport.onmousedown = onViewportMouseDown;
   window.onmousemove = onViewportMouseMove;
   window.onmouseup = onViewportMouseUp;
+  document.addEventListener("mousedown", onDocumentMouseDown, true);
 
   dom.viewport.addEventListener("wheel", (e) => {
     e.preventDefault();
@@ -1133,8 +1126,23 @@ function bindEvents() {
     toast(`Масштаб: ${Math.round(next * 100)}%`);
   }, { passive: false });
 
+  document.addEventListener("copy", (e) => {
+    if (editableFocus()) return;
+    const s = activeSheet();
+    const sel = app.ui.selection;
+    if (!s || !sel || sel.sheet !== s.id) return;
+    const text = selectionText(s, sel);
+    if (!text) return;
+    if (e.clipboardData) {
+      e.preventDefault();
+      e.clipboardData.setData("text/plain", text);
+      toast("Скопировано");
+    }
+  });
+
   document.addEventListener("keydown", async (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+      if (editableFocus()) return;
       const s = activeSheet();
       const sel = app.ui.selection;
       if (!s || !sel || sel.sheet !== s.id) return;
@@ -1267,7 +1275,7 @@ function onInspectorChange(e) {
     const pos = getPositionRef(t.dataset.id, t.dataset.list, t.dataset.pos);
     if (!pos) return;
     const f = t.dataset.field;
-    if (f === "qty" || f === "priceWithoutVat") pos[f] = num(t.value);
+    if (f === "qty" || f === "priceCatalogVatMarkup") pos[f] = num(t.value);
     else if (f === "markup" || f === "discount") pos[f] = pctToDec(t.value);
     else pos[f] = String(t.value || "");
     renderAll();
@@ -1395,6 +1403,27 @@ function onViewportMouseUp(e) {
   if (e.button === 0) app.ui.selecting = false;
 }
 
+function onDocumentMouseDown(e) {
+  if (e.button !== 0) return;
+  const inCell = e.target.closest && e.target.closest("#sheetCanvas td[data-row][data-col]");
+  const inToolbar = e.target.closest && e.target.closest(".toolbar");
+  const inSidebar = e.target.closest && e.target.closest(".sidebar");
+  if (!inCell && !inToolbar && !inSidebar) clearSelection();
+}
+
+function clearSelection() {
+  if (!app.ui.selection) return;
+  app.ui.selection = null;
+  paintSelection();
+}
+
+function editableFocus() {
+  const el = document.activeElement;
+  if (!el) return false;
+  if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") return true;
+  return Boolean(el.isContentEditable);
+}
+
 function paintSelection() {
   dom.canvas.querySelectorAll("td.selected").forEach((x) => x.classList.remove("selected"));
   const s = activeSheet();
@@ -1471,6 +1500,7 @@ function applySettingsForm() {
 function exportJson() {
   const payload = {
     format: "specforge-kp/v1",
+    developer: DEV_LABEL,
     exportedAt: new Date().toISOString(),
     state: app.state,
   };
@@ -1481,22 +1511,290 @@ function exportJson() {
 async function importJson(e) {
   const file = e.target.files?.[0];
   if (!file) return;
+  const lowerName = String(file.name || "").toLowerCase();
   try {
-    const text = await file.text();
-    const parsed = JSON.parse(text);
-    const raw = parsed.state || parsed;
-    app.state = normalizeState(raw);
+    if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xlsm")) {
+      const imported = await importExcelState(file);
+      app.state = normalizeState(imported);
+      toast("Excel импортирован");
+    } else {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const raw = parsed.state || parsed;
+      app.state = normalizeState(raw);
+      toast("JSON импортирован");
+    }
     app.ui.treeSel = { type: "settings" };
     app.ui.activeSheetId = "summary";
     app.ui.selection = null;
     renderAll();
-    toast("JSON импортирован");
   } catch (err) {
     console.error(err);
-    toast("Ошибка импорта JSON");
+    toast("Ошибка импорта файла");
   } finally {
     dom.importFile.value = "";
   }
+}
+
+async function importExcelState(file) {
+  if (!window.ExcelJS) throw new Error("ExcelJS unavailable");
+  const wb = new window.ExcelJS.Workbook();
+  await wb.xlsx.load(await file.arrayBuffer());
+
+  const defaults = makeDefaultState();
+  const settings = { ...defaults.settings };
+  let titleParsed = false;
+
+  const summaryWs = wb.getWorksheet(SHEET_NAMES.summary);
+  if (summaryWs) {
+    const vat = excelNum(summaryWs.getCell("F2").value);
+    if (Number.isFinite(vat)) settings.vatRate = normalizePercentDecimal(vat);
+    const f = excelFormula(summaryWs.getCell("E2").value);
+    if (/\!Q\d+/i.test(f)) settings.totalMode = "withDiscount";
+  }
+
+  let projectWs = null;
+  const consByAbbr = new Map();
+  const mainSheets = [];
+
+  for (const ws of wb.worksheets) {
+    const name = String(ws.name || "").trim();
+    if (!name) continue;
+    if (name === SHEET_NAMES.summary) continue;
+
+    if (/^Расх\.\s*мат\.\s*/i.test(name)) {
+      const abbr = name.replace(/^Расх\.\s*мат\.\s*/i, "").trim();
+      consByAbbr.set(abbr, ws);
+      if (!titleParsed) {
+        titleParsed = applySettingsFromTitle(settings, excelText(ws.getCell("A1").value));
+      }
+      continue;
+    }
+
+    if (/^Осн\.\s*мат\.\s*/i.test(name)) {
+      const abbr = name.replace(/^Осн\.\s*мат\.\s*/i, "").trim();
+      mainSheets.push({ ws, abbr, separate: true });
+      if (!titleParsed) {
+        titleParsed = applySettingsFromTitle(settings, excelText(ws.getCell("A1").value));
+      }
+      continue;
+    }
+
+    if (/^Расходники/i.test(name)) {
+      projectWs = ws;
+      if (!titleParsed) {
+        titleParsed = applySettingsFromTitle(settings, excelText(ws.getCell("A1").value));
+      }
+      continue;
+    }
+
+    mainSheets.push({ ws, abbr: name, separate: false });
+    if (!titleParsed) {
+      titleParsed = applySettingsFromTitle(settings, excelText(ws.getCell("A1").value));
+    }
+  }
+
+  const assemblies = [];
+  for (const item of mainSheets) {
+    const ws = item.ws;
+    const fullName = parseAssemblyFullName(excelText(ws.getCell("A1").value), settings, item.abbr);
+    const assembly = makeAssembly(assemblies.length + 1);
+    assembly.fullName = fullName;
+    assembly.abbreviation = deriveAbbr(item.abbr || fullName);
+    assembly.abbrManual = true;
+
+    const parsedMain = parseSheetPositions(ws, settings.vatRate, "main");
+    assembly.main = parsedMain.length ? parsedMain : [makePosition()];
+
+    const labor = parseLabor(ws);
+    assembly.labor = {
+      ...assembly.labor,
+      ...labor,
+    };
+
+    const manualCons = parseManualConsumables(ws);
+    if (Number.isFinite(manualCons.noDisc)) assembly.manualConsNoDisc = manualCons.noDisc;
+    if (Number.isFinite(manualCons.disc)) assembly.manualConsDisc = manualCons.disc;
+
+    const consWs = consByAbbr.get(item.abbr) || consByAbbr.get(assembly.abbreviation);
+    if (item.separate || consWs) {
+      assembly.separateConsumables = true;
+      const parsedCons = parseSheetPositions(consWs || ws, settings.vatRate, "consumable");
+      assembly.consumable = parsedCons.length ? parsedCons : [makePosition()];
+    } else {
+      assembly.separateConsumables = false;
+      assembly.consumable = [makePosition()];
+    }
+
+    assemblies.push(assembly);
+  }
+
+  const state = {
+    settings,
+    assemblies,
+    hasProjectConsumables: false,
+    projectConsumables: [makePosition()],
+  };
+
+  if (projectWs) {
+    const parsed = parseSheetPositions(projectWs, settings.vatRate, "consumable");
+    state.hasProjectConsumables = true;
+    state.projectConsumables = parsed.length ? parsed : [makePosition()];
+  }
+
+  return state;
+}
+
+function parseSheetPositions(ws, vatRate, kind) {
+  if (!ws) return [];
+  const out = [];
+  const maxRows = Math.max(ws.rowCount, 6);
+
+  for (let r = 3; r <= maxRows; r += 1) {
+    const cTxt = excelText(ws.getCell(`C${r}`).value).trim().toLowerCase();
+    if (!cTxt) {
+      const hasAny = excelText(ws.getCell(`B${r}`).value) || excelText(ws.getCell(`D${r}`).value);
+      if (!hasAny) continue;
+    }
+
+    if (kind === "main" && (cTxt.includes("разработка схемы") || cTxt.includes("расходный материал"))) break;
+    if (kind === "consumable" && cTxt.includes("итого")) break;
+
+    const idx = excelNum(ws.getCell(`A${r}`).value);
+    if (!Number.isFinite(idx)) continue;
+
+    const markup = normalizePercentDecimal(excelNum(ws.getCell(`L${r}`).value));
+    const discount = normalizePercentDecimal(excelNum(ws.getCell(`M${r}`).value));
+    const priceI = excelNum(ws.getCell(`I${r}`).value);
+    const priceH = excelNum(ws.getCell(`H${r}`).value);
+    const fromH = Number.isFinite(priceH) ? priceH * (1 + markup) * (1 + vatRate) : NaN;
+    const catalogPrice = Number.isFinite(priceI) ? priceI : (Number.isFinite(fromH) ? fromH : 0);
+
+    out.push({
+      id: uid(),
+      schematic: excelText(ws.getCell(`B${r}`).value),
+      name: excelText(ws.getCell(`C${r}`).value),
+      manufacturer: excelText(ws.getCell(`D${r}`).value),
+      article: excelText(ws.getCell(`E${r}`).value),
+      qty: num(excelNum(ws.getCell(`F${r}`).value), 1),
+      unit: excelText(ws.getCell(`G${r}`).value) || "шт",
+      priceCatalogVatMarkup: round2(catalogPrice),
+      markup,
+      discount,
+      supplier: excelText(ws.getCell(`R${r}`).value),
+      note: excelText(ws.getCell(`S${r}`).value),
+    });
+  }
+
+  return out;
+}
+
+function parseLabor(ws) {
+  const result = {};
+  const maxRows = Math.max(ws.rowCount, 20);
+
+  for (let r = 1; r <= maxRows; r += 1) {
+    const txt = excelText(ws.getCell(`C${r}`).value).trim().toLowerCase();
+    if (!txt) continue;
+    if (txt.includes("разработка схемы")) {
+      result.devCoeff = normalizeCoeff(excelNum(ws.getCell(`F${r}`).value));
+      result.devHours = num(excelNum(ws.getCell(`G${r}`).value), 0);
+      result.devRate = num(excelNum(ws.getCell(`H${r}`).value), 0);
+    } else if (txt.includes("работа по сборке")) {
+      result.assmCoeff = normalizeCoeff(excelNum(ws.getCell(`F${r}`).value));
+      result.assmHours = num(excelNum(ws.getCell(`G${r}`).value), 0);
+      result.assmRate = num(excelNum(ws.getCell(`H${r}`).value), 0);
+    } else if (txt.includes("прибыль")) {
+      result.profitCoeff = normalizePercentDecimal(excelNum(ws.getCell(`F${r}`).value));
+    }
+  }
+
+  return result;
+}
+
+function parseManualConsumables(ws) {
+  const maxRows = Math.max(ws.rowCount, 20);
+  for (let r = 1; r <= maxRows; r += 1) {
+    const txt = excelText(ws.getCell(`C${r}`).value).trim().toLowerCase();
+    if (txt.includes("расходный материал")) {
+      return {
+        noDisc: num(excelNum(ws.getCell(`K${r}`).value), 0),
+        disc: num(excelNum(ws.getCell(`Q${r}`).value), 0),
+      };
+    }
+  }
+  return { noDisc: 0, disc: 0 };
+}
+
+function applySettingsFromTitle(settings, titleRaw) {
+  const title = String(titleRaw || "").split("|")[0].trim();
+  if (!title) return false;
+
+  const orderMatch = title.match(/^([0-9A-Za-zА-Яа-я-]+)\s+/);
+  if (orderMatch) settings.orderNumber = orderMatch[1];
+
+  const reqMatch = title.match(/\(([^)]+)\)/);
+  if (reqMatch) settings.requestNumber = String(reqMatch[1]).trim();
+
+  const dateMatch = title.match(/изм\.\s*(\d{2})\.(\d{2})\.(\d{4})/i);
+  if (dateMatch) settings.changeDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+
+  const verMatch = title.match(/вер\.\s*([^\s|]+)/i);
+  if (verMatch) settings.version = String(verMatch[1]).trim();
+
+  return Boolean(orderMatch || reqMatch || dateMatch || verMatch);
+}
+
+function parseAssemblyFullName(titleRaw, settings, fallback) {
+  const title = String(titleRaw || "").split("|")[0].trim();
+  if (!title) return fallback || "Сборка";
+  const order = settings.orderNumber ? escapeReg(settings.orderNumber) : "[0-9A-Za-zА-Яа-я-]+";
+  const req = settings.requestNumber ? escapeReg(settings.requestNumber) : "[^)]+";
+  const m = title.match(new RegExp(`^${order}\\s+(.+?)\\s*\\(${req}\\)`));
+  if (m && m[1]) return m[1].trim();
+  return fallback || "Сборка";
+}
+
+function excelPrimitive(v) {
+  if (v === null || v === undefined) return null;
+  if (v instanceof Date) return v;
+  if (typeof v === "object") {
+    if (Array.isArray(v.richText)) return v.richText.map((x) => x.text || "").join("");
+    if (typeof v.text === "string") return v.text;
+    if (v.result !== undefined) return excelPrimitive(v.result);
+    if (typeof v.hyperlink === "string") return v.hyperlink;
+    return null;
+  }
+  return v;
+}
+
+function excelText(v) {
+  const p = excelPrimitive(v);
+  if (p === null || p === undefined) return "";
+  if (p instanceof Date) return p.toISOString().slice(0, 10);
+  return String(p).trim();
+}
+
+function excelNum(v) {
+  const p = excelPrimitive(v);
+  if (typeof p === "number" && Number.isFinite(p)) return p;
+  if (p instanceof Date) return NaN;
+  const s = String(p ?? "").replace(/\s+/g, "").replace(",", ".");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function excelFormula(v) {
+  return v && typeof v === "object" && typeof v.formula === "string" ? v.formula : "";
+}
+
+function normalizeCoeff(v) {
+  const n = num(v, 0);
+  return n > 3 && n <= 300 ? n / 100 : n;
+}
+
+function escapeReg(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeState(raw) {
@@ -1563,7 +1861,7 @@ function normPosition(p) {
     article: String(p?.article || ""),
     qty: num(p?.qty, b.qty),
     unit: String(p?.unit || b.unit),
-    priceWithoutVat: num(p?.priceWithoutVat, b.priceWithoutVat),
+    priceCatalogVatMarkup: num(p?.priceCatalogVatMarkup ?? p?.priceWithoutVat, b.priceCatalogVatMarkup),
     markup: m > 1 && m <= 100 ? m / 100 : m,
     discount: d > 1 && d <= 100 ? d / 100 : d,
     supplier: String(p?.supplier || ""),
@@ -1579,15 +1877,13 @@ async function exportXlsx() {
 
   try {
     const wb = new window.ExcelJS.Workbook();
-    wb.creator = "SpecForge";
+    wb.creator = DEV_LABEL;
     wb.created = new Date();
 
     for (const s of app.workbook.sheets) {
       const ws = wb.addWorksheet(s.name, {
         views: [{
-          state: s.freeze.x || s.freeze.y ? "frozen" : "normal",
-          xSplit: s.freeze.x || undefined,
-          ySplit: s.freeze.y || undefined,
+          state: "normal",
           zoomScale: Math.round(currentZoom(s) * 100),
         }],
       });

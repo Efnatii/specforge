@@ -12,6 +12,7 @@
       <div class="sidebar-head">
         <strong>SpecForge</strong>
         <span>КП Navigator</span>
+        <span class="dev-mark">Гороховицкий Егор Русланович</span>
       </div>
       <div id="tree" class="tree" aria-label="Дерево структуры"></div>
       <div id="inspector" class="inspector" aria-label="Панель параметров"></div>
@@ -36,11 +37,12 @@
         </button>
 
         <div class="toolbar-spacer"></div>
+        <div class="toolbar-dev">Гороховицкий Егор Русланович</div>
 
         <button id="btnExportJson" class="icon-btn" title="Экспорт проекта JSON" aria-label="Экспорт JSON">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 15v5h16v-5" /></svg>
         </button>
-        <button id="btnImportJson" class="icon-btn" title="Импорт проекта JSON" aria-label="Импорт JSON">
+        <button id="btnImportJson" class="icon-btn" title="Импорт JSON/XLSX" aria-label="Импорт JSON/XLSX">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9m0 0 4 4m-4-4-4 4M4 9V4h16v5" /></svg>
         </button>
         <button id="btnExportXlsx" class="icon-btn" title="Экспорт XLSX" aria-label="Экспорт XLSX">
@@ -60,7 +62,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <input id="importFileInput" type="file" accept="application/json,.json" hidden />
+  <input id="importFileInput" type="file" accept="application/json,.json,.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden />
 
   <dialog id="settingsDialog" class="settings-dialog">
     <form id="settingsForm" method="dialog" class="settings-form">

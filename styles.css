@@ -83,6 +83,11 @@ button {
   font-size: 11px;
 }
 
+.sidebar-head .dev-mark {
+  color: #1d1d1d;
+  font-size: 10px;
+}
+
 .tree {
   flex: 1;
   overflow: auto;
@@ -116,6 +121,13 @@ button {
 
 .toolbar-spacer {
   flex: 1;
+}
+
+.toolbar-dev {
+  font-size: 10px;
+  padding: 0 8px;
+  color: #1f1f1f;
+  white-space: nowrap;
 }
 
 .icon-btn {
@@ -212,25 +224,6 @@ button {
   outline-offset: -1px;
 }
 
-.sheet-table td.frozen-top,
-.sheet-table td.frozen-left,
-.sheet-table td.frozen-corner {
-  position: sticky;
-  z-index: 2;
-}
-
-.sheet-table td.frozen-top {
-  top: 0;
-}
-
-.sheet-table td.frozen-left {
-  left: 0;
-}
-
-.sheet-table td.frozen-corner {
-  z-index: 3;
-}
-
 .sheet-tabs {
   border-top: 1px solid var(--line-strong);
   background: linear-gradient(180deg, #e8e8e8 0%, #d2d2d2 100%);
@@ -316,6 +309,16 @@ button {
   display: grid;
   gap: 4px;
   font-size: 12px;
+}
+
+.inspector label.check-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspector label.check-line input[type="checkbox"] {
+  margin: 0;
 }
 
 .inspector input,
