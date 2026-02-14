@@ -6,7 +6,79 @@
     <title>SpecForge - редактор ТКП</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div id="boot-fallback" style="display:none;max-width:760px;margin:24px auto;padding:16px;border:2px solid #000;background:#fff;color:#000;font-family:'Segoe UI',Arial,sans-serif;line-height:1.45;">
+        <h1 style="margin:0 0 12px;font-size:24px;">Приложение не загрузилось</h1>
+        <p style="margin:0 0 10px;">Проверьте: Network -> 404 на assets или /src/main.js.</p>
+        <p style="margin:0 0 10px;">Если сайт открыт как https://.../&lt;repo&gt;/, убедитесь, что base в Vite = '/&lt;repo&gt;/'.</p>
+        <p style="margin:0;">Попробуйте открыть в инкогнито без расширений (иногда расширения ломают страницу).</p>
+        <pre id="boot-fallback-error" style="display:none;margin:12px 0 0;padding:10px;border:1px solid #000;background:#f5f5f5;white-space:pre-wrap;word-break:break-word;"></pre>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var timeoutMs = 2000;
+        var maxErrorLen = 280;
+
+        function isExtensionNoise(value) {
+          if (!value) return false;
+          var text = String(value);
+          return (
+            text.indexOf("chrome-extension://") !== -1 ||
+            text.indexOf("moz-extension://") !== -1 ||
+            text.indexOf("safari-extension://") !== -1 ||
+            text.indexOf("content.js") !== -1 ||
+            text.indexOf("polyfill.js") !== -1
+          );
+        }
+
+        function trimText(text) {
+          if (!text) return "";
+          return text.length > maxErrorLen ? text.slice(0, maxErrorLen) + "..." : text;
+        }
+
+        function setError(text) {
+          var node = document.getElementById("boot-fallback-error");
+          if (!node) return;
+          if (!text) {
+            node.style.display = "none";
+            node.textContent = "";
+            return;
+          }
+          node.style.display = "block";
+          node.textContent = trimText(text);
+        }
+
+        function showBootFallback(text) {
+          var fallback = document.getElementById("boot-fallback");
+          if (!fallback) return;
+          fallback.style.display = "block";
+          if (text) setError(text);
+        }
+
+        window.__SPEC_FORGE_SHOW_BOOT_FALLBACK__ = showBootFallback;
+
+        window.addEventListener("error", function (event) {
+          var source = event && event.filename ? event.filename : "";
+          var message = event && event.message ? event.message : "Неизвестная ошибка";
+          if (isExtensionNoise(source) || isExtensionNoise(message)) return;
+          showBootFallback("Ошибка: " + message);
+        });
+
+        window.addEventListener("unhandledrejection", function (event) {
+          var reason = event ? event.reason : "";
+          var text = typeof reason === "string" ? reason : reason && reason.message ? reason.message : String(reason || "Неизвестная ошибка");
+          if (isExtensionNoise(text)) return;
+          showBootFallback("Необработанное исключение: " + text);
+        });
+
+        setTimeout(function () {
+          if (window.__SPEC_FORGE_BOOT_OK__ !== true) {
+            showBootFallback();
+          }
+        }, timeoutMs);
+      })();
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

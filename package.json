@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "smoke:pages": "node scripts/smoke-pages.mjs"
+    "smoke:pages": "node scripts/smoke-pages-build.mjs"
   },
   "keywords": [],
   "author": "",
