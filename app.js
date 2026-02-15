@@ -6,6 +6,13 @@ const SHEET_NAMES = {
   projectConsumable: "Расходники",
 };
 const DEV_LABEL = "Гороховицкий Егор Русланович";
+const AI_MODEL = "gpt-4.1-mini";
+const STORAGE_KEYS = {
+  openAiApiKey: "specforge.openai.apiKey",
+  agentCollapsed: "specforge.openai.agentCollapsed",
+  agentOptions: "specforge.openai.agentOptions",
+};
+const MAX_AGENT_LOG = 14;
 
 const dom = {
   app: document.getElementById("app"),
@@ -33,6 +40,19 @@ const dom = {
   btnExportJson: document.getElementById("btnExportJson"),
   btnImportJson: document.getElementById("btnImportJson"),
   btnExportXlsx: document.getElementById("btnExportXlsx"),
+  btnOpenAiAuth: document.getElementById("btnOpenAiAuth"),
+  openAiAuthIndicator: document.getElementById("openAiAuthIndicator"),
+  agentOverlay: document.getElementById("agentOverlay"),
+  agentBody: document.getElementById("agentBody"),
+  btnToggleAgentPanel: document.getElementById("btnToggleAgentPanel"),
+  agentConnectionLabel: document.getElementById("agentConnectionLabel"),
+  agentLog: document.getElementById("agentLog"),
+  agentChips: document.getElementById("agentContextChips"),
+  btnAgentContext: document.getElementById("btnAgentContext"),
+  agentContextMenu: document.getElementById("agentContextMenu"),
+  agentPrompt: document.getElementById("agentPromptInput"),
+  btnAgentSend: document.getElementById("btnAgentSend"),
+  agentAttachmentInput: document.getElementById("agentAttachmentInput"),
 };
 
 const app = {
@@ -48,6 +68,21 @@ const app = {
     panning: false,
     pan: null,
     sidebarCollapsed: false,
+  },
+  ai: {
+    apiKey: "",
+    connected: false,
+    sending: false,
+    collapsed: false,
+    options: {
+      currentSheet: true,
+      allSheets: false,
+      selection: false,
+      webSearch: false,
+    },
+    attachments: [],
+    log: [],
+    sheetOverrides: {},
   },
 };
 
@@ -67,9 +102,132 @@ async function init() {
   app.template = parseTemplate(report, styles);
   injectStyles(app.template.styles);
   app.state = makeDefaultState();
+  loadAiSettings();
   bindEvents();
   renderAll();
+  renderAiUi();
   toast("Шаблон КП готов");
+}
+
+function loadAiSettings() {
+  try {
+    const key = String(localStorage.getItem(STORAGE_KEYS.openAiApiKey) || "").trim();
+    app.ai.apiKey = key;
+    app.ai.connected = Boolean(key);
+  } catch {}
+
+  try {
+    app.ai.collapsed = localStorage.getItem(STORAGE_KEYS.agentCollapsed) === "1";
+  } catch {}
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.agentOptions);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    app.ai.options.currentSheet = Boolean(parsed.currentSheet);
+    app.ai.options.allSheets = Boolean(parsed.allSheets);
+    app.ai.options.selection = Boolean(parsed.selection);
+    app.ai.options.webSearch = Boolean(parsed.webSearch);
+  } catch {}
+}
+
+function saveAiOptions() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.agentOptions, JSON.stringify(app.ai.options));
+  } catch {}
+}
+
+function saveAiCollapsed() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.agentCollapsed, app.ai.collapsed ? "1" : "0");
+  } catch {}
+}
+
+function saveOpenAiApiKey() {
+  try {
+    if (app.ai.apiKey) localStorage.setItem(STORAGE_KEYS.openAiApiKey, app.ai.apiKey);
+    else localStorage.removeItem(STORAGE_KEYS.openAiApiKey);
+  } catch {}
+}
+
+function renderAiUi() {
+  if (dom.btnOpenAiAuth) {
+    dom.btnOpenAiAuth.classList.toggle("is-connected", app.ai.connected);
+    dom.btnOpenAiAuth.title = app.ai.connected ? "OpenAI подключен: нажмите для замены/выхода" : "Подключить OpenAI";
+    dom.btnOpenAiAuth.setAttribute("aria-label", dom.btnOpenAiAuth.title);
+  }
+
+  if (dom.agentOverlay) {
+    dom.agentOverlay.hidden = !app.ai.connected;
+    dom.agentOverlay.classList.toggle("is-collapsed", app.ai.collapsed);
+  }
+
+  if (dom.agentConnectionLabel) {
+    dom.agentConnectionLabel.textContent = app.ai.connected ? "OpenAI подключен" : "OpenAI отключен";
+  }
+
+  if (dom.btnAgentSend) dom.btnAgentSend.disabled = !app.ai.connected || app.ai.sending;
+  if (dom.agentPrompt) dom.agentPrompt.disabled = !app.ai.connected || app.ai.sending;
+
+  renderAgentLog();
+  renderAgentChips();
+  renderAgentContextMenu();
+}
+
+function renderAgentLog() {
+  if (!dom.agentLog) return;
+  if (!app.ai.log.length) {
+    dom.agentLog.innerHTML = `<div class="agent-log-empty">ИИ готов. Можно дать команду, например: "подними цену выбранной позиции на 7%".</div>`;
+    return;
+  }
+  dom.agentLog.innerHTML = app.ai.log
+    .map((m) => `<div class="agent-msg"><span class="role">${m.role === "assistant" ? "AI" : "Вы"}:</span> ${esc(m.text)}</div>`)
+    .join("");
+  dom.agentLog.scrollTop = dom.agentLog.scrollHeight;
+}
+
+function agentOptionDefs() {
+  return {
+    currentSheet: { label: "Текущий лист", code: "sheet" },
+    allSheets: { label: "Все листы", code: "all" },
+    selection: { label: "Выделение", code: "sel" },
+    webSearch: { label: "Веб-поиск", code: "web" },
+  };
+}
+
+function renderAgentChips() {
+  if (!dom.agentChips) return;
+  const defs = agentOptionDefs();
+  const parts = [];
+
+  for (const key of Object.keys(defs)) {
+    if (!app.ai.options[key]) continue;
+    const d = defs[key];
+    parts.push(`<span class="agent-chip" data-chip-type="option" data-chip-key="${esc(key)}"><b>${esc(d.code)}</b><span>${esc(d.label)}</span><button type="button" class="remove" title="Убрать" aria-label="Убрать">×</button></span>`);
+  }
+
+  for (const f of app.ai.attachments) {
+    const kb = Math.max(1, Math.round(num(f.size) / 1024));
+    parts.push(`<span class="agent-chip" data-chip-type="file" data-chip-id="${esc(f.id)}"><b>file</b><span>${esc(f.name)} (${kb} KB)</span><button type="button" class="remove" title="Открепить" aria-label="Открепить">×</button></span>`);
+  }
+
+  dom.agentChips.innerHTML = parts.join("");
+}
+
+function renderAgentContextMenu() {
+  if (!dom.agentContextMenu) return;
+  dom.agentContextMenu.querySelectorAll("[data-ai-option]").forEach((btn) => {
+    const key = btn.dataset.aiOption;
+    btn.classList.toggle("is-selected", Boolean(app.ai.options[key]));
+  });
+}
+
+function addAgentLog(role, text) {
+  const clean = String(text || "").trim();
+  if (!clean) return;
+  app.ai.log.push({ role: role === "assistant" ? "assistant" : "user", text: clean });
+  if (app.ai.log.length > MAX_AGENT_LOG) app.ai.log.splice(0, app.ai.log.length - MAX_AGENT_LOG);
+  renderAgentLog();
 }
 
 function parseTemplate(report, stylesRaw) {
@@ -799,11 +957,13 @@ function quoteSheet(name) {
 }
 function renderAll() {
   app.workbook = buildWorkbook();
+  applyAgentSheetOverrides();
   if (!app.workbook.byId[app.ui.activeSheetId]) app.ui.activeSheetId = "summary";
   renderTabs();
   renderSheet();
   renderTree();
   renderInspector();
+  renderAiUi();
 }
 
 function renderTabs() {
@@ -1079,6 +1239,27 @@ function bindEvents() {
     dom.app.classList.toggle("sidebar-collapsed", app.ui.sidebarCollapsed);
   };
 
+  dom.btnOpenAiAuth.onclick = onOpenAiAuthClick;
+  dom.btnToggleAgentPanel.onclick = () => {
+    app.ai.collapsed = !app.ai.collapsed;
+    saveAiCollapsed();
+    renderAiUi();
+  };
+  dom.btnAgentContext.onclick = () => {
+    if (!app.ai.connected) return;
+    dom.agentContextMenu.hidden = !dom.agentContextMenu.hidden;
+  };
+  dom.agentContextMenu.onclick = onAgentContextMenuClick;
+  dom.agentChips.onclick = onAgentChipClick;
+  dom.btnAgentSend.onclick = sendAgentPrompt;
+  dom.agentPrompt.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      sendAgentPrompt();
+    }
+  });
+  dom.agentAttachmentInput.onchange = onAgentAttachmentsPicked;
+
   dom.btnSettings.onclick = () => openSettingsDialog();
 
   dom.btnAddAssembly.onclick = () => {
@@ -1187,6 +1368,744 @@ function bindEvents() {
       toast("Скопировано");
     }
   });
+
+  document.addEventListener("mousedown", (e) => {
+    if (!dom.agentContextMenu || dom.agentContextMenu.hidden) return;
+    const inMenu = e.target.closest("#agentContextMenu");
+    const inButton = e.target.closest("#btnAgentContext");
+    if (!inMenu && !inButton) dom.agentContextMenu.hidden = true;
+  });
+}
+
+async function onOpenAiAuthClick() {
+  if (!app.ai.connected) {
+    const key = window.prompt("Введите OpenAI API key (формат sk-...)");
+    if (key === null) return;
+    const token = String(key || "").trim();
+    if (!token) {
+      toast("Ключ не введен");
+      return;
+    }
+    const verified = await verifyOpenAiApiKey(token);
+    if (!verified.ok) {
+      toast(verified.error || "OpenAI: ключ не принят");
+      return;
+    }
+    app.ai.apiKey = token;
+    app.ai.connected = true;
+    saveOpenAiApiKey();
+    renderAiUi();
+    toast("OpenAI подключен");
+    return;
+  }
+
+  const next = window.prompt("OpenAI уже подключен.\nВведите новый ключ для замены.\nОставьте пустым, чтобы отключить.", "");
+  if (next === null) return;
+  const token = String(next || "").trim();
+  if (!token) {
+    disconnectOpenAi();
+    return;
+  }
+  const verified = await verifyOpenAiApiKey(token);
+  if (!verified.ok) {
+    toast(verified.error || "OpenAI: не удалось подключить ключ");
+    return;
+  }
+  app.ai.apiKey = token;
+  app.ai.connected = true;
+  saveOpenAiApiKey();
+  renderAiUi();
+  toast("Ключ OpenAI обновлен");
+}
+
+function disconnectOpenAi() {
+  app.ai.apiKey = "";
+  app.ai.connected = false;
+  app.ai.sending = false;
+  app.ai.attachments = [];
+  saveOpenAiApiKey();
+  if (dom.agentContextMenu) dom.agentContextMenu.hidden = true;
+  renderAiUi();
+  toast("OpenAI отключен");
+}
+
+async function verifyOpenAiApiKey(key) {
+  try {
+    const res = await fetch("https://api.openai.com/v1/models?limit=1", {
+      headers: {
+        Authorization: `Bearer ${key}`,
+      },
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 401 || res.status === 403) return { ok: false, error: "OpenAI: неверный ключ" };
+    return { ok: false, error: `OpenAI: ошибка ${res.status}` };
+  } catch {
+    return { ok: false, error: "OpenAI: сеть недоступна" };
+  }
+}
+
+function onAgentContextMenuClick(e) {
+  const b = e.target.closest("[data-ai-option]");
+  if (!b) return;
+  const option = String(b.dataset.aiOption || "");
+  if (option === "files") {
+    dom.agentAttachmentInput.click();
+    return;
+  }
+  if (!(option in app.ai.options)) return;
+  app.ai.options[option] = !app.ai.options[option];
+  saveAiOptions();
+  renderAiUi();
+}
+
+function onAgentChipClick(e) {
+  const remove = e.target.closest("button.remove");
+  if (!remove) return;
+  const chip = e.target.closest(".agent-chip");
+  if (!chip) return;
+  const type = chip.dataset.chipType;
+  if (type === "option") {
+    const key = chip.dataset.chipKey;
+    if (!key || !(key in app.ai.options)) return;
+    app.ai.options[key] = false;
+    saveAiOptions();
+    renderAiUi();
+    return;
+  }
+  if (type === "file") {
+    const id = chip.dataset.chipId;
+    app.ai.attachments = app.ai.attachments.filter((f) => f.id !== id);
+    renderAiUi();
+  }
+}
+
+async function onAgentAttachmentsPicked(e) {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+
+  const incoming = [];
+  for (const file of files) {
+    const entry = await makeAgentAttachment(file);
+    incoming.push(entry);
+  }
+  app.ai.attachments.push(...incoming);
+  dom.agentAttachmentInput.value = "";
+  renderAiUi();
+  toast(`Файлы прикреплены: ${incoming.length}`);
+}
+
+async function makeAgentAttachment(file) {
+  const textLike = /^text\//i.test(file.type) || /\.(txt|md|csv|json|xml|yml|yaml|js|ts|html|css)$/i.test(file.name);
+  let text = "";
+  let truncated = false;
+  if (textLike) {
+    try {
+      const raw = await file.text();
+      const maxChars = 40000;
+      text = raw.slice(0, maxChars);
+      truncated = raw.length > maxChars;
+    } catch {}
+  }
+  return {
+    id: uid(),
+    name: String(file.name || "file"),
+    size: num(file.size, 0),
+    type: String(file.type || "application/octet-stream"),
+    text,
+    truncated,
+  };
+}
+
+async function sendAgentPrompt() {
+  if (!app.ai.connected || !app.ai.apiKey) {
+    toast("Сначала подключите OpenAI");
+    return;
+  }
+  if (app.ai.sending) return;
+
+  const text = String(dom.agentPrompt.value || "").trim();
+  if (!text) {
+    toast("Введите запрос для ИИ");
+    return;
+  }
+
+  app.ai.sending = true;
+  renderAiUi();
+  addAgentLog("user", text);
+
+  try {
+    const input = buildAgentInput(text);
+    const out = await runOpenAiAgentTurn(input);
+    addAgentLog("assistant", out || "Готово.");
+    dom.agentPrompt.value = "";
+  } catch (err) {
+    console.error(err);
+    addAgentLog("assistant", "Не удалось выполнить запрос. Проверьте ключ OpenAI и сеть.");
+    toast("Ошибка выполнения запроса ИИ");
+  } finally {
+    app.ai.sending = false;
+    renderAiUi();
+  }
+}
+
+function buildAgentInput(userText) {
+  const parts = [];
+  parts.push(`Запрос пользователя:\n${userText}`);
+
+  const ctx = buildAgentContextText();
+  if (ctx) parts.push(`Контекст проекта:\n${ctx}`);
+
+  return parts.join("\n\n");
+}
+
+function buildAgentContextText() {
+  const out = [];
+  const s = activeSheet();
+
+  if (app.ai.options.currentSheet && s) {
+    out.push(`Текущий лист (${s.name}, id=${s.id}):\n${serializeSheetPreview(s, 40, 12, 10000)}`);
+  }
+
+  if (app.ai.options.allSheets) {
+    const blocks = app.workbook.sheets.map((sh) => {
+      const preview = serializeSheetPreview(sh, 20, 10, 2600);
+      return `Лист ${sh.name} (id=${sh.id}, строк=${sh.rows.length}, колонок=${sh.cols.length}):\n${preview}`;
+    });
+    out.push(`Все листы:\n${blocks.join("\n\n")}`);
+  }
+
+  if (app.ai.options.selection) {
+    const sel = app.ui.selection;
+    if (!sel || !s || sel.sheet !== s.id) out.push("Выделение: нет активного выделения.");
+    else {
+      const r1 = Math.min(sel.sr, sel.er);
+      const r2 = Math.max(sel.sr, sel.er);
+      const c1 = Math.min(sel.sc, sel.ec);
+      const c2 = Math.max(sel.sc, sel.ec);
+      out.push(`Выделение ${toA1(r1, c1)}:${toA1(r2, c2)} на листе ${s.name}:\n${selectionText(s, sel)}`);
+    }
+  }
+
+  if (app.ai.attachments.length) {
+    const files = app.ai.attachments.map((f) => {
+      if (f.text) {
+        const tail = f.truncated ? "\n[обрезано]" : "";
+        return `Файл: ${f.name} (${f.size} байт)\n${f.text}${tail}`;
+      }
+      return `Файл: ${f.name} (${f.size} байт), тип: ${f.type}`;
+    });
+    out.push(`Прикрепленные файлы:\n${files.join("\n\n")}`);
+  }
+
+  return out.join("\n\n").slice(0, 120000);
+}
+
+function serializeSheetPreview(sheet, maxRows = 40, maxCols = 12, maxChars = 10000) {
+  const rows = Math.min(maxRows, sheet.rows.length);
+  const cols = Math.min(maxCols, sheet.cols.length);
+  const lines = [];
+  lines.push(new Array(cols).fill(0).map((_, i) => colToName(i + 1)).join("\t"));
+
+  for (let r = 1; r <= rows; r += 1) {
+    const vals = [];
+    for (let c = 1; c <= cols; c += 1) {
+      const cell = sheet.rows[r - 1]?.cells[c - 1];
+      vals.push(agentCellValueText(cell));
+    }
+    lines.push(vals.join("\t"));
+    if (lines.join("\n").length > maxChars) break;
+  }
+  return lines.join("\n").slice(0, maxChars);
+}
+
+async function runOpenAiAgentTurn(userInput) {
+  const history = app.ai.log
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .slice(-8)
+    .map((m) => ({
+      role: m.role,
+      content: [{ type: "input_text", text: m.text }],
+    }));
+
+  const input = history.length ? history : [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
+  if (history.length) input[input.length - 1] = { role: "user", content: [{ type: "input_text", text: userInput }] };
+
+  let response = await callOpenAiResponses({
+    model: AI_MODEL,
+    instructions: agentSystemPrompt(),
+    input,
+    tools: agentToolsSpec(),
+    tool_choice: "auto",
+  });
+
+  for (let i = 0; i < 10; i += 1) {
+    const calls = extractAgentFunctionCalls(response);
+    if (!calls.length) {
+      const text = extractAgentText(response);
+      return text || "Готово.";
+    }
+
+    const outputs = [];
+    for (const call of calls) {
+      const args = parseJsonSafe(call.arguments, {});
+      const result = await executeAgentTool(call.name, args);
+      outputs.push({
+        type: "function_call_output",
+        call_id: call.call_id,
+        output: JSON.stringify(result),
+      });
+    }
+
+    response = await callOpenAiResponses({
+      model: AI_MODEL,
+      previous_response_id: response.id,
+      input: outputs,
+      tools: agentToolsSpec(),
+      tool_choice: "auto",
+    });
+  }
+
+  throw new Error("agent tool loop limit");
+}
+
+function agentSystemPrompt() {
+  return [
+    "Ты AI-агент внутри SpecForge.",
+    "Ты можешь читать и изменять таблицы и состояние проекта через tools.",
+    "Перед изменениями проверяй целевые листы/диапазоны.",
+    "При изменениях кратко подтверждай, что именно поменял.",
+    "Если запрос неясен, задай короткий уточняющий вопрос.",
+  ].join(" ");
+}
+
+function agentToolsSpec() {
+  const tools = [
+    {
+      type: "function",
+      name: "list_sheets",
+      description: "Вернуть список листов текущей таблицы",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "read_range",
+      description: "Прочитать диапазон ячеек с листа",
+      parameters: {
+        type: "object",
+        properties: {
+          sheet_id: { type: "string" },
+          sheet_name: { type: "string" },
+          range: { type: "string", description: "A1 или A1:C20" },
+          include_formulas: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "write_cells",
+      description: "Записать значения в ячейки листа",
+      parameters: {
+        type: "object",
+        properties: {
+          sheet_id: { type: "string" },
+          sheet_name: { type: "string" },
+          updates: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                address: { type: "string", description: "A1" },
+                value: { type: ["string", "number", "boolean", "null"] },
+                formula: { type: "string" },
+              },
+              required: ["address"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["updates"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "get_selection",
+      description: "Получить текущую выделенную область пользователя",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "get_state",
+      description: "Получить состояние проекта или путь внутри него",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Пример: assemblies[0].main[1].name" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "set_state_value",
+      description: "Изменить значение в состоянии проекта по пути",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          value: { type: ["string", "number", "boolean", "object", "array", "null"] },
+        },
+        required: ["path", "value"],
+        additionalProperties: false,
+      },
+    },
+  ];
+
+  if (app.ai.options.webSearch) tools.push({ type: "web_search_preview" });
+  return tools;
+}
+
+async function callOpenAiResponses(payload) {
+  const res = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${app.ai.apiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    if (res.status === 401 || res.status === 403) {
+      disconnectOpenAi();
+      throw new Error("openai unauthorized");
+    }
+    throw new Error(`openai ${res.status}: ${body.slice(0, 500)}`);
+  }
+
+  return res.json();
+}
+
+function extractAgentFunctionCalls(response) {
+  const out = [];
+  for (const item of response?.output || []) {
+    if (item?.type === "function_call" && item.name && item.call_id) out.push(item);
+  }
+  return out;
+}
+
+function extractAgentText(response) {
+  if (typeof response?.output_text === "string" && response.output_text.trim()) return response.output_text.trim();
+
+  const parts = [];
+  for (const item of response?.output || []) {
+    if (item?.type !== "message") continue;
+    for (const c of item.content || []) {
+      if ((c.type === "output_text" || c.type === "text") && typeof c.text === "string") parts.push(c.text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+function parseJsonSafe(text, fallback) {
+  try {
+    return JSON.parse(String(text || ""));
+  } catch {
+    return fallback;
+  }
+}
+
+async function executeAgentTool(name, args) {
+  if (name === "list_sheets") {
+    return {
+      sheets: app.workbook.sheets.map((s) => ({
+        id: s.id,
+        name: s.name,
+        rows: s.rows.length,
+        cols: s.cols.length,
+      })),
+    };
+  }
+
+  if (name === "read_range") {
+    const sheet = resolveAgentSheet(args);
+    if (!sheet) return { ok: false, error: "sheet not found" };
+
+    const parsed = parseA1Range(args?.range || "A1");
+    if (!parsed) return { ok: false, error: "bad range" };
+
+    const rowCount = parsed.r2 - parsed.r1 + 1;
+    const colCount = parsed.c2 - parsed.c1 + 1;
+    const maxCells = 1500;
+    let r2 = parsed.r2;
+    let c2 = parsed.c2;
+    if (rowCount * colCount > maxCells) {
+      const maxRows = Math.max(1, Math.floor(maxCells / Math.max(1, colCount)));
+      r2 = parsed.r1 + maxRows - 1;
+    }
+
+    const includeFormulas = Boolean(args?.include_formulas);
+    const rows = [];
+    for (let r = parsed.r1; r <= r2; r += 1) {
+      const curr = [];
+      for (let c = parsed.c1; c <= c2; c += 1) {
+        const cell = sheet.rows[r - 1]?.cells[c - 1] || null;
+        const item = {
+          address: toA1(r, c),
+          value: cell ? cell.value : null,
+          text: agentCellValueText(cell),
+        };
+        if (includeFormulas) item.formula = cell?.formula || "";
+        curr.push(item);
+      }
+      rows.push(curr);
+    }
+
+    return {
+      ok: true,
+      sheet: { id: sheet.id, name: sheet.name },
+      range: `${toA1(parsed.r1, parsed.c1)}:${toA1(r2, c2)}`,
+      rows,
+    };
+  }
+
+  if (name === "write_cells") {
+    const sheet = resolveAgentSheet(args);
+    if (!sheet) return { ok: false, error: "sheet not found" };
+
+    const updates = Array.isArray(args?.updates) ? args.updates : [];
+    if (!updates.length) return { ok: false, error: "updates required" };
+
+    let applied = 0;
+    for (const u of updates) {
+      const p = parseA1Address(u?.address);
+      if (!p) continue;
+      setAgentSheetCell(sheet.id, p.row, p.col, u?.value ?? null, u?.formula || "");
+      applied += 1;
+    }
+
+    renderAll();
+    return { ok: true, applied, sheet: { id: sheet.id, name: sheet.name } };
+  }
+
+  if (name === "get_selection") {
+    const sel = app.ui.selection;
+    const s = activeSheet();
+    if (!sel || !s || sel.sheet !== s.id) return { ok: true, selection: null };
+    const r1 = Math.min(sel.sr, sel.er);
+    const r2 = Math.max(sel.sr, sel.er);
+    const c1 = Math.min(sel.sc, sel.ec);
+    const c2 = Math.max(sel.sc, sel.ec);
+    return {
+      ok: true,
+      selection: {
+        sheet_id: s.id,
+        sheet_name: s.name,
+        range: `${toA1(r1, c1)}:${toA1(r2, c2)}`,
+        text: selectionText(s, sel),
+      },
+    };
+  }
+
+  if (name === "get_state") {
+    const value = args?.path ? getStatePath(args.path) : app.state;
+    return { ok: true, path: args?.path || "", value: compactForTool(value) };
+  }
+
+  if (name === "set_state_value") {
+    if (!args?.path) return { ok: false, error: "path required" };
+    try {
+      setStatePath(args.path, args.value);
+      renderAll();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err) };
+    }
+  }
+
+  return { ok: false, error: `unknown tool: ${name}` };
+}
+
+function resolveAgentSheet(args) {
+  const id = String(args?.sheet_id || "").trim();
+  if (id && app.workbook.byId[id]) return app.workbook.byId[id];
+
+  const name = String(args?.sheet_name || "").trim().toLowerCase();
+  if (name) {
+    const match = app.workbook.sheets.find((s) => String(s.name || "").trim().toLowerCase() === name);
+    if (match) return match;
+  }
+
+  return activeSheet();
+}
+
+function parseA1Address(addr) {
+  const clean = String(addr || "").replaceAll("$", "").trim().toUpperCase();
+  if (!/^[A-Z]+[0-9]+$/.test(clean)) return null;
+  return decodeAddr(clean);
+}
+
+function parseA1Range(range) {
+  const txt = String(range || "").trim().toUpperCase();
+  if (!txt) return null;
+  const [a, b] = txt.split(":");
+  const s = parseA1Address(a);
+  const e = parseA1Address(b || a);
+  if (!s || !e) return null;
+  return {
+    r1: Math.min(s.row, e.row),
+    c1: Math.min(s.col, e.col),
+    r2: Math.max(s.row, e.row),
+    c2: Math.max(s.col, e.col),
+  };
+}
+
+function colToName(col) {
+  let n = Math.max(1, num(col, 1));
+  let out = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    out = String.fromCharCode(65 + rem) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out;
+}
+
+function toA1(row, col) {
+  return `${colToName(col)}${Math.max(1, num(row, 1))}`;
+}
+
+function agentCellValueText(cell) {
+  if (!cell || cell.value === null || cell.value === undefined) return "";
+  if (typeof cell.value === "number" || typeof cell.value === "boolean") return String(cell.value);
+  return String(cell.value);
+}
+
+function compactForTool(value, depth = 0) {
+  if (depth > 5) return "[depth-limit]";
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return value.length > 1200 ? `${value.slice(0, 1200)}...[trim]` : value;
+  if (typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    const limit = 80;
+    const arr = value.slice(0, limit).map((v) => compactForTool(v, depth + 1));
+    if (value.length > limit) arr.push(`[... ${value.length - limit} more]`);
+    return arr;
+  }
+  const out = {};
+  let count = 0;
+  for (const [k, v] of Object.entries(value)) {
+    if (count >= 80) {
+      out.__trimmed__ = true;
+      break;
+    }
+    out[k] = compactForTool(v, depth + 1);
+    count += 1;
+  }
+  return out;
+}
+
+function getStatePath(path) {
+  const tokens = parseStatePath(path);
+  if (!tokens.length) return app.state;
+  let ref = app.state;
+  for (const token of tokens) {
+    if (ref === null || ref === undefined) return undefined;
+    ref = ref[token];
+  }
+  return ref;
+}
+
+function setStatePath(path, value) {
+  const tokens = parseStatePath(path);
+  if (!tokens.length) throw new Error("bad path");
+
+  let ref = app.state;
+  for (let i = 0; i < tokens.length - 1; i += 1) {
+    const t = tokens[i];
+    const next = tokens[i + 1];
+    if (ref[t] === undefined || ref[t] === null) ref[t] = typeof next === "number" ? [] : {};
+    if (typeof ref[t] !== "object") throw new Error(`path blocked at ${String(t)}`);
+    ref = ref[t];
+  }
+
+  ref[tokens[tokens.length - 1]] = value;
+}
+
+function parseStatePath(path) {
+  const src = String(path || "").trim();
+  if (!src) return [];
+  const tokens = [];
+  const re = /([^[.\]]+)|\[(\d+)\]/g;
+  let m;
+  while ((m = re.exec(src))) {
+    if (m[1] !== undefined) tokens.push(m[1]);
+    else tokens.push(Number(m[2]));
+  }
+  return tokens;
+}
+
+function setAgentSheetCell(sheetId, row, col, value, formula = "") {
+  if (!app.ai.sheetOverrides[sheetId]) app.ai.sheetOverrides[sheetId] = {};
+  app.ai.sheetOverrides[sheetId][`${row}:${col}`] = {
+    value: normalizeAgentValue(value),
+    formula: String(formula || ""),
+  };
+}
+
+function normalizeAgentValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  return String(value);
+}
+
+function applyAgentSheetOverrides() {
+  for (const [sheetId, map] of Object.entries(app.ai.sheetOverrides || {})) {
+    const sheet = app.workbook.byId[sheetId];
+    if (!sheet || !map || typeof map !== "object") continue;
+
+    for (const [cellKey, patch] of Object.entries(map)) {
+      const [rRaw, cRaw] = cellKey.split(":");
+      const row = Number(rRaw);
+      const col = Number(cRaw);
+      if (!Number.isFinite(row) || !Number.isFinite(col) || row < 1 || col < 1) continue;
+      writeSheetCell(sheet, row, col, patch?.value ?? null, patch?.formula || "");
+    }
+  }
+}
+
+function writeSheetCell(sheet, row, col, value, formula = "") {
+  ensureSheetBounds(sheet, row, col);
+  const cell = sheet.rows[row - 1].cells[col - 1];
+  cell.value = normalizeAgentValue(value);
+  cell.formula = String(formula || "");
+}
+
+function ensureSheetBounds(sheet, row, col) {
+  while (sheet.cols.length < col) {
+    sheet.cols.push(64);
+    for (const r of sheet.rows) r.cells.push({ styleId: 0, value: null, formula: "" });
+  }
+
+  while (sheet.rows.length < row) {
+    const height = sheet.rows[sheet.rows.length - 1]?.height || 20;
+    const cells = new Array(sheet.cols.length).fill(0).map(() => ({ styleId: 0, value: null, formula: "" }));
+    sheet.rows.push({ height, cells });
+  }
+
+  for (const r of sheet.rows) {
+    while (r.cells.length < sheet.cols.length) r.cells.push({ styleId: 0, value: null, formula: "" });
+  }
 }
 function onTreeClick(e) {
   const actionBtn = e.target.closest("[data-tree-action]");
@@ -1491,7 +2410,8 @@ function onDocumentMouseDown(e) {
   const inCell = e.target.closest && e.target.closest("#sheetCanvas td[data-row][data-col]");
   const inToolbar = e.target.closest && e.target.closest(".toolbar");
   const inSidebar = e.target.closest && e.target.closest(".sidebar");
-  if (!inCell && !inToolbar && !inSidebar) clearSelection();
+  const inAgent = e.target.closest && e.target.closest("#agentOverlay");
+  if (!inCell && !inToolbar && !inSidebar && !inAgent) clearSelection();
 }
 
 function clearSelection() {
@@ -1586,6 +2506,9 @@ function exportJson() {
     developer: DEV_LABEL,
     exportedAt: new Date().toISOString(),
     state: app.state,
+    agent: {
+      sheetOverrides: app.ai.sheetOverrides,
+    },
   };
   download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), `${exportName()}.json`);
   toast("JSON экспортирован");
@@ -1599,12 +2522,14 @@ async function importJson(e) {
     if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xlsm")) {
       const imported = await importExcelState(file);
       app.state = normalizeState(imported);
+      app.ai.sheetOverrides = {};
       toast("Excel импортирован");
     } else {
       const text = await file.text();
       const parsed = JSON.parse(text);
       const raw = parsed.state || parsed;
       app.state = normalizeState(raw);
+      app.ai.sheetOverrides = normalizeSheetOverrides(parsed.agent?.sheetOverrides || raw.agent?.sheetOverrides);
       toast("JSON импортирован");
     }
     app.ui.treeSel = { type: "settings" };
@@ -2120,6 +3045,24 @@ function normalizeState(raw) {
     projectConsumables: Array.isArray(raw?.projectConsumables) && raw.projectConsumables.length ? raw.projectConsumables.map(normPosition) : [makePosition()],
   };
   return state;
+}
+
+function normalizeSheetOverrides(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  const out = {};
+  for (const [sheetId, cells] of Object.entries(raw)) {
+    if (!cells || typeof cells !== "object") continue;
+    const map = {};
+    for (const [key, patch] of Object.entries(cells)) {
+      if (!/^\d+:\d+$/.test(key)) continue;
+      map[key] = {
+        value: normalizeAgentValue(patch?.value ?? null),
+        formula: String(patch?.formula || ""),
+      };
+    }
+    if (Object.keys(map).length) out[String(sheetId)] = map;
+  }
+  return out;
 }
 
 function normVat(v, fallback) {

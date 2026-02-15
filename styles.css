@@ -13,6 +13,8 @@
   --toolbar-h: 44px;
   --tabs-h: 40px;
   --sidebar-w: 360px;
+  --ok: #19783f;
+  --danger: #a21e1e;
 }
 
 * {
@@ -160,10 +162,215 @@ button {
   stroke-linejoin: round;
 }
 
+.auth-btn {
+  position: relative;
+}
+
+.auth-indicator {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  border: 1px solid #fff;
+}
+
+.auth-btn.is-connected .auth-indicator {
+  background: var(--ok);
+}
+
 .sheet-stage {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  position: relative;
+}
+
+.agent-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 15;
+  border: 1px solid #2b2b2b;
+  background: rgba(253, 253, 253, 0.94);
+  backdrop-filter: blur(2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.agent-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #d1d1d1;
+  background: linear-gradient(180deg, #fefefe 0%, #e7e7e7 100%);
+}
+
+.agent-mini-btn {
+  width: 24px;
+  height: 24px;
+}
+
+.agent-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agent-head-title strong {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.agent-connection-label {
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid #c8c8c8;
+  background: #fff;
+  color: #2b2b2b;
+  white-space: nowrap;
+}
+
+.agent-body {
+  padding: 8px;
+}
+
+.agent-log {
+  max-height: 120px;
+  overflow: auto;
+  border: 1px solid #cfcfcf;
+  background: #fff;
+  padding: 6px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.agent-log-empty {
+  color: #666;
+}
+
+.agent-msg {
+  margin-top: 6px;
+}
+
+.agent-msg:first-child {
+  margin-top: 0;
+}
+
+.agent-msg .role {
+  font-weight: 700;
+}
+
+.agent-chips {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #474747;
+  background: #fff;
+  padding: 2px 5px;
+  font-size: 10px;
+  max-width: 240px;
+}
+
+.agent-chip b {
+  font-weight: 600;
+}
+
+.agent-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chip .remove {
+  border: 0;
+  background: transparent;
+  color: #333;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.agent-input-row {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: 32px 1fr 32px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.agent-action-btn {
+  width: 32px;
+  height: auto;
+}
+
+#agentPromptInput {
+  border: 1px solid #2e2e2e;
+  background: #fff;
+  min-height: 56px;
+  max-height: 140px;
+  resize: vertical;
+  padding: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.agent-context-menu {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.agent-menu-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #2f2f2f;
+  background: #fff;
+  color: #111;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.agent-menu-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agent-menu-btn:hover,
+.agent-menu-btn.is-selected {
+  background: #111;
+  color: #fff;
+}
+
+.agent-overlay.is-collapsed .agent-body {
+  display: none;
+}
+
+.agent-overlay.is-collapsed #btnToggleAgentPanel svg {
+  transform: rotate(180deg);
 }
 
 .sheet-viewport {
@@ -502,5 +709,24 @@ button {
 
   .inspector .row {
     grid-template-columns: 1fr;
+  }
+
+  .agent-overlay {
+    left: 4px;
+    right: 4px;
+    top: 4px;
+  }
+
+  .agent-log {
+    max-height: 86px;
+  }
+
+  .agent-chip {
+    max-width: 180px;
+  }
+
+  .agent-input-row {
+    grid-template-columns: 30px 1fr 30px;
+    gap: 4px;
   }
 }
