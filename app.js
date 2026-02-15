@@ -40,6 +40,12 @@ const dom = {
   btnExportJson: document.getElementById("btnExportJson"),
   btnImportJson: document.getElementById("btnImportJson"),
   btnExportXlsx: document.getElementById("btnExportXlsx"),
+  openAiAuthDialog: document.getElementById("openAiAuthDialog"),
+  openAiAuthForm: document.getElementById("openAiAuthForm"),
+  openAiApiKeyInput: document.getElementById("openAiApiKeyInput"),
+  openAiAuthHint: document.getElementById("openAiAuthHint"),
+  btnOpenAiDisconnect: document.getElementById("btnOpenAiDisconnect"),
+  btnOpenAiSave: document.getElementById("btnOpenAiSave"),
   btnOpenAiAuth: document.getElementById("btnOpenAiAuth"),
   openAiAuthIndicator: document.getElementById("openAiAuthIndicator"),
   agentOverlay: document.getElementById("agentOverlay"),
@@ -1240,6 +1246,13 @@ function bindEvents() {
   };
 
   dom.btnOpenAiAuth.onclick = onOpenAiAuthClick;
+  if (dom.openAiAuthForm) dom.openAiAuthForm.onsubmit = onOpenAiAuthSubmit;
+  if (dom.btnOpenAiDisconnect) {
+    dom.btnOpenAiDisconnect.onclick = () => {
+      disconnectOpenAi();
+      if (dom.openAiAuthDialog?.open) dom.openAiAuthDialog.close();
+    };
+  }
   dom.btnToggleAgentPanel.onclick = () => {
     app.ai.collapsed = !app.ai.collapsed;
     saveAiCollapsed();
@@ -1378,44 +1391,59 @@ function bindEvents() {
 }
 
 async function onOpenAiAuthClick() {
-  if (!app.ai.connected) {
+  if (!dom.openAiAuthDialog || typeof dom.openAiAuthDialog.showModal !== "function" || !dom.openAiApiKeyInput || !dom.openAiAuthHint || !dom.btnOpenAiDisconnect || !dom.btnOpenAiSave) {
     const key = window.prompt("Введите OpenAI API key (формат sk-...)");
     if (key === null) return;
-    const token = String(key || "").trim();
-    if (!token) {
-      toast("Ключ не введен");
-      return;
-    }
-    const verified = await verifyOpenAiApiKey(token);
-    if (!verified.ok) {
-      toast(verified.error || "OpenAI: ключ не принят");
-      return;
-    }
-    app.ai.apiKey = token;
-    app.ai.connected = true;
-    saveOpenAiApiKey();
-    renderAiUi();
-    toast("OpenAI подключен");
+    await connectOpenAiWithKey(key);
     return;
   }
 
-  const next = window.prompt("OpenAI уже подключен.\nВведите новый ключ для замены.\nОставьте пустым, чтобы отключить.", "");
-  if (next === null) return;
-  const token = String(next || "").trim();
+  dom.openAiApiKeyInput.value = "";
+  dom.openAiAuthHint.textContent = app.ai.connected
+    ? "OpenAI уже подключен. Введите новый API key, чтобы заменить текущий."
+    : "Введите OpenAI API key и нажмите Сохранить.";
+  dom.btnOpenAiDisconnect.hidden = !app.ai.connected;
+  dom.btnOpenAiSave.disabled = false;
+  dom.openAiAuthDialog.showModal();
+}
+
+async function onOpenAiAuthSubmit(e) {
+  e.preventDefault();
+  if (!dom.openAiApiKeyInput) return;
+  const token = String(dom.openAiApiKeyInput.value || "").trim();
   if (!token) {
-    disconnectOpenAi();
+    if (app.ai.connected) {
+      dom.openAiAuthDialog.close();
+      toast("Ключ не изменен");
+      return;
+    }
+    toast("Введите API key");
     return;
   }
-  const verified = await verifyOpenAiApiKey(token);
+
+  if (dom.btnOpenAiSave) dom.btnOpenAiSave.disabled = true;
+  const ok = await connectOpenAiWithKey(token);
+  if (dom.btnOpenAiSave) dom.btnOpenAiSave.disabled = false;
+  if (ok && dom.openAiAuthDialog?.open) dom.openAiAuthDialog.close();
+}
+
+async function connectOpenAiWithKey(token) {
+  const clean = String(token || "").trim();
+  if (!clean) {
+    toast("Ключ не введен");
+    return false;
+  }
+  const verified = await verifyOpenAiApiKey(clean);
   if (!verified.ok) {
-    toast(verified.error || "OpenAI: не удалось подключить ключ");
-    return;
+    toast(verified.error || "OpenAI: ключ не принят");
+    return false;
   }
-  app.ai.apiKey = token;
+  app.ai.apiKey = clean;
   app.ai.connected = true;
   saveOpenAiApiKey();
   renderAiUi();
-  toast("Ключ OpenAI обновлен");
+  toast("OpenAI подключен");
+  return true;
 }
 
 function disconnectOpenAi() {

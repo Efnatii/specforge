@@ -672,6 +672,19 @@ button {
   margin: 14px 0 0;
 }
 
+.openai-grid {
+  grid-template-columns: 1fr;
+}
+
+.openai-auth-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #333;
+  background: #efefef;
+  border: 1px solid #d4d4d4;
+  padding: 6px;
+}
+
 .toast {
   position: fixed;
   right: 14px;
