@@ -1,5 +1,5 @@
-const MARKET_MAIN_PATH_RE = /^assemblies\[\d+\]\.(main|consumable)\[\d+\]\.(name|manufacturer|article|supplier|note)$/;
-const MARKET_PROJECT_PATH_RE = /^projectConsumables\[\d+\]\.(name|manufacturer|article|supplier|note)$/;
+const MARKET_MAIN_PATH_RE = /^assemblies\[\d+\]\.(main|consumable)\[\d+\]\.(schematic|name|manufacturer|article|qty|unit|priceCatalogVatMarkup|markup|discount|supplier|note)$/;
+const MARKET_PROJECT_PATH_RE = /^projectConsumables\[\d+\]\.(schematic|name|manufacturer|article|qty|unit|priceCatalogVatMarkup|markup|discount|supplier|note)$/;
 
 export class MarketVerificationModule {
   constructor({ config, deps }) {

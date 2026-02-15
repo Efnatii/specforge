@@ -77,7 +77,19 @@ const AGENT_MAX_FORCED_RETRIES = 4;
 const AGENT_MAX_TOOL_ROUNDS = 96;
 const MARKET_VERIFICATION_MIN_SOURCES = 2;
 const MARKET_VERIFICATION_MAX_SOURCES = 6;
-const POSITION_MARKET_FIELDS = new Set(["name", "manufacturer", "article", "supplier", "note"]);
+const POSITION_MARKET_FIELDS = new Set([
+  "schematic",
+  "name",
+  "manufacturer",
+  "article",
+  "qty",
+  "unit",
+  "price_catalog_vat_markup",
+  "markup",
+  "discount",
+  "supplier",
+  "note",
+]);
 
 export const APP_CONFIG = {
   sheetNames: SHEET_NAMES,

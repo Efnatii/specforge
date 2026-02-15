@@ -22,10 +22,10 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
     return {
       type: "object",
       properties: {
-        query: { type: "string", description: "Поисковый запрос (если подтверждение через web_search)" },
+        query: { type: "string", description: "Поисковый запрос для web_search (обязателен для web-подтверждения)" },
         sources: {
           type: "array",
-          description: "Ссылки из web_search, подтверждающие существование товара",
+          description: "Ссылки из web_search, подтверждающие позицию (для web-подтверждения минимум 2 URL)",
           items: {
             type: "object",
             properties: {
@@ -38,7 +38,7 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
         },
         attachments: {
           type: "array",
-          description: "Подтверждение из прикрепленных файлов/документов",
+          description: "Подтверждение из прикрепленных файлов/документов (используй id/name существующих attachments)",
           items: {
             type: "object",
             properties: {
@@ -49,7 +49,7 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
             additionalProperties: false,
           },
         },
-        notes: { type: "string" },
+        notes: { type: "string", description: "Краткая заметка о проверке источников" },
       },
       additionalProperties: false,
     };
