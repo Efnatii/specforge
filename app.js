@@ -32,6 +32,9 @@ const CHAT_CONTEXT_RECENT_MESSAGES = 5;
 const CHAT_SUMMARY_CHUNK_SIZE = 5;
 const MAX_CHAT_SUMMARY_CHARS = 3600;
 const AI_MUTATION_INTENT_RE = /\b(создай|создать|добавь|добавить|измени|обнови|поменяй|замени|исправь|заполни|вставь|удали|увелич|уменьш|пересчитай|рассчитай|create|add|set|update|change|fill|replace|delete|write)\b/i;
+const AI_CONTINUE_PROMPT_RE = /^\s*(продолжай|продолжить|дальше|далее|продолжение|еще|ещё|continue|go on|next)\s*[.!?]*\s*$/i;
+const AI_INCOMPLETE_RESPONSE_RE = /(продолж|нужн[аоы]|уточн|подтверд|if you want|если хотите|если нужно|would you like|\?\s*$)/i;
+const AGENT_MAX_FORCED_RETRIES = 4;
 const MARKET_VERIFICATION_MIN_SOURCES = 2;
 const MARKET_VERIFICATION_MAX_SOURCES = 6;
 const POSITION_MARKET_FIELDS = new Set(["name", "manufacturer", "article", "supplier", "note"]);
@@ -142,6 +145,8 @@ const app = {
     externalJournal: [],
     changesJournal: [],
     sheetOverrides: {},
+    lastTaskPrompt: "",
+    lastAssemblyId: "",
   },
 };
 
@@ -1779,6 +1784,7 @@ function bindEvents() {
       app.ai.chatJournal = [];
       app.ai.chatSummary = "";
       app.ai.chatSummaryCount = 0;
+      app.ai.lastTaskPrompt = "";
       renderAgentJournals();
     };
   }
@@ -2123,16 +2129,24 @@ async function sendAgentPrompt() {
   }
   if (app.ai.sending) return;
 
-  const text = String(dom.agentPrompt.value || "").trim();
-  if (!text) {
+  const rawText = String(dom.agentPrompt.value || "").trim();
+  if (!rawText) {
     toast("Введите запрос для ИИ");
     return;
+  }
+  const text = normalizeAgentPrompt(rawText);
+  if (!text) {
+    toast("Нет задачи для выполнения");
+    return;
+  }
+  if (!AI_CONTINUE_PROMPT_RE.test(rawText)) {
+    app.ai.lastTaskPrompt = rawText;
   }
 
   app.ai.sending = true;
   renderAiUi();
-  addAgentLog("user", text);
-  addChangesJournal("ai.prompt", `Отправлен запрос (${text.length} символов)`);
+  addAgentLog("user", rawText);
+  addChangesJournal("ai.prompt", `Отправлен запрос (${rawText.length} символов)`);
 
   try {
     const input = buildAgentInput(text);
@@ -2148,6 +2162,17 @@ async function sendAgentPrompt() {
     app.ai.sending = false;
     renderAiUi();
   }
+}
+
+function normalizeAgentPrompt(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) return "";
+  if (!AI_CONTINUE_PROMPT_RE.test(text)) return text;
+
+  const lastTask = String(app.ai.lastTaskPrompt || "").trim();
+  if (!lastTask) return text;
+  addChangesJournal("ai.prompt.continue", "Использована последняя задача");
+  return `Продолжи и заверши предыдущую задачу пользователя без уточнений: ${lastTask}`;
 }
 
 function buildAgentInput(userText) {
@@ -2252,7 +2277,9 @@ function serializeSheetPreview(sheet, maxRows = 40, maxCols = 12, maxChars = 100
 async function runOpenAiAgentTurn(userInput, rawUserText = "") {
   const modelId = currentAiModelMeta().id;
   const input = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
-  const intentToMutate = AI_MUTATION_INTENT_RE.test(String(rawUserText || "").trim());
+  const userText = String(rawUserText || "").trim();
+  const intentToMutate = AI_MUTATION_INTENT_RE.test(userText);
+  const expectedMutations = estimateExpectedMutationCount(userText, intentToMutate);
   const toolStats = {
     mutationCalls: 0,
     successfulMutations: 0,
@@ -2274,13 +2301,15 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "") {
   });
   updateAgentTurnWebEvidence(turnCtx, response);
 
-  for (let i = 0; i < 12; i += 1) {
+  for (let i = 0; i < 16; i += 1) {
     const calls = extractAgentFunctionCalls(response);
     if (!calls.length) {
       const text = extractAgentText(response);
-      if (intentToMutate && toolStats.mutationCalls === 0 && toolStats.forcedRetries < 1) {
+
+      if (shouldForceAgentContinuation(intentToMutate, expectedMutations, toolStats, text) && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
+        const reason = buildAgentRetryReason(expectedMutations, toolStats, text);
         toolStats.forcedRetries += 1;
-        addTableJournal("agent.retry", "Автоповтор: модель не вызвала инструмент изменения");
+        addTableJournal("agent.retry", `Автоповтор: ${reason}`);
         response = await callOpenAiResponses({
           model: modelId,
           previous_response_id: response.id,
@@ -2288,33 +2317,20 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "") {
             role: "user",
             content: [{
               type: "input_text",
-              text: "Пользователь просил изменить данные. Выполни изменение через tools. Для позиций обязателен verification: либо web_search + sources URL, либо ссылки на прикрепленные документы.",
+              text: buildAgentContinuationInstruction(reason),
             }],
           }],
         });
+        updateAgentTurnWebEvidence(turnCtx, response);
         continue;
       }
 
       if (toolStats.mutationCalls > 0 && toolStats.successfulMutations === 0) {
-        if (toolStats.forcedRetries < 2) {
-          const reason = toolStats.failedMutations.slice(-2).join("; ") || "инструменты вернули 0 применений";
-          toolStats.forcedRetries += 1;
-          addTableJournal("agent.retry", `Автоповтор: ${reason}`);
-          response = await callOpenAiResponses({
-            model: modelId,
-            previous_response_id: response.id,
-            input: [{
-              role: "user",
-              content: [{
-                type: "input_text",
-                text: `Предыдущая попытка не применила изменения (${reason}). Повтори: корректные параметры tools; для позиций обязателен verification (web c источниками или прикрепленные документы).`,
-              }],
-            }],
-          });
-          continue;
-        }
         const reason = toolStats.failedMutations.slice(-2).join("; ") || "инструмент изменения не внес правок";
-        return `Изменения не применены: ${reason}. Уточните лист, диапазон или путь.`;
+        return `Изменения не применены: ${reason}.`;
+      }
+      if (intentToMutate && toolStats.mutationCalls === 0) {
+        return "Изменения не применены: модель не вызвала инструменты изменения.";
       }
 
       return text || "Готово.";
@@ -2353,6 +2369,49 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "") {
   throw new Error("agent tool loop limit");
 }
 
+function estimateExpectedMutationCount(text, hasMutationIntent) {
+  if (!hasMutationIntent) return 0;
+  const src = String(text || "").toLowerCase();
+  let count = 0;
+
+  if (/(созда|create|нов(ую|ая) сборк|new assembly)/i.test(src)) count += 1;
+  if (/(добав|insert|append|позиц|материал|автомат)/i.test(src)) count += 1;
+  if (/(измени|обнов|поменя|замени|удали|update|set|write|delete|replace|увелич|уменьш)/i.test(src)) count = Math.max(count, 1);
+
+  if (count <= 0) return 1;
+  return Math.min(3, count);
+}
+
+function isAgentTextIncomplete(text) {
+  const src = String(text || "").trim();
+  if (!src) return true;
+  if (AI_INCOMPLETE_RESPONSE_RE.test(src)) return true;
+  if (/^(выполняю|приступаю|подождите|начинаю)/i.test(src)) return true;
+  return false;
+}
+
+function shouldForceAgentContinuation(intentToMutate, expectedMutations, toolStats, text) {
+  if (!intentToMutate) return false;
+  if (toolStats.mutationCalls === 0) return true;
+  if (toolStats.successfulMutations < expectedMutations) return true;
+  if (isAgentTextIncomplete(text)) return true;
+  return false;
+}
+
+function buildAgentRetryReason(expectedMutations, toolStats, text) {
+  if (toolStats.mutationCalls === 0) return "модель не вызвала инструменты изменения";
+  if (toolStats.successfulMutations < expectedMutations) {
+    const tail = toolStats.failedMutations.slice(-2).join("; ");
+    return tail ? `выполнено изменений ${toolStats.successfulMutations}/${expectedMutations}; ошибки: ${tail}` : `выполнено изменений ${toolStats.successfulMutations}/${expectedMutations}`;
+  }
+  if (isAgentTextIncomplete(text)) return "ответ не завершает задачу";
+  return "задача не завершена";
+}
+
+function buildAgentContinuationInstruction(reason) {
+  return `Причина автоповтора: ${reason}. Доведи запрос до конечного результата в этом же ходе через tools. Нельзя задавать вопросы, нельзя просить "продолжай", нельзя откладывать. Если сборка не найдена по assembly_id, используй актуальную выбранную/последнюю сборку или создай новую и продолжи. Для позиций обязателен verification: web_search (query + URL) или attachments. В финальном ответе дай 1-2 коротких предложения без JSON.`;
+}
+
 function agentSystemPrompt() {
   return [
     "Ты AI-агент внутри SpecForge.",
@@ -2365,12 +2424,15 @@ function agentSystemPrompt() {
     "Для set_state_value передавай поле value_json как валидную JSON-строку.",
     "Не запрашивай подтверждение перед выполнением действий.",
     "Если пользователь просит выполнить изменение, выполняй сразу через tools и сообщай факт.",
-    "Подтверждение или уточнение запрашивай только если пользователь сам явно просит это сделать.",
+    "Если данных недостаточно, выбирай типовой разумный вариант и продолжай без вопросов.",
+    "Не проси пользователя написать \"продолжай\" и не откладывай выполнение на следующий ход.",
+    "Если assembly_id не найден, определи целевую сборку по текущему контексту и продолжай.",
     "Никогда не утверждай, что изменение применено, если tool вернул ok=false или applied=0.",
     "Отвечай кратко и по делу: 1-3 коротких предложения, без воды.",
+    "Не выводи JSON вызовов tools в тексте ответа.",
     "Перед изменениями проверяй целевые листы/диапазоны.",
     "При изменениях кратко подтверждай, что именно поменял.",
-    "Если запрос неясен, задай короткий уточняющий вопрос.",
+    "Если задачу можно доделать автоматически, доделывай до конца в текущем ходе.",
   ].join(" ");
 }
 
@@ -3266,6 +3328,7 @@ async function executeAgentTool(name, args, turnCtx = null) {
     const existing = app.state.assemblies.find((a) => String(a.fullName || "").trim().toLowerCase() === fullName.toLowerCase());
     if (existing) {
       addTableJournal("create_assembly", `Пропуск: сборка уже существует (${existing.fullName})`);
+      app.ai.lastAssemblyId = existing.id;
       return {
         ok: true,
         created: false,
@@ -3295,6 +3358,7 @@ async function executeAgentTool(name, args, turnCtx = null) {
     }
 
     app.state.assemblies.push(assembly);
+    app.ai.lastAssemblyId = assembly.id;
     app.ui.treeSel = { type: "assembly", id: assembly.id };
     app.ui.activeSheetId = `assembly:${assembly.id}:main`;
     renderAll();
@@ -3386,6 +3450,7 @@ async function executeAgentTool(name, args, turnCtx = null) {
     if (srcIdx >= 0) app.state.assemblies.splice(srcIdx + 1, 0, copy);
     else app.state.assemblies.push(copy);
 
+    app.ai.lastAssemblyId = copy.id;
     app.ui.treeSel = { type: "assembly", id: copy.id };
     app.ui.activeSheetId = `assembly:${copy.id}:main`;
     renderAll();
@@ -3406,6 +3471,7 @@ async function executeAgentTool(name, args, turnCtx = null) {
     }
 
     app.state.assemblies = app.state.assemblies.filter((x) => x.id !== assembly.id);
+    if (app.ai.lastAssemblyId === assembly.id) app.ai.lastAssemblyId = app.state.assemblies.length ? app.state.assemblies[app.state.assemblies.length - 1].id : "";
     app.ui.treeSel = { type: "settings" };
     app.ui.activeSheetId = "summary";
     renderAll();
@@ -3417,6 +3483,11 @@ async function executeAgentTool(name, args, turnCtx = null) {
   if (name === "list_positions") {
     const assembly = resolveAgentAssembly(args);
     if (!assembly) {
+      if (!app.state.assemblies.length) {
+        const listKey = normalizeAgentPositionList(args?.list);
+        addTableJournal("list_positions", "Сборок нет, возвращен пустой список");
+        return { ok: true, assembly: null, list: listKey, positions: [] };
+      }
       addTableJournal("list_positions", "Ошибка: сборка не найдена");
       return { ok: false, error: "assembly not found" };
     }
@@ -3441,18 +3512,8 @@ async function executeAgentTool(name, args, turnCtx = null) {
   }
 
   if (name === "add_position") {
-    const assembly = resolveAgentAssembly(args);
-    if (!assembly) {
-      addTableJournal("add_position", "Ошибка: сборка не найдена");
-      return { ok: false, error: "assembly not found" };
-    }
-
+    let assembly = resolveAgentAssembly(args);
     const listKey = normalizeAgentPositionList(args?.list);
-    const target = listKey === "consumable" ? assembly.consumable : assembly.main;
-    if (!Array.isArray(target)) {
-      addTableJournal("add_position", "Ошибка: список позиций недоступен");
-      return { ok: false, error: "target list unavailable" };
-    }
 
     const baseName = String(args?.name || "").trim();
     if (!baseName) {
@@ -3462,6 +3523,24 @@ async function executeAgentTool(name, args, turnCtx = null) {
 
     const verified = ensureMarketVerification(turnCtx, args?.verification, "add_position");
     if (!verified.ok) return { ok: false, error: verified.error };
+
+    if (!assembly) {
+      const autoName = String(args?.assembly_name || args?.assembly_id || "Новая сборка").trim() || "Новая сборка";
+      assembly = makeAssembly(app.state.assemblies.length + 1);
+      assembly.fullName = autoName;
+      assembly.abbreviation = deriveAbbr(autoName);
+      assembly.abbrManual = false;
+      app.state.assemblies.push(assembly);
+      app.ai.lastAssemblyId = assembly.id;
+      addTableJournal("add_position", `Автосоздана сборка ${assembly.fullName} (${assembly.id})`);
+      addChangesJournal("assembly.add.auto", `${assembly.id}:${assembly.fullName}`);
+    }
+
+    const target = listKey === "consumable" ? assembly.consumable : assembly.main;
+    if (!Array.isArray(target)) {
+      addTableJournal("add_position", "Ошибка: список позиций недоступен");
+      return { ok: false, error: "target list unavailable" };
+    }
 
     const position = makePosition();
     applyAgentPositionPatch(position, args);
@@ -3854,7 +3933,13 @@ function resolveAgentSheet(args) {
 
 function resolveAgentAssembly(args) {
   const id = String(args?.assembly_id || "").trim();
-  if (id) return assemblyById(id);
+  if (id) {
+    const byId = assemblyById(id);
+    if (byId) {
+      app.ai.lastAssemblyId = byId.id;
+      return byId;
+    }
+  }
 
   const nameRaw = String(args?.assembly_name || "").trim();
   if (nameRaw) {
@@ -3864,24 +3949,59 @@ function resolveAgentAssembly(args) {
       const abbr = String(a.abbreviation || "").trim().toLowerCase();
       return full === name || abbr === name;
     });
-    if (exact) return exact;
+    if (exact) {
+      app.ai.lastAssemblyId = exact.id;
+      return exact;
+    }
 
     const partial = app.state.assemblies.find((a) => {
       const full = String(a.fullName || "").trim().toLowerCase();
       const abbr = String(a.abbreviation || "").trim().toLowerCase();
       return full.includes(name) || name.includes(full) || abbr.includes(name) || name.includes(abbr);
     });
-    if (partial) return partial;
-    return null;
+    if (partial) {
+      app.ai.lastAssemblyId = partial.id;
+      return partial;
+    }
+  }
+
+  const rememberedId = String(app.ai.lastAssemblyId || "").trim();
+  if (rememberedId) {
+    const remembered = assemblyById(rememberedId);
+    if (remembered) {
+      app.ai.lastAssemblyId = remembered.id;
+      return remembered;
+    }
   }
 
   const selId = String(app.ui?.treeSel?.id || "").trim();
   if (selId) {
     const selected = assemblyById(selId);
-    if (selected) return selected;
+    if (selected) {
+      app.ai.lastAssemblyId = selected.id;
+      return selected;
+    }
   }
 
-  if (app.state.assemblies.length === 1) return app.state.assemblies[0];
+  const activeId = String(app.ui?.activeSheetId || "").trim();
+  const m = activeId.match(/^assembly:([^:]+):/);
+  if (m?.[1]) {
+    const bySheet = assemblyById(m[1]);
+    if (bySheet) {
+      app.ai.lastAssemblyId = bySheet.id;
+      return bySheet;
+    }
+  }
+
+  if (app.state.assemblies.length === 1) {
+    app.ai.lastAssemblyId = app.state.assemblies[0].id;
+    return app.state.assemblies[0];
+  }
+  if (app.state.assemblies.length > 1) {
+    const fallback = app.state.assemblies[app.state.assemblies.length - 1];
+    app.ai.lastAssemblyId = fallback.id;
+    return fallback;
+  }
   return null;
 }
 
@@ -4278,6 +4398,7 @@ function deleteAssembly(assemblyId) {
   const deleted = assemblyById(assemblyId);
   if (!deleted) return;
   app.state.assemblies = app.state.assemblies.filter((x) => x.id !== assemblyId);
+  if (app.ai.lastAssemblyId === assemblyId) app.ai.lastAssemblyId = app.state.assemblies.length ? app.state.assemblies[app.state.assemblies.length - 1].id : "";
   app.ui.treeSel = { type: "settings" };
   app.ui.activeSheetId = "summary";
   renderAll();
@@ -4304,6 +4425,7 @@ function duplicateAssembly(assemblyId) {
   if (srcIdx >= 0) app.state.assemblies.splice(srcIdx + 1, 0, copy);
   else app.state.assemblies.push(copy);
 
+  app.ai.lastAssemblyId = copy.id;
   app.ui.treeSel = { type: "assembly", id: copy.id };
   app.ui.activeSheetId = `assembly:${copy.id}:main`;
   renderAll();
