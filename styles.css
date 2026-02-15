@@ -405,14 +405,6 @@ button {
   cursor: pointer;
 }
 
-.toolbar-text-btn {
-  height: 32px;
-  padding: 0 10px;
-  font-size: 12px;
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-
 .btn-flat:hover {
   background: #111;
   color: #fff;
