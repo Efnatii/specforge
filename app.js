@@ -75,6 +75,7 @@ const AI_CONTINUE_PROMPT_RE = /^\s*(продолжай|продолжить|да
 const AI_SHORT_ACK_PROMPT_RE = /^\s*(да|ага|ок|окей|хорошо|сделай|делай|дальше|далее|продолжай|продолжить|continue|go on|next|удали|delete)\s*[.!?]*\s*$/i;
 const AI_INCOMPLETE_RESPONSE_RE = /(продолж|нужн[аоы]|уточн|подтверд|если хотите|если нужно|would you like|if you want|ответьте|выберите|укажите|что делаем|какой вариант|\?\s*$)/i;
 const AGENT_MAX_FORCED_RETRIES = 4;
+const AGENT_MAX_TOOL_ROUNDS = 96;
 const MARKET_VERIFICATION_MIN_SOURCES = 2;
 const MARKET_VERIFICATION_MAX_SOURCES = 6;
 const POSITION_MARKET_FIELDS = new Set(["name", "manufacturer", "article", "supplier", "note"]);
@@ -2917,6 +2918,7 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
     webSearchUrls: [],
   };
   const startedAt = Date.now();
+  let roundsUsed = 0;
 
   let response = await callOpenAiResponses(buildAgentResponsesPayload({
     model: modelId,
@@ -2930,7 +2932,8 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
   app.ai.streamResponseId = String(response?.id || "");
   updateAgentTurnWebEvidence(turnCtx, response);
 
-  for (let i = 0; i < 24; i += 1) {
+  for (let i = 0; i < AGENT_MAX_TOOL_ROUNDS; i += 1) {
+    roundsUsed = i + 1;
     const calls = extractAgentFunctionCalls(response);
     if (!calls.length) {
       const text = extractAgentText(response);
@@ -3071,6 +3074,8 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
       expected_mutations: expectedMutations,
       successful_mutations: toolStats.successfulMutations,
       retries: toolStats.forcedRetries,
+      max_tool_rounds: AGENT_MAX_TOOL_ROUNDS,
+      rounds_used: roundsUsed,
     },
   });
   throw new Error("agent tool loop limit");
@@ -3213,6 +3218,7 @@ function agentSystemPrompt() {
     "Если данных недостаточно, выбирай типовой разумный вариант и продолжай без вопросов.",
     "Нельзя спрашивать подтверждения/уточнения. Любой запрос доводи до результата в текущем ходе.",
     "Не проси пользователя написать \"продолжай\" и не откладывай выполнение на следующий ход.",
+    "Если шаги независимы, группируй несколько tool-вызовов в одном ответе, чтобы сократить число раундов.",
     "Если assembly_id не найден, определи целевую сборку по текущему контексту и продолжай.",
     "Никогда не утверждай, что изменение применено, если tool вернул ok=false или applied=0.",
     "Отвечай кратко и по делу: 1-3 коротких предложения, без воды.",
