@@ -529,6 +529,36 @@ button {
 .agent-journal-item .text {
   color: #1f1f1f;
   word-break: break-word;
+  white-space: normal;
+}
+
+.journal-text-frag {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.journal-json-block {
+  margin-top: 4px;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+}
+
+.journal-json-block summary {
+  cursor: pointer;
+  padding: 2px 6px;
+  font-weight: 700;
+  user-select: text;
+}
+
+.journal-json-block pre {
+  margin: 0;
+  padding: 6px;
+  border-top: 1px dashed #d7d7d7;
+  background: #f8f8f8;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre;
+  user-select: text;
 }
 
 .agent-journal-empty {

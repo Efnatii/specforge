@@ -26,6 +26,8 @@ const MAX_CHAT_JOURNAL = 220;
 const MAX_TABLE_JOURNAL = 240;
 const MAX_EXTERNAL_JOURNAL = 240;
 const MAX_CHANGES_JOURNAL = 320;
+const MAX_CHAT_JOURNAL_TEXT = 120000;
+const MAX_COMMON_JOURNAL_TEXT = 8000;
 const CHAT_CONTEXT_RECENT_MESSAGES = 5;
 const CHAT_SUMMARY_CHUNK_SIZE = 5;
 const MAX_CHAT_SUMMARY_CHARS = 3600;
@@ -277,7 +279,7 @@ function addAgentLog(role, text) {
   const clean = String(text || "").trim();
   if (!clean) return;
   const kind = role === "assistant" ? "AI" : "Вы";
-  const removed = addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, kind, clean);
+  const removed = addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, kind, clean, MAX_CHAT_JOURNAL_TEXT);
   if (removed > 0 && app.ai.chatSummaryCount > 0) {
     app.ai.chatSummaryCount = Math.max(0, app.ai.chatSummaryCount - removed);
   }
@@ -351,9 +353,111 @@ function renderJournalList(kind) {
   const html = items
     .slice()
     .reverse()
-    .map((it) => `<div class="agent-journal-item"><span class="time">${esc(journalTime(it.ts))}</span><span class="kind">${esc(it.kind)}</span><span class="text">${esc(it.text)}</span></div>`)
+    .map((it) => `<div class="agent-journal-item"><span class="time">${esc(journalTime(it.ts))}</span><span class="kind">${esc(it.kind)}</span><span class="text">${renderJournalTextHtml(it.text)}</span></div>`)
     .join("");
   listEl.innerHTML = html;
+}
+
+function renderJournalTextHtml(textRaw) {
+  const chunks = splitTextAndJsonChunks(String(textRaw || ""));
+  const parts = [];
+  let jsonIdx = 1;
+
+  for (const chunk of chunks) {
+    if (chunk.type === "json") {
+      const pretty = JSON.stringify(chunk.value, null, 2);
+      parts.push(`<details class="journal-json-block"><summary>JSON ${jsonIdx}</summary><pre>${esc(pretty)}</pre></details>`);
+      jsonIdx += 1;
+      continue;
+    }
+
+    const text = String(chunk.text || "");
+    if (!text) continue;
+    parts.push(`<span class="journal-text-frag">${esc(text).replace(/\n/g, "<br/>")}</span>`);
+  }
+
+  return parts.join("");
+}
+
+function splitTextAndJsonChunks(text) {
+  const src = String(text || "");
+  if (!src) return [{ type: "text", text: "" }];
+
+  const out = [];
+  let i = 0;
+  let last = 0;
+  while (i < src.length) {
+    const ch = src[i];
+    if (ch !== "{" && ch !== "[") {
+      i += 1;
+      continue;
+    }
+
+    const end = findBalancedJsonEnd(src, i);
+    if (end < 0) {
+      i += 1;
+      continue;
+    }
+
+    const candidate = src.slice(i, end + 1);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(candidate);
+    } catch {
+      i += 1;
+      continue;
+    }
+
+    if (i > last) out.push({ type: "text", text: src.slice(last, i) });
+    out.push({ type: "json", value: parsed });
+    i = end + 1;
+    last = i;
+  }
+
+  if (last < src.length) out.push({ type: "text", text: src.slice(last) });
+  if (!out.length) return [{ type: "text", text: src }];
+  return out;
+}
+
+function findBalancedJsonEnd(text, startIdx) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = startIdx; i < text.length; i += 1) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{" || ch === "[") {
+      depth += 1;
+      continue;
+    }
+    if (ch === "}" || ch === "]") {
+      depth -= 1;
+      if (depth === 0) return i;
+      if (depth < 0) return -1;
+    }
+  }
+
+  return -1;
 }
 
 function journalDateTime(ts) {
@@ -379,10 +483,25 @@ function formatJournalForCopy(kind) {
   for (const it of items) {
     const ts = journalDateTime(it?.ts);
     const k = String(it?.kind || "").trim();
-    const t = String(it?.text || "").replace(/\s+/g, " ").trim();
+    const t = formatJournalTextForCopy(it?.text);
     lines.push(`[${ts}] ${k}: ${t}`);
   }
   return lines.join("\n");
+}
+
+function formatJournalTextForCopy(textRaw) {
+  const chunks = splitTextAndJsonChunks(String(textRaw || ""));
+  const out = [];
+  let idx = 1;
+  for (const chunk of chunks) {
+    if (chunk.type === "json") {
+      out.push(`\n[JSON ${idx}]\n${JSON.stringify(chunk.value, null, 2)}\n`);
+      idx += 1;
+      continue;
+    }
+    out.push(String(chunk.text || ""));
+  }
+  return out.join("").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 async function copyJournal(kind) {
@@ -414,11 +533,12 @@ function addChangesJournal(kind, text) {
   addJournalEntry(app.ai.changesJournal, MAX_CHANGES_JOURNAL, kind, text);
 }
 
-function addJournalEntry(target, limit, kind, text) {
+function addJournalEntry(target, limit, kind, text, maxTextLen = MAX_COMMON_JOURNAL_TEXT) {
+  const rawText = String(text || "").trim();
   const entry = {
     ts: Date.now(),
     kind: String(kind || "event").slice(0, 60),
-    text: String(text || "").trim().slice(0, 2000),
+    text: maxTextLen > 0 ? rawText.slice(0, maxTextLen) : rawText,
   };
   if (!entry.text) return 0;
   target.push(entry);
