@@ -1883,29 +1883,13 @@ function serializeSheetPreview(sheet, maxRows = 40, maxCols = 12, maxChars = 100
 async function runOpenAiAgentTurn(userInput) {
   const modelId = currentAiModelMeta().id;
   const input = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
-  let allowWebSearch = Boolean(app.ai.options.webSearch);
-  let response = null;
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      response = await callOpenAiResponses({
-        model: modelId,
-        instructions: agentSystemPrompt(),
-        input,
-        tools: agentToolsSpec(allowWebSearch),
-        tool_choice: "auto",
-      });
-      break;
-    } catch (err) {
-      const msg = String(err?.message || "");
-      const canRetryWithoutWeb = allowWebSearch && isWebSearchToolError(msg);
-      if (!canRetryWithoutWeb) throw err;
-      allowWebSearch = false;
-      addExternalJournal("openai.fallback", "Повтор без web_search tool из-за ошибки 400");
-    }
-  }
-
-  if (!response) throw new Error("openai no response");
+  let response = await callOpenAiResponses({
+    model: modelId,
+    instructions: agentSystemPrompt(),
+    input,
+    tools: agentToolsSpec(),
+    tool_choice: "auto",
+  });
 
   for (let i = 0; i < 10; i += 1) {
     const calls = extractAgentFunctionCalls(response);
@@ -1935,22 +1919,18 @@ async function runOpenAiAgentTurn(userInput) {
   throw new Error("agent tool loop limit");
 }
 
-function isWebSearchToolError(message) {
-  const m = String(message || "").toLowerCase();
-  return m.includes("400") && (m.includes("web_search") || m.includes("tool") || m.includes("tools"));
-}
-
 function agentSystemPrompt() {
   return [
     "Ты AI-агент внутри SpecForge.",
     "Ты можешь читать и изменять таблицы и состояние проекта через tools.",
+    "Для set_state_value передавай поле value_json как валидную JSON-строку.",
     "Перед изменениями проверяй целевые листы/диапазоны.",
     "При изменениях кратко подтверждай, что именно поменял.",
     "Если запрос неясен, задай короткий уточняющий вопрос.",
   ].join(" ");
 }
 
-function agentToolsSpec(useWebSearch = app.ai.options.webSearch) {
+function agentToolsSpec() {
   const tools = [
     {
       type: "function",
@@ -2026,27 +2006,24 @@ function agentToolsSpec(useWebSearch = app.ai.options.webSearch) {
         additionalProperties: false,
       },
     },
-    {
-      type: "function",
-      name: "set_state_value",
-      description: "Изменить значение в состоянии проекта по пути",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string" },
-          value: {
-            type: ["string", "number", "boolean", "object", "array", "null"],
-            items: {},
-            additionalProperties: true,
-          },
-        },
-        required: ["path", "value"],
-        additionalProperties: false,
-      },
-    },
   ];
 
-  if (useWebSearch) tools.push({ type: "web_search_preview" });
+  tools.push({
+    type: "function",
+    name: "set_state_value",
+    description: "Изменить значение в состоянии проекта по пути. value_json должен быть валидным JSON (например: 123, \"text\", true, null, {\"a\":1}, [1,2]).",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        value_json: { type: "string" },
+      },
+      required: ["path", "value_json"],
+      additionalProperties: false,
+    },
+  });
+
+  if (app.ai.options.webSearch) tools.push({ type: "web_search_preview" });
   return tools;
 }
 
@@ -2117,6 +2094,17 @@ function parseJsonSafe(text, fallback) {
     return JSON.parse(String(text || ""));
   } catch {
     return fallback;
+  }
+}
+
+function parseJsonValue(raw) {
+  if (typeof raw !== "string") return raw;
+  const txt = raw.trim();
+  if (!txt) return "";
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return raw;
   }
 }
 
@@ -2246,8 +2234,9 @@ async function executeAgentTool(name, args) {
       addTableJournal("set_state_value", "Ошибка: path required");
       return { ok: false, error: "path required" };
     }
+    const nextValue = args?.value_json !== undefined ? parseJsonValue(args.value_json) : args?.value;
     try {
-      setStatePath(args.path, args.value);
+      setStatePath(args.path, nextValue);
       renderAll();
       addTableJournal("set_state_value", `Изменен путь ${args.path}`);
       addChangesJournal("ai.set_state", args.path);
