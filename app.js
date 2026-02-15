@@ -137,6 +137,7 @@ const dom = {
   tableJournalCount: document.getElementById("tableJournalCount"),
   externalJournalCount: document.getElementById("externalJournalCount"),
   changesJournalCount: document.getElementById("changesJournalCount"),
+  btnCopyAllJournals: document.getElementById("btnCopyAllJournals"),
   btnCopyChatJournal: document.getElementById("btnCopyChatJournal"),
   btnCopyTableJournal: document.getElementById("btnCopyTableJournal"),
   btnCopyExternalJournal: document.getElementById("btnCopyExternalJournal"),
@@ -885,6 +886,29 @@ async function copyJournal(kind) {
   }
 }
 
+function formatAllJournalsForCopy() {
+  return ["chat", "table", "external", "changes"]
+    .map((kind) => formatJournalForCopy(kind))
+    .join("\n\n");
+}
+
+async function copyAllJournals() {
+  const kinds = ["chat", "table", "external", "changes"];
+  const total = kinds.reduce((acc, kind) => acc + (journalConfig(kind)?.items.length || 0), 0);
+  if (!total) {
+    toast("Все журналы пусты");
+    return;
+  }
+  const text = formatAllJournalsForCopy();
+  try {
+    await copyText(text);
+    addChangesJournal("journal.copy", "all", { meta: { total } });
+    toast("Все журналы скопированы");
+  } catch {
+    toast("Не удалось скопировать все журналы");
+  }
+}
+
 function addTableJournal(kind, text, options = {}) {
   addJournalEntry(app.ai.tableJournal, MAX_TABLE_JOURNAL, kind, text, MAX_COMMON_JOURNAL_TEXT, {
     source: options?.source || "table",
@@ -1333,6 +1357,12 @@ function keepAbbr(value) {
 
 function pctToDec(v) {
   return num(v) / 100;
+}
+
+function normalizePercentDecimal(v, fallback = 0) {
+  const n = num(v, fallback);
+  const abs = Math.abs(n);
+  return abs > 1 && abs <= 100 ? n / 100 : n;
 }
 
 function decToPct(v) {
@@ -2210,6 +2240,11 @@ function bindEvents() {
   if (dom.btnCopyChatJournal) {
     dom.btnCopyChatJournal.onclick = () => {
       void copyJournal("chat");
+    };
+  }
+  if (dom.btnCopyAllJournals) {
+    dom.btnCopyAllJournals.onclick = () => {
+      void copyAllJournals();
     };
   }
   if (dom.btnCopyTableJournal) {
@@ -6709,8 +6744,7 @@ function normalizeSheetOverrides(raw) {
 }
 
 function normVat(v, fallback) {
-  const n = num(v, fallback);
-  return n > 1 && n <= 100 ? n / 100 : n;
+  return normalizePercentDecimal(v, fallback);
 }
 
 function normAssembly(a, i) {
