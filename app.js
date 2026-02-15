@@ -2034,7 +2034,11 @@ function agentToolsSpec(useWebSearch = app.ai.options.webSearch) {
         type: "object",
         properties: {
           path: { type: "string" },
-          value: { type: ["string", "number", "boolean", "object", "array", "null"] },
+          value: {
+            type: ["string", "number", "boolean", "object", "array", "null"],
+            items: {},
+            additionalProperties: true,
+          },
         },
         required: ["path", "value"],
         additionalProperties: false,
