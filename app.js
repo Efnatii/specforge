@@ -38,6 +38,39 @@ const JOURNAL_RENDER_DEBOUNCE_MS = 90;
 const STREAM_DELTA_FLUSH_MS = 120;
 const STREAM_TEXT_PREVIEW_LIMIT = 12000;
 const AI_MUTATION_INTENT_RE = /\b(создай|создать|добавь|добавить|измени|обнови|поменяй|замени|исправь|заполни|вставь|удали|увелич|уменьш|пересчитай|рассчитай|create|add|set|update|change|fill|replace|delete|write)\b/i;
+const AI_ACTIONABLE_VERB_RE = /\b(вызови|вызвать|переключи|переключить|прочитай|прочитать|выполни|выполнить|запусти|запустить|получи|получить|покажи|показать|resolve|list|read|get|write|set|update|delete|toggle|create|add|duplicate|clear|run|execute)\b/i;
+const AI_TOOL_NAME_HINTS = [
+  "resolve_target_context",
+  "list_sheets",
+  "set_active_sheet",
+  "list_assemblies",
+  "read_settings",
+  "update_settings",
+  "get_state",
+  "set_state_value",
+  "get_selection",
+  "read_range",
+  "write_cells",
+  "clear_range",
+  "clear_sheet_overrides",
+  "create_assembly",
+  "update_assembly",
+  "duplicate_assembly",
+  "delete_assembly",
+  "bulk_delete_assemblies",
+  "read_assembly",
+  "list_positions",
+  "add_position",
+  "read_position",
+  "update_position",
+  "duplicate_position",
+  "delete_position",
+  "toggle_project_consumables",
+  "add_project_position",
+  "list_project_positions",
+  "update_project_position",
+  "delete_project_position",
+];
 const AI_CONTINUE_PROMPT_RE = /^\s*(продолжай|продолжить|дальше|далее|продолжение|еще|ещё|continue|go on|next)\s*[.!?]*\s*$/i;
 const AI_SHORT_ACK_PROMPT_RE = /^\s*(да|ага|ок|окей|хорошо|сделай|делай|дальше|далее|продолжай|продолжить|continue|go on|next|удали|delete)\s*[.!?]*\s*$/i;
 const AI_INCOMPLETE_RESPONSE_RE = /(продолж|нужн[аоы]|уточн|подтверд|если хотите|если нужно|would you like|if you want|ответьте|выберите|укажите|что делаем|какой вариант|\?\s*$)/i;
@@ -2695,7 +2728,7 @@ function normalizeAgentPrompt(rawText) {
     };
   }
 
-  const actionable = AI_MUTATION_INTENT_RE.test(text);
+  const actionable = isActionableAgentPrompt(text);
   return {
     text,
     basePrompt: text,
@@ -2703,6 +2736,14 @@ function normalizeAgentPrompt(rawText) {
     mode: actionable ? "actionable" : "plain",
     usedPendingTask: false,
   };
+}
+
+function isActionableAgentPrompt(textRaw) {
+  const text = String(textRaw || "").trim();
+  if (!text) return false;
+  if (AI_MUTATION_INTENT_RE.test(text) || AI_ACTIONABLE_VERB_RE.test(text)) return true;
+  const lower = text.toLowerCase();
+  return AI_TOOL_NAME_HINTS.some((tool) => lower.includes(tool));
 }
 
 function buildAgentInput(userText) {
@@ -2804,14 +2845,32 @@ function serializeSheetPreview(sheet, maxRows = 40, maxCols = 12, maxChars = 100
   return lines.join("\n").slice(0, maxChars);
 }
 
+function buildAgentResponsesPayload(options = {}) {
+  const payload = {
+    model: String(options?.model || app.ai.model || ""),
+    tools: agentToolsSpec(),
+    tool_choice: "auto",
+  };
+  const previousResponseId = String(options?.previousResponseId || "").trim();
+  if (previousResponseId) payload.previous_response_id = previousResponseId;
+  if (!previousResponseId) {
+    const instructions = String(options?.instructions || "").trim();
+    if (instructions) payload.instructions = instructions;
+  }
+  if (options?.input !== undefined) payload.input = options.input;
+  return payload;
+}
+
 async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
   const modelId = currentAiModelMeta().id;
   const input = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
   const userText = String(options?.rawUserText || rawUserText || "").trim();
   const turnId = String(options?.turnId || app.ai.turnId || "");
+  const intentToUseTools = isActionableAgentPrompt(userText);
   const intentToMutate = AI_MUTATION_INTENT_RE.test(userText);
   const expectedMutations = estimateExpectedMutationCount(userText, intentToMutate);
   const toolStats = {
+    totalToolCalls: 0,
     mutationCalls: 0,
     successfulMutations: 0,
     failedMutations: [],
@@ -2824,13 +2883,11 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
   };
   const startedAt = Date.now();
 
-  let response = await callOpenAiResponses({
+  let response = await callOpenAiResponses(buildAgentResponsesPayload({
     model: modelId,
     instructions: agentSystemPrompt(),
     input,
-    tools: agentToolsSpec(),
-    tool_choice: "auto",
-  }, {
+  }), {
     turnId,
     onDelta: options?.onStreamDelta,
     onEvent: options?.onStreamEvent,
@@ -2843,7 +2900,7 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
     if (!calls.length) {
       const text = extractAgentText(response);
 
-      if (shouldForceAgentContinuation(intentToMutate, expectedMutations, toolStats, text) && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
+      if (shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text) && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
         const reason = buildAgentRetryReason(expectedMutations, toolStats, text);
         toolStats.forcedRetries += 1;
         addTableJournal("agent.retry", `Автоповтор: ${reason}`, {
@@ -2857,9 +2914,9 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
             successful_mutations: toolStats.successfulMutations,
           },
         });
-        response = await callOpenAiResponses({
+        response = await callOpenAiResponses(buildAgentResponsesPayload({
           model: modelId,
-          previous_response_id: response.id,
+          previousResponseId: response.id,
           input: [{
             role: "user",
             content: [{
@@ -2867,7 +2924,7 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
               text: buildAgentContinuationInstruction(reason, true),
             }],
           }],
-        }, {
+        }), {
           turnId,
           onDelta: options?.onStreamDelta,
           onEvent: options?.onStreamEvent,
@@ -2884,6 +2941,9 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
       if (intentToMutate && toolStats.mutationCalls === 0) {
         return "Изменения не применены: модель не вызвала инструменты изменения.";
       }
+      if (intentToUseTools && toolStats.totalToolCalls === 0) {
+        return "Действия не применены: модель не вызвала инструменты.";
+      }
       if (intentToMutate && isAgentTextIncomplete(text)) {
         if (toolStats.successfulMutations > 0) {
           return `Готово. Изменения применены (${toolStats.successfulMutations}).`;
@@ -2898,6 +2958,7 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
 
     const outputs = [];
     for (const call of calls) {
+      toolStats.totalToolCalls += 1;
       const args = parseJsonSafe(call.arguments, {});
       addExternalJournal("tool.call", `${call.name}`, {
         turn_id: turnId,
@@ -2953,11 +3014,11 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
       });
     }
 
-    response = await callOpenAiResponses({
+    response = await callOpenAiResponses(buildAgentResponsesPayload({
       model: modelId,
-      previous_response_id: response.id,
+      previousResponseId: response.id,
       input: outputs,
-    }, {
+    }), {
       turnId,
       onDelta: options?.onStreamDelta,
       onEvent: options?.onStreamEvent,
@@ -2993,24 +3054,37 @@ function estimateExpectedMutationCount(text, hasMutationIntent) {
   return Math.min(3, count);
 }
 
-function isAgentTextIncomplete(text) {
+function looksLikePseudoToolText(text) {
   const src = String(text || "").trim();
-  if (!src) return true;
-  if (AI_INCOMPLETE_RESPONSE_RE.test(src)) return true;
-  if (/^(выполняю|приступаю|подождите|начинаю)/i.test(src)) return true;
+  if (!src) return false;
+  if (/"to"\s*:\s*"functions\./i.test(src)) return true;
+  if (/"recipient_name"\s*:\s*"functions\./i.test(src)) return true;
+  if (/"type"\s*:\s*"multi_tool_result"/i.test(src)) return true;
+  if (/^###\s*calling\b/i.test(src)) return true;
   return false;
 }
 
-function shouldForceAgentContinuation(intentToMutate, expectedMutations, toolStats, text) {
-  if (!intentToMutate) return false;
-  if (toolStats.mutationCalls === 0) return true;
-  if (toolStats.successfulMutations < expectedMutations) return true;
+function isAgentTextIncomplete(text) {
+  const src = String(text || "").trim();
+  if (!src) return true;
+  if (looksLikePseudoToolText(src)) return true;
+  if (AI_INCOMPLETE_RESPONSE_RE.test(src)) return true;
+  if (/^(выполняю|приступаю|подождите|начинаю|calling|running|i'?ll run)/i.test(src)) return true;
+  return false;
+}
+
+function shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text) {
+  if (!intentToUseTools && num(toolStats?.totalToolCalls, 0) === 0) return false;
+  if (num(toolStats?.totalToolCalls, 0) === 0) return true;
+  if (looksLikePseudoToolText(text)) return true;
+  if (intentToMutate && toolStats.successfulMutations < expectedMutations) return true;
   if (isAgentTextIncomplete(text)) return true;
   return false;
 }
 
 function buildAgentRetryReason(expectedMutations, toolStats, text) {
-  if (toolStats.mutationCalls === 0) return "модель не вызвала инструменты изменения";
+  if (num(toolStats?.totalToolCalls, 0) === 0) return "модель не вызвала инструменты";
+  if (expectedMutations > 0 && toolStats.mutationCalls === 0) return "модель не вызвала инструменты изменения";
   if (toolStats.successfulMutations < expectedMutations) {
     const tail = toolStats.failedMutations.slice(-2).join("; ");
     return tail ? `выполнено изменений ${toolStats.successfulMutations}/${expectedMutations}; ошибки: ${tail}` : `выполнено изменений ${toolStats.successfulMutations}/${expectedMutations}`;
@@ -3670,10 +3744,12 @@ async function callOpenAiResponsesJson(payload, options = {}) {
   const startedAt = Date.now();
   const isContinuation = Boolean(payload?.previous_response_id);
   const model = String(payload?.model || app.ai.model || "");
+  const toolsCount = Array.isArray(payload?.tools) ? payload.tools.length : 0;
+  const continuationHasTools = isContinuation ? toolsCount > 0 : false;
   const requestId = uid();
   app.ai.currentRequestId = requestId;
 
-  addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${Array.isArray(payload?.tools) ? payload.tools.length : 0}`, {
+  addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${toolsCount}`, {
     turn_id: options?.turnId || app.ai.turnId || "",
     request_id: requestId,
     status: "start",
@@ -3681,7 +3757,8 @@ async function callOpenAiResponsesJson(payload, options = {}) {
       stream: false,
       model,
       continuation: isContinuation,
-      tools_count: Array.isArray(payload?.tools) ? payload.tools.length : 0,
+      tools_count: toolsCount,
+      continuation_has_tools: continuationHasTools,
     },
   });
 
@@ -3753,12 +3830,14 @@ async function callOpenAiResponsesStream(payload, options = {}) {
   const startedAt = Date.now();
   const model = String(payload?.model || app.ai.model || "");
   const isContinuation = Boolean(payload?.previous_response_id);
+  const toolsCount = Array.isArray(payload?.tools) ? payload.tools.length : 0;
+  const continuationHasTools = isContinuation ? toolsCount > 0 : false;
   const requestId = uid();
   const turnId = options?.turnId || app.ai.turnId || "";
   app.ai.currentRequestId = requestId;
   const timeoutMs = Math.max(30000, num(options?.timeout_ms, 180000));
 
-  addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${Array.isArray(payload?.tools) ? payload.tools.length : 0}`, {
+  addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${toolsCount}`, {
     turn_id: turnId,
     request_id: requestId,
     status: "start",
@@ -3766,7 +3845,8 @@ async function callOpenAiResponsesStream(payload, options = {}) {
       stream: true,
       model,
       continuation: isContinuation,
-      tools_count: Array.isArray(payload?.tools) ? payload.tools.length : 0,
+      tools_count: toolsCount,
+      continuation_has_tools: continuationHasTools,
     },
   });
 
