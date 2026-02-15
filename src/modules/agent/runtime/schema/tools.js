@@ -57,8 +57,10 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
 
   function agentToolsSpec() {
     const verifySchema = verificationParam();
+    const allowQuestions = app?.ai?.options?.allowQuestions !== false;
     const tools = [
       ...sheetSchemaFacade.buildSheetNavigationTools(),
+      ...(allowQuestions ? stateSchemaFacade.buildInteractionTools() : []),
       ...assemblySchemaFacade.buildAssemblyCoreTools(),
       ...stateSchemaFacade.buildSettingsTools(),
       ...assemblySchemaFacade.buildAssemblyManagementTools(),

@@ -7,6 +7,35 @@ export class AgentRuntimeStateToolSchemaModule {
 function createAgentRuntimeStateToolSchemaInternal(ctx) {
   void ctx;
 
+  function buildInteractionTools() {
+    return [
+      {
+        type: "function",
+        name: "ask_user_question",
+        description: "Задать пользователю уточняющий вопрос в структурированном виде (без текста-вопроса в обычном ответе)",
+        parameters: {
+          type: "object",
+          properties: {
+            question: { type: "string", description: "Короткий конкретный вопрос к пользователю" },
+            options: {
+              type: "array",
+              description: "Варианты ответа (2-6), без нумерации и служебного текста",
+              minItems: 2,
+              maxItems: 6,
+              items: { type: "string" },
+            },
+            allow_custom: {
+              type: "boolean",
+              description: "Разрешить пользователю ввести свой ответ вручную",
+            },
+          },
+          required: ["question"],
+          additionalProperties: false,
+        },
+      },
+    ];
+  }
+
   function buildSettingsTools() {
     return [
       {
@@ -72,6 +101,7 @@ function createAgentRuntimeStateToolSchemaInternal(ctx) {
   }
 
   return {
+    buildInteractionTools,
     buildSettingsTools,
     buildStatePathTools,
   };

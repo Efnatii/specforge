@@ -55,6 +55,9 @@ export class AgentAttachmentModule {
 
     if (!(option in this._app.ai.options)) return;
     this._app.ai.options[option] = !this._app.ai.options[option];
+    if (option === "allowQuestions" && !this._app.ai.options[option]) {
+      this._app.ai.pendingQuestion = null;
+    }
     this._saveAiOptions();
     this._addChangesJournal("ai.option", `${option}=${this._app.ai.options[option] ? "on" : "off"}`);
     this._renderAiUi();

@@ -169,6 +169,7 @@ export class AppBindingsModule {
         this._app.ai.lastTaskPrompt = "";
         this._app.ai.lastActionablePrompt = "";
         this._app.ai.pendingTask = "";
+        this._app.ai.pendingQuestion = null;
         this._app.ai.lastStreamBuffer = "";
         this._app.ai.streamEntryId = "";
         this._app.ai.streamDeltaHasPending = false;
@@ -201,6 +202,11 @@ export class AppBindingsModule {
     this._dom.btnAgentSend.onclick = () => {
       void this._agentPromptApi.sendAgentPrompt();
     };
+    if (this._dom.agentQuestionFrame) {
+      this._dom.agentQuestionFrame.onclick = (e) => {
+        void this._agentPromptApi.onAgentQuestionFrameClick(e);
+      };
+    }
     this._dom.agentPrompt.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();

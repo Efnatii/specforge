@@ -52,6 +52,7 @@ function createAiJournalInternal(ctx) {
     timer: 0,
     kinds: new Set(),
   };
+  ensureJournalUiState();
 
 function loadAiSettings() {
   try {
@@ -73,7 +74,7 @@ function loadAiSettings() {
     const raw = storage.getItem(STORAGE_KEYS.agentOptions);
     if (raw) {
       const parsed = JSON.parse(raw);
-      for (const k of ["currentSheet", "allSheets", "selection", "webSearch"]) {
+      for (const k of ["currentSheet", "allSheets", "selection", "webSearch", "allowQuestions"]) {
         if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
       }
     }
@@ -139,13 +140,15 @@ function renderAiUi() {
     dom.agentOverlay.classList.toggle("is-collapsed", app.ai.collapsed);
   }
 
-  if (dom.btnAgentSend) dom.btnAgentSend.disabled = !app.ai.connected || app.ai.sending;
-  if (dom.agentPrompt) dom.agentPrompt.disabled = !app.ai.connected || app.ai.sending;
+  const hasLockedQuestion = hasLockedQuestionOptions();
+  if (dom.btnAgentSend) dom.btnAgentSend.disabled = !app.ai.connected || app.ai.sending || hasLockedQuestion;
+  if (dom.agentPrompt) dom.agentPrompt.disabled = !app.ai.connected || app.ai.sending || hasLockedQuestion;
 
   renderSidebarMode();
   renderJournalViewMode();
   renderAgentChips();
   renderAgentContextIcons();
+  renderAgentQuestionFrame();
   renderAgentJournals();
 }
 
@@ -158,6 +161,7 @@ function renderAgentChips() {
     allSheets: "Все листы",
     selection: "Выделение",
     webSearch: "Веб-поиск",
+    allowQuestions: "Вопросы ИИ",
   })) {
     if (!app.ai.options[key]) continue;
     parts.push(`<span class="agent-chip"><b>${esc(key)}</b><span>${esc(title)}</span></span>`);
@@ -181,6 +185,51 @@ function renderAgentContextIcons() {
     }
     btn.classList.toggle("is-selected", Boolean(app.ai.options[key]));
   });
+}
+
+function hasLockedQuestionOptions() {
+  const q = app.ai.pendingQuestion;
+  if (!q || typeof q !== "object") return false;
+  const options = Array.isArray(q.options) ? q.options.filter((x) => String(x || "").trim()) : [];
+  return options.length > 0 && !q.allow_custom;
+}
+
+function renderAgentQuestionFrame() {
+  if (!dom.agentQuestionFrame || !dom.agentQuestionText || !dom.agentQuestionChoices) return;
+  const q = app.ai.pendingQuestion;
+  if (!app.ai.connected || !q || typeof q !== "object") {
+    dom.agentQuestionFrame.hidden = true;
+    dom.agentQuestionText.textContent = "";
+    dom.agentQuestionChoices.innerHTML = "";
+    return;
+  }
+
+  const questionText = String(q.text || "").trim();
+  if (!questionText) {
+    dom.agentQuestionFrame.hidden = true;
+    dom.agentQuestionText.textContent = "";
+    dom.agentQuestionChoices.innerHTML = "";
+    return;
+  }
+
+  const options = Array.isArray(q.options)
+    ? q.options.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 6)
+    : [];
+
+  dom.agentQuestionFrame.hidden = false;
+  dom.agentQuestionText.textContent = questionText;
+
+  if (!options.length) {
+    dom.agentQuestionChoices.innerHTML = "<div class=\"agent-question-hint\">Введите ответ в поле ниже и отправьте.</div>";
+    return;
+  }
+
+  const parts = options.map((option, idx) => {
+    return `<button type="button" class="btn-flat agent-question-choice" data-agent-question-choice="${idx}">${esc(option)}</button>`;
+  });
+  const customCls = q.allow_custom ? " is-selected" : "";
+  parts.push(`<button type="button" class="btn-flat agent-question-choice agent-question-custom${customCls}" data-agent-question-custom="1">Предложить свой</button>`);
+  dom.agentQuestionChoices.innerHTML = parts.join("");
 }
 
 function addAgentLog(role, text, options = {}) {
@@ -328,6 +377,65 @@ function mergeChatSummary(prev, next) {
   return `...${joined.slice(-(MAX_CHAT_SUMMARY_CHARS - 3))}`;
 }
 
+function ensureJournalUiState() {
+  if (!app.ai.journalUi || typeof app.ai.journalUi !== "object") app.ai.journalUi = {};
+  if (!app.ai.journalUi.expandedTurns || typeof app.ai.journalUi.expandedTurns !== "object") {
+    app.ai.journalUi.expandedTurns = {};
+  }
+  for (const kind of ["chat", "table", "external", "changes"]) {
+    if (!app.ai.journalUi.expandedTurns[kind] || typeof app.ai.journalUi.expandedTurns[kind] !== "object") {
+      app.ai.journalUi.expandedTurns[kind] = {};
+    }
+  }
+  if (!app.ai.journalUi.expandedTrace || typeof app.ai.journalUi.expandedTrace !== "object") {
+    app.ai.journalUi.expandedTrace = {};
+  }
+  return app.ai.journalUi;
+}
+
+function normalizeTurnId(turnId) {
+  return String(turnId || "").trim();
+}
+
+function turnGroupKey(turnId) {
+  return normalizeTurnId(turnId) || "__no_turn__";
+}
+
+function turnExpandedStore(kind) {
+  const state = ensureJournalUiState();
+  if (!state.expandedTurns[kind] || typeof state.expandedTurns[kind] !== "object") {
+    state.expandedTurns[kind] = {};
+  }
+  return state.expandedTurns[kind];
+}
+
+function isTurnExpanded(kind, turnId, fallback = false) {
+  const store = turnExpandedStore(kind);
+  const key = turnGroupKey(turnId);
+  if (Object.prototype.hasOwnProperty.call(store, key)) return Boolean(store[key]);
+  return Boolean(fallback);
+}
+
+function setTurnExpanded(kind, turnId, expanded) {
+  const store = turnExpandedStore(kind);
+  store[turnGroupKey(turnId)] = Boolean(expanded);
+}
+
+function isTraceExpanded(turnId, fallback = false) {
+  const state = ensureJournalUiState();
+  const key = normalizeTurnId(turnId);
+  if (!key) return false;
+  if (Object.prototype.hasOwnProperty.call(state.expandedTrace, key)) return Boolean(state.expandedTrace[key]);
+  return Boolean(fallback);
+}
+
+function setTraceExpanded(turnId, expanded) {
+  const state = ensureJournalUiState();
+  const key = normalizeTurnId(turnId);
+  if (!key) return;
+  state.expandedTrace[key] = Boolean(expanded);
+}
+
 function renderAgentJournals() {
   renderJournalList("chat");
   renderJournalList("table");
@@ -376,6 +484,7 @@ function renderJournalList(kind) {
   if (!cfg) return;
   const { listEl, countEl, items } = cfg;
   if (!listEl || !countEl) return;
+  bindJournalListEvents(listEl, kind);
 
   countEl.textContent = String(items.length);
   if (!items.length) {
@@ -383,23 +492,176 @@ function renderJournalList(kind) {
     return;
   }
 
-  const html = items
+  const groups = groupJournalEntriesByTurn(items);
+  const html = groups.map((group, idx) => renderJournalTurnGroup(kind, group, idx)).join("");
+  listEl.innerHTML = html;
+}
+
+function bindJournalListEvents(listEl, kind) {
+  if (!listEl) return;
+  if (String(listEl.dataset.journalTurnsBound || "") === "1") return;
+  listEl.addEventListener("toggle", (event) => {
+    const details = event?.target;
+    if (!details || String(details.tagName || "").toUpperCase() !== "DETAILS") return;
+
+    if (details.classList.contains("journal-turn-group")) {
+      setTurnExpanded(kind, details.dataset.turnId || "", details.open);
+      return;
+    }
+
+    if (details.classList.contains("journal-turn-trace")) {
+      setTraceExpanded(details.dataset.turnId || "", details.open);
+    }
+  }, true);
+  listEl.dataset.journalTurnsBound = "1";
+}
+
+function groupJournalEntriesByTurn(itemsRaw) {
+  const groups = [];
+  const byKey = new Map();
+  for (const raw of itemsRaw || []) {
+    const it = normalizeJournalEntry(raw);
+    const key = turnGroupKey(it.turn_id);
+    let group = byKey.get(key);
+    if (!group) {
+      group = {
+        key,
+        turn_id: normalizeTurnId(it.turn_id),
+        first_ts: it.ts,
+        last_ts: it.ts,
+        items: [],
+      };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    group.items.push(it);
+    group.first_ts = Math.min(group.first_ts, it.ts);
+    group.last_ts = Math.max(group.last_ts, it.ts);
+  }
+  groups.sort((a, b) => b.last_ts - a.last_ts);
+  return groups;
+}
+
+function renderJournalTurnGroup(kind, group, indexInList) {
+  const turnId = normalizeTurnId(group.turn_id);
+  const open = isTurnExpanded(kind, turnId, indexInList === 0);
+  const status = summarizeTurnStatus(group.items);
+  const statusBadge = renderJournalStatusBadge(status);
+  const label = turnId ? `Задача ${turnId}` : "Без привязки к задаче";
+  const prompt = kind === "chat" ? extractTurnPromptSnippet(turnId) : "";
+  const timeFrom = journalTime(group.first_ts);
+  const timeTo = journalTime(group.last_ts);
+  const timeInfo = timeFrom === timeTo ? timeFrom : `${timeFrom} - ${timeTo}`;
+  const trace = kind === "chat" ? renderTurnTraceBlock(turnId) : "";
+  const rows = group.items.slice().reverse().map((it) => renderJournalItemRow(it)).join("");
+
+  return `<details class="journal-turn-group" data-journal-kind="${esc(kind)}" data-turn-id="${esc(turnId)}" ${open ? "open" : ""}>
+    <summary class="journal-turn-summary">
+      <span class="journal-turn-summary-main">${statusBadge}${esc(label)}</span>
+      <span class="journal-turn-summary-meta">${esc(`записей: ${group.items.length} | ${timeInfo}`)}</span>
+    </summary>
+    ${prompt ? `<div class="journal-turn-prompt">${esc(prompt)}</div>` : ""}
+    ${trace}
+    <div class="journal-turn-items">${rows}</div>
+  </details>`;
+}
+
+function summarizeTurnStatus(items) {
+  let hasError = false;
+  let hasRunning = false;
+  let hasDone = false;
+  for (const itRaw of items || []) {
+    const it = normalizeJournalEntry(itRaw);
+    const code = String(it.status || "").toLowerCase();
+    if (code === "error" || code === "failed") hasError = true;
+    else if (code === "running" || code === "streaming" || code === "start") hasRunning = true;
+    else if (code === "completed" || code === "done" || code === "ok") hasDone = true;
+  }
+  if (hasError) return "error";
+  if (hasRunning) return "running";
+  if (hasDone) return "completed";
+  return "";
+}
+
+function extractTurnPromptSnippet(turnId) {
+  const id = normalizeTurnId(turnId);
+  if (!id) return "";
+  const row = app.ai.chatJournal
+    .map((raw) => normalizeJournalEntry(raw))
+    .find((it) => it.turn_id === id && it.kind === "Вы");
+  if (!row) return "";
+  const text = String(row.text || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (text.length > 240) return `${text.slice(0, 237)}...`;
+  return text;
+}
+
+function renderTurnTraceBlock(turnId) {
+  const id = normalizeTurnId(turnId);
+  if (!id) return "";
+  const table = app.ai.tableJournal.map((raw) => normalizeJournalEntry(raw)).filter((it) => it.turn_id === id);
+  const external = app.ai.externalJournal.map((raw) => normalizeJournalEntry(raw)).filter((it) => it.turn_id === id);
+  const changes = app.ai.changesJournal.map((raw) => normalizeJournalEntry(raw)).filter((it) => it.turn_id === id);
+  const total = table.length + external.length + changes.length;
+  if (!total) return "";
+
+  const summaryParts = [];
+  if (table.length) summaryParts.push(`table:${table.length}`);
+  if (external.length) summaryParts.push(`external:${external.length}`);
+  if (changes.length) summaryParts.push(`changes:${changes.length}`);
+
+  const open = isTraceExpanded(id, false);
+  const sections = [
+    renderTurnTraceSection("Действия ИИ с таблицей", table),
+    renderTurnTraceSection("Внешние запросы", external),
+    renderTurnTraceSection("Журнал изменений", changes),
+  ].filter(Boolean).join("");
+
+  return `<details class="journal-turn-trace" data-turn-id="${esc(id)}" ${open ? "open" : ""}>
+    <summary>${esc(`Размышления и путь выполнения (${summaryParts.join(" | ")})`)}</summary>
+    ${sections}
+  </details>`;
+}
+
+function renderTurnTraceSection(title, items) {
+  if (!Array.isArray(items) || !items.length) return "";
+  const rows = items
     .slice()
     .reverse()
-    .map((raw) => {
-      const it = normalizeJournalEntry(raw);
-      const level = esc(String(it.level || "info"));
-      const status = renderJournalStatusBadge(it.status);
-      const aux = renderJournalAuxInfo(it);
-      const meta = renderJournalMetaBlock(it.meta);
-      return `<div class="agent-journal-item level-${level}">
+    .map((it) => {
+      const text = compactJournalTraceText(it);
+      return `<div class="journal-turn-trace-item">
         <span class="time">${esc(journalTime(it.ts))}</span>
         <span class="kind">${esc(it.kind)}</span>
-        <span class="text">${status}${aux}${renderJournalTextHtml(it.text, { status: it.status })}${meta}</span>
+        <span class="text">${esc(text)}</span>
       </div>`;
     })
     .join("");
-  listEl.innerHTML = html;
+  return `<div class="journal-turn-trace-section">
+    <div class="journal-turn-trace-title">${esc(`${title}: ${items.length}`)}</div>
+    ${rows}
+  </div>`;
+}
+
+function compactJournalTraceText(itRaw) {
+  const it = normalizeJournalEntry(itRaw);
+  const text = String(it.text || "").replace(/\s+/g, " ").trim();
+  if (!text) return it.kind || "event";
+  if (text.length > 180) return `${text.slice(0, 177)}...`;
+  return text;
+}
+
+function renderJournalItemRow(itRaw) {
+  const it = normalizeJournalEntry(itRaw);
+  const level = esc(String(it.level || "info"));
+  const status = renderJournalStatusBadge(it.status);
+  const aux = renderJournalAuxInfo(it);
+  const meta = renderJournalMetaBlock(it.meta);
+  return `<div class="agent-journal-item level-${level}">
+    <span class="time">${esc(journalTime(it.ts))}</span>
+    <span class="kind">${esc(it.kind)}</span>
+    <span class="text">${status}${aux}${renderJournalTextHtml(it.text, { status: it.status })}${meta}</span>
+  </div>`;
 }
 
 function renderJournalTextHtml(textRaw, options = {}) {

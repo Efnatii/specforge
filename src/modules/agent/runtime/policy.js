@@ -43,7 +43,8 @@ function createAgentRuntimePolicyInternal(ctx) {
     const src = String(text || "").trim();
     if (!src) return true;
     if (looksLikePseudoToolText(src)) return true;
-    if (AI_INCOMPLETE_RESPONSE_RE.test(src)) return true;
+    const allowQuestions = app?.ai?.options?.allowQuestions !== false;
+    if (!allowQuestions && AI_INCOMPLETE_RESPONSE_RE.test(src)) return true;
     if (/^(выполняю|приступаю|подождите|начинаю|calling|running|i'?ll run)/i.test(src)) return true;
     return false;
   }

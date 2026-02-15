@@ -154,6 +154,14 @@
               <button type="button" class="agent-icon-btn is-selected" data-ai-option="webSearch" title="Разрешить поиск в интернете" aria-label="Разрешить поиск в интернете">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9m-9-9c2.7 2.4 2.7 15.6 0 18m0-18c-2.7 2.4-2.7 15.6 0 18m-9-9h18" /></svg>
               </button>
+              <button type="button" class="agent-icon-btn is-selected" data-ai-option="allowQuestions" title="Разрешить ИИ задавать вопросы" aria-label="Разрешить ИИ задавать вопросы">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.1 9a3 3 0 1 1 5.3 2c-.7.7-1.4 1-1.4 2M12 17h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" /></svg>
+              </button>
+            </div>
+            <div id="agentQuestionFrame" class="agent-question-frame" hidden>
+              <div class="agent-question-head">Вопрос ИИ</div>
+              <div id="agentQuestionText" class="agent-question-text"></div>
+              <div id="agentQuestionChoices" class="agent-question-choices"></div>
             </div>
             <div class="agent-input-row">
               <textarea id="agentPromptInput" rows="2" placeholder="Попросите ИИ прочитать или изменить таблицу"></textarea>

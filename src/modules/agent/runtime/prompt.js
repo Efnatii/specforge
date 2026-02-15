@@ -12,6 +12,9 @@ function createAgentRuntimePromptInternal(ctx) {
 
   const {
     CHAT_CONTEXT_RECENT_MESSAGES,
+    CHAT_CONTEXT_MAX_CHARS,
+    CHAT_CONTEXT_MESSAGE_MAX_CHARS,
+    CHAT_SUMMARY_CHUNK_SIZE,
     AI_CONTINUE_PROMPT_RE,
     AI_SHORT_ACK_PROMPT_RE,
     AI_MUTATION_INTENT_RE,
@@ -32,6 +35,15 @@ function createAgentRuntimePromptInternal(ctx) {
 
   if (!Number.isFinite(CHAT_CONTEXT_RECENT_MESSAGES) || CHAT_CONTEXT_RECENT_MESSAGES < 1) {
     throw new Error("AgentRuntimePromptModule requires config.CHAT_CONTEXT_RECENT_MESSAGES");
+  }
+  if (!Number.isFinite(CHAT_CONTEXT_MAX_CHARS) || CHAT_CONTEXT_MAX_CHARS < 2000) {
+    throw new Error("AgentRuntimePromptModule requires config.CHAT_CONTEXT_MAX_CHARS");
+  }
+  if (!Number.isFinite(CHAT_CONTEXT_MESSAGE_MAX_CHARS) || CHAT_CONTEXT_MESSAGE_MAX_CHARS < 200) {
+    throw new Error("AgentRuntimePromptModule requires config.CHAT_CONTEXT_MESSAGE_MAX_CHARS");
+  }
+  if (!Number.isFinite(CHAT_SUMMARY_CHUNK_SIZE) || CHAT_SUMMARY_CHUNK_SIZE < 1) {
+    throw new Error("AgentRuntimePromptModule requires config.CHAT_SUMMARY_CHUNK_SIZE");
   }
   if (!(AI_CONTINUE_PROMPT_RE instanceof RegExp)) throw new Error("AgentRuntimePromptModule requires config.AI_CONTINUE_PROMPT_RE");
   if (!(AI_SHORT_ACK_PROMPT_RE instanceof RegExp)) throw new Error("AgentRuntimePromptModule requires config.AI_SHORT_ACK_PROMPT_RE");
@@ -83,7 +95,7 @@ function createAgentRuntimePromptInternal(ctx) {
     };
   }
 
-  function buildChatHistoryContext(maxMessages = CHAT_CONTEXT_RECENT_MESSAGES, maxChars = 12000) {
+  function buildChatHistoryContext(maxMessages = CHAT_CONTEXT_RECENT_MESSAGES, maxChars = CHAT_CONTEXT_MAX_CHARS) {
     const src = Array.isArray(app.ai.chatJournal) ? app.ai.chatJournal : [];
     if (!src.length) return "";
 
@@ -93,8 +105,11 @@ function createAgentRuntimePromptInternal(ctx) {
 
     let summary = String(app.ai.chatSummary || "").trim();
     if (remainder.length) {
-      const remainderSummary = summarizeChatChunk(remainder);
-      summary = mergeChatSummary(summary, remainderSummary);
+      for (let i = 0; i < remainder.length; i += CHAT_SUMMARY_CHUNK_SIZE) {
+        const chunk = remainder.slice(i, i + CHAT_SUMMARY_CHUNK_SIZE);
+        const remainderSummary = summarizeChatChunk(chunk);
+        summary = mergeChatSummary(summary, remainderSummary);
+      }
     }
 
     const recent = src.slice(-maxMessages);
@@ -103,7 +118,10 @@ function createAgentRuntimePromptInternal(ctx) {
 
     for (const item of recent) {
       const kind = String(item?.kind || "").trim();
-      const text = String(item?.text || "").replace(/\s+/g, " ").trim();
+      const rawText = String(item?.text || "").replace(/\s+/g, " ").trim();
+      const text = rawText.length > CHAT_CONTEXT_MESSAGE_MAX_CHARS
+        ? `${rawText.slice(0, CHAT_CONTEXT_MESSAGE_MAX_CHARS)}...`
+        : rawText;
       if (!text) continue;
       const role = kind === "AI" ? "assistant" : "user";
       lines.push(`${role}: ${text}`);

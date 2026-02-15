@@ -18,6 +18,9 @@ export class AgentRuntimeModule {
 
     const {
       CHAT_CONTEXT_RECENT_MESSAGES,
+      CHAT_CONTEXT_MAX_CHARS,
+      CHAT_CONTEXT_MESSAGE_MAX_CHARS,
+      CHAT_SUMMARY_CHUNK_SIZE,
       AI_CONTINUE_PROMPT_RE,
       AI_SHORT_ACK_PROMPT_RE,
       AI_MUTATION_INTENT_RE,
@@ -56,6 +59,9 @@ export class AgentRuntimeModule {
       app,
       config: {
         CHAT_CONTEXT_RECENT_MESSAGES,
+        CHAT_CONTEXT_MAX_CHARS,
+        CHAT_CONTEXT_MESSAGE_MAX_CHARS,
+        CHAT_SUMMARY_CHUNK_SIZE,
         AI_CONTINUE_PROMPT_RE,
         AI_SHORT_ACK_PROMPT_RE,
         AI_MUTATION_INTENT_RE,

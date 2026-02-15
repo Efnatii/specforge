@@ -367,6 +367,51 @@ body.sidebar-resizing * {
   gap: 5px;
 }
 
+.agent-question-frame {
+  margin-top: 6px;
+  border: 1px solid #3e3e3e;
+  background: #f7f7f7;
+  padding: 6px;
+}
+
+.agent-question-head {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.agent-question-text {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #171717;
+  user-select: text;
+}
+
+.agent-question-choices {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-question-choice {
+  padding: 4px 7px;
+  font-size: 10px;
+}
+
+.agent-question-choice.is-selected,
+.agent-question-custom.is-selected {
+  background: #111;
+  color: #fff;
+}
+
+.agent-question-hint {
+  font-size: 10px;
+  color: #3a3a3a;
+}
+
 .agent-icon-btn {
   width: 28px;
   height: 28px;
@@ -541,6 +586,96 @@ body.sidebar-resizing * {
   font-size: 10px;
   min-height: 0;
   flex: 1;
+}
+
+.journal-turn-group {
+  border: 1px solid #d4d4d4;
+  background: #fff;
+  margin-bottom: 6px;
+}
+
+.journal-turn-group > summary {
+  cursor: pointer;
+  padding: 5px 6px;
+  border-bottom: 1px dashed #e3e3e3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  list-style: none;
+}
+
+.journal-turn-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.journal-turn-summary-main {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.journal-turn-summary-main .journal-status-badge {
+  margin: 0;
+}
+
+.journal-turn-summary-meta {
+  color: #555;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.journal-turn-prompt {
+  margin: 0 6px;
+  padding: 5px 6px;
+  border-left: 2px solid #cfcfcf;
+  background: #f7f7f7;
+  color: #1c1c1c;
+  font-size: 10px;
+  line-height: 1.35;
+  user-select: text;
+}
+
+.journal-turn-items {
+  padding: 2px 6px 6px;
+}
+
+.journal-turn-trace {
+  margin: 6px;
+  border: 1px dashed #cfcfcf;
+  background: #fbfbfb;
+}
+
+.journal-turn-trace > summary {
+  cursor: pointer;
+  padding: 4px 6px;
+  font-weight: 700;
+  color: #2b2b2b;
+}
+
+.journal-turn-trace-section {
+  border-top: 1px dashed #dbdbdb;
+  padding: 4px 6px;
+}
+
+.journal-turn-trace-title {
+  font-weight: 700;
+  color: #2c2c2c;
+  margin-bottom: 4px;
+}
+
+.journal-turn-trace-item {
+  display: grid;
+  grid-template-columns: 56px 76px 1fr;
+  gap: 6px;
+  margin-bottom: 2px;
+  color: #2a2a2a;
+}
+
+.journal-turn-trace-item:last-child {
+  margin-bottom: 0;
 }
 
 .agent-journal-item {
@@ -1188,5 +1323,17 @@ body.sidebar-resizing * {
 
   .agent-journal-item {
     grid-template-columns: 56px 60px 1fr;
+  }
+
+  .journal-turn-group > summary {
+    flex-wrap: wrap;
+  }
+
+  .journal-turn-summary-meta {
+    white-space: normal;
+  }
+
+  .journal-turn-trace-item {
+    grid-template-columns: 52px 64px 1fr;
   }
 }

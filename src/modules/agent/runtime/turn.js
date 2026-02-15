@@ -172,7 +172,13 @@ function createAgentRuntimeTurnInternal(ctx) {
       }
 
       const outputs = [];
+      let pauseForUser = null;
+      let skippedAfterPause = 0;
       for (const call of calls) {
+        if (pauseForUser) {
+          skippedAfterPause += 1;
+          continue;
+        }
         toolStats.totalToolCalls += 1;
         const args = parseJsonSafe(call.arguments, {});
         addExternalJournal("tool.call", `${call.name}`, {
@@ -227,6 +233,22 @@ function createAgentRuntimeTurnInternal(ctx) {
           call_id: call.call_id,
           output: JSON.stringify(result),
         });
+
+        if (result?.awaiting_user_input) {
+          pauseForUser = result;
+        }
+      }
+
+      if (pauseForUser) {
+        if (skippedAfterPause > 0) {
+          addTableJournal("agent.pause", `Остановлено: ожидается ответ пользователя (пропущено вызовов: ${skippedAfterPause})`, {
+            turn_id: turnId,
+            status: "running",
+            meta: { skipped_calls: skippedAfterPause },
+          });
+        }
+        const waitMsg = String(pauseForUser?.message || "Нужно уточнение от пользователя. Ответьте в блоке вопроса.");
+        return sanitizeAgentOutputText(waitMsg);
       }
 
       response = await callOpenAiResponses(buildAgentResponsesPayload({

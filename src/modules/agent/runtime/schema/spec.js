@@ -11,7 +11,7 @@ function createAgentRuntimeToolSpecInternal(ctx) {
   const { app } = ctx || {};
   if (!app) throw new Error("AgentRuntimeToolSpecModule requires app");
 
-  const systemPromptFacade = new AgentRuntimeSystemPromptModule({});
+  const systemPromptFacade = new AgentRuntimeSystemPromptModule({ app });
   const toolSchemaFacade = new AgentRuntimeToolSchemaModule({ app });
 
   return {

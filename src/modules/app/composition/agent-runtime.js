@@ -72,6 +72,9 @@ export class AppAgentRuntimeCompositionModule {
       agentMaxForcedRetries,
       agentMaxToolRounds,
       chatContextRecentMessages,
+      chatContextMaxChars,
+      chatContextMessageMaxChars,
+      chatSummaryChunkSize,
     } = this._config;
 
     const agentToolsModule = new AgentToolsModule({
@@ -106,6 +109,9 @@ export class AppAgentRuntimeCompositionModule {
       app,
       config: {
         CHAT_CONTEXT_RECENT_MESSAGES: chatContextRecentMessages,
+        CHAT_CONTEXT_MAX_CHARS: chatContextMaxChars,
+        CHAT_CONTEXT_MESSAGE_MAX_CHARS: chatContextMessageMaxChars,
+        CHAT_SUMMARY_CHUNK_SIZE: chatSummaryChunkSize,
         AI_CONTINUE_PROMPT_RE: aiContinuePromptRe,
         AI_SHORT_ACK_PROMPT_RE: aiShortAckPromptRe,
         AI_MUTATION_INTENT_RE: aiMutationIntentRe,
@@ -148,6 +154,7 @@ export class AppAgentRuntimeCompositionModule {
       windowRef: this._window,
       continuePromptRe: aiContinuePromptRe,
       shortAckPromptRe: aiShortAckPromptRe,
+      incompleteResponseRe: aiIncompleteResponseRe,
       toast: (text) => toastModule.show(text),
       renderAiUi,
       addAgentLog,

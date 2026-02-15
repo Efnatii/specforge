@@ -55,7 +55,97 @@ function createAgentStateToolsInternal(ctx) {
     }
   }
 
+  function normalizeQuestionOption(textRaw) {
+    let text = String(textRaw || "").replace(/\s+/g, " ").trim();
+    if (!text) return "";
+    text = text.replace(/^[:\-–—.,;)\]]+\s*/, "").trim();
+    text = text.replace(/^[(\[]+/, "").trim();
+    text = text.replace(/^["'«»]+/, "").trim();
+    text = text.replace(/["'«»]+$/, "").trim();
+    text = text.replace(/[;,.]+$/, "").trim();
+    if (!text) return "";
+    if (text.length < 2 || text.length > 140) return "";
+    if (/^предложить\s+свой$/i.test(text)) return "";
+    if (/^(вариант|варианты|option|options)$/i.test(text)) return "";
+    return text;
+  }
+
+  function normalizeQuestionPayload(args) {
+    const question = String(args?.question || "").replace(/\s+/g, " ").trim().slice(0, 320);
+    const optionsInput = args?.options;
+    let options = [];
+
+    if (optionsInput !== undefined && !Array.isArray(optionsInput)) {
+      return { error: "options must be an array of strings (2..6) or omitted" };
+    }
+
+    const optionsRaw = Array.isArray(optionsInput) ? optionsInput : [];
+    const seen = new Set();
+    for (const item of optionsRaw) {
+      const option = normalizeQuestionOption(item);
+      if (!option) continue;
+      const key = option.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      options.push(option);
+      if (options.length >= 6) break;
+    }
+
+    if (Array.isArray(optionsInput) && options.length < 2) {
+      return { error: "options must contain at least 2 valid items or be omitted" };
+    }
+
+    const allowCustom = args?.allow_custom === undefined
+      ? options.length === 0
+      : Boolean(args?.allow_custom);
+    return { question, options, allow_custom: allowCustom };
+  }
+
   async function tryExecute(name, args, turnCtx = null) {
+    if (name === "ask_user_question") {
+      const allowQuestions = app?.ai?.options?.allowQuestions !== false;
+      if (!allowQuestions) {
+        addTableJournal("ask_user_question", "Ошибка: вопросы пользователю запрещены настройкой");
+        return { ok: false, applied: 0, error: "questions are disabled (allowQuestions=off)" };
+      }
+
+      const payload = normalizeQuestionPayload(args);
+      if (payload?.error) {
+        addTableJournal("ask_user_question", `Ошибка: ${payload.error}`);
+        return { ok: false, applied: 0, error: payload.error };
+      }
+      if (!payload.question) {
+        addTableJournal("ask_user_question", "Ошибка: пустой question");
+        return { ok: false, applied: 0, error: "question required" };
+      }
+
+      app.ai.pendingQuestion = {
+        turn_id: String(app.ai.turnId || ""),
+        text: payload.question,
+        options: payload.options,
+        allow_custom: payload.allow_custom,
+      };
+
+      addTableJournal("ask_user_question", `Вопрос пользователю: ${payload.question}`);
+      addChangesJournal("ai.task.question", `turn=${app.ai.turnId || ""}`, {
+        turn_id: app.ai.turnId || "",
+        status: "completed",
+        meta: {
+          via: "tool",
+          question: payload.question,
+          options_count: payload.options.length,
+          allow_custom: payload.allow_custom,
+        },
+      });
+      return {
+        ok: true,
+        applied: 0,
+        awaiting_user_input: true,
+        question: app.ai.pendingQuestion,
+        message: "Нужно уточнение от пользователя. Ответьте в блоке вопроса.",
+      };
+    }
+
     if (name === "read_settings") {
       const settings = {
         order_number: app.state.settings.orderNumber,
