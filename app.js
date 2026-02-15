@@ -21,6 +21,7 @@ const STORAGE_KEYS = {
   openAiModel: "specforge.openai.model",
   agentCollapsed: "specforge.openai.agentCollapsed",
   agentOptions: "specforge.openai.agentOptions",
+  sidebarWidth: "specforge.ui.sidebarWidth",
 };
 const MAX_CHAT_JOURNAL = 220;
 const MAX_TABLE_JOURNAL = 240;
@@ -31,9 +32,12 @@ const MAX_COMMON_JOURNAL_TEXT = 8000;
 const CHAT_CONTEXT_RECENT_MESSAGES = 5;
 const CHAT_SUMMARY_CHUNK_SIZE = 5;
 const MAX_CHAT_SUMMARY_CHARS = 3600;
+const MIN_SIDEBAR_WIDTH = 280;
+const MAX_SIDEBAR_WIDTH = 760;
 const AI_MUTATION_INTENT_RE = /\b(создай|создать|добавь|добавить|измени|обнови|поменяй|замени|исправь|заполни|вставь|удали|увелич|уменьш|пересчитай|рассчитай|create|add|set|update|change|fill|replace|delete|write)\b/i;
 const AI_CONTINUE_PROMPT_RE = /^\s*(продолжай|продолжить|дальше|далее|продолжение|еще|ещё|continue|go on|next)\s*[.!?]*\s*$/i;
-const AI_INCOMPLETE_RESPONSE_RE = /(продолж|нужн[аоы]|уточн|подтверд|if you want|если хотите|если нужно|would you like|\?\s*$)/i;
+const AI_SHORT_ACK_PROMPT_RE = /^\s*(да|ага|ок|окей|хорошо|сделай|делай|дальше|далее|продолжай|продолжить|continue|go on|next|удали|delete)\s*[.!?]*\s*$/i;
+const AI_INCOMPLETE_RESPONSE_RE = /(продолж|нужн[аоы]|уточн|подтверд|если хотите|если нужно|would you like|if you want|ответьте|выберите|укажите|что делаем|какой вариант|\?\s*$)/i;
 const AGENT_MAX_FORCED_RETRIES = 4;
 const MARKET_VERIFICATION_MIN_SOURCES = 2;
 const MARKET_VERIFICATION_MAX_SOURCES = 6;
@@ -42,6 +46,7 @@ const POSITION_MARKET_FIELDS = new Set(["name", "manufacturer", "article", "supp
 const dom = {
   app: document.getElementById("app"),
   sidebar: document.getElementById("sidebar"),
+  sidebarResizeHandle: document.getElementById("sidebarResizeHandle"),
   btnSidebarTabTree: document.getElementById("btnSidebarTabTree"),
   btnSidebarTabJournals: document.getElementById("btnSidebarTabJournals"),
   sidebarPanelTree: document.getElementById("sidebarPanelTree"),
@@ -124,6 +129,8 @@ const app = {
     panning: false,
     pan: null,
     sidebarCollapsed: false,
+    sidebarWidth: 360,
+    sidebarResizing: false,
   },
   ai: {
     apiKey: "",
@@ -147,6 +154,17 @@ const app = {
     sheetOverrides: {},
     lastTaskPrompt: "",
     lastAssemblyId: "",
+    lastActionablePrompt: "",
+    pendingTask: "",
+    taskState: "idle",
+    turnId: "",
+    turnCounter: 0,
+    streaming: true,
+    streamDeltaCount: 0,
+    streamResponseId: "",
+    currentRequestId: "",
+    lastStreamBuffer: "",
+    lastSuccessfulMutationTs: 0,
   },
 };
 
@@ -167,6 +185,7 @@ async function init() {
   injectStyles(app.template.styles);
   app.state = makeDefaultState();
   loadAiSettings();
+  applySidebarWidth(app.ui.sidebarWidth, false);
   bindEvents();
   renderAll();
   renderAiUi();
@@ -191,11 +210,17 @@ function loadAiSettings() {
 
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.agentOptions);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    for (const k of ["currentSheet", "allSheets", "selection", "webSearch"]) {
-      if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      for (const k of ["currentSheet", "allSheets", "selection", "webSearch"]) {
+        if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
+      }
     }
+  } catch {}
+
+  try {
+    const rawWidth = num(localStorage.getItem(STORAGE_KEYS.sidebarWidth), app.ui.sidebarWidth);
+    app.ui.sidebarWidth = clampSidebarWidth(rawWidth);
   } catch {}
 }
 
@@ -222,6 +247,23 @@ function saveOpenAiModel() {
   try {
     if (isKnownAiModel(app.ai.model)) localStorage.setItem(STORAGE_KEYS.openAiModel, app.ai.model);
   } catch {}
+}
+
+function clampSidebarWidth(value) {
+  const width = num(value, 360);
+  return Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, Math.round(width)));
+}
+
+function saveSidebarWidth() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.sidebarWidth, String(clampSidebarWidth(app.ui.sidebarWidth)));
+  } catch {}
+}
+
+function applySidebarWidth(value, persist = true) {
+  app.ui.sidebarWidth = clampSidebarWidth(value);
+  if (dom.app) dom.app.style.setProperty("--sidebar-user-w", `${app.ui.sidebarWidth}px`);
+  if (persist) saveSidebarWidth();
 }
 
 function renderAiUi() {
@@ -280,15 +322,78 @@ function renderAgentContextIcons() {
   });
 }
 
-function addAgentLog(role, text) {
+function addAgentLog(role, text, options = {}) {
   const clean = String(text || "").trim();
   if (!clean) return;
   const kind = role === "assistant" ? "AI" : "Вы";
-  const removed = addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, kind, clean, MAX_CHAT_JOURNAL_TEXT);
+  const removed = addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, kind, clean, MAX_CHAT_JOURNAL_TEXT, {
+    level: options?.level || "info",
+    source: options?.source || "chat",
+    turn_id: options?.turn_id || app.ai.turnId || "",
+    request_id: options?.request_id || "",
+    response_id: options?.response_id || "",
+    duration_ms: options?.duration_ms,
+    status: options?.status || (role === "assistant" ? "completed" : "done"),
+    meta: options?.meta,
+  });
   if (removed > 0 && app.ai.chatSummaryCount > 0) {
     app.ai.chatSummaryCount = Math.max(0, app.ai.chatSummaryCount - removed);
   }
   rollupChatSummaryState();
+}
+
+function beginAgentStreamingEntry(turnId) {
+  const entryId = uid();
+  const removed = addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, "AI", "Думаю...", MAX_CHAT_JOURNAL_TEXT, {
+    id: entryId,
+    source: "chat",
+    status: "streaming",
+    level: "info",
+    turn_id: turnId || app.ai.turnId || "",
+    allowEmpty: true,
+    meta: { stream: true },
+  });
+  if (removed > 0 && app.ai.chatSummaryCount > 0) {
+    app.ai.chatSummaryCount = Math.max(0, app.ai.chatSummaryCount - removed);
+  }
+  return entryId;
+}
+
+function appendAgentStreamingDelta(entryId, delta) {
+  const text = String(delta || "");
+  if (!text) return;
+  app.ai.lastStreamBuffer = `${app.ai.lastStreamBuffer || ""}${text}`;
+  app.ai.streamDeltaCount = num(app.ai.streamDeltaCount, 0) + 1;
+  patchJournalEntry(app.ai.chatJournal, entryId, {
+    text: app.ai.lastStreamBuffer,
+    status: "streaming",
+    meta: {
+      stream: true,
+      delta_count: app.ai.streamDeltaCount,
+      chars: app.ai.lastStreamBuffer.length,
+    },
+  });
+}
+
+function finalizeAgentStreamingEntry(entryId, finalText, status = "completed", level = "info", extraMeta = undefined) {
+  if (!entryId) return;
+  const text = String(finalText || "").trim() || String(app.ai.lastStreamBuffer || "").trim() || "Готово.";
+  const meta = {
+    stream: true,
+    delta_count: num(app.ai.streamDeltaCount, 0),
+    chars: text.length,
+  };
+  if (extraMeta && typeof extraMeta === "object") {
+    Object.assign(meta, extraMeta);
+  }
+  patchJournalEntry(app.ai.chatJournal, entryId, { text, status, level, meta });
+  rollupChatSummaryState();
+}
+
+function nextAgentTurnId() {
+  const n = num(String(app.ai.turnCounter || 0), 0) + 1;
+  app.ai.turnCounter = n;
+  return `turn_${Date.now()}_${n}`;
 }
 
 function rollupChatSummaryState() {
@@ -344,9 +449,9 @@ function journalConfig(kind) {
 }
 
 function renderJournalList(kind) {
-  const item = journalConfig(kind);
-  if (!item) return;
-  const { listEl, countEl, items } = item;
+  const cfg = journalConfig(kind);
+  if (!cfg) return;
+  const { listEl, countEl, items } = cfg;
   if (!listEl || !countEl) return;
 
   countEl.textContent = String(items.length);
@@ -358,7 +463,18 @@ function renderJournalList(kind) {
   const html = items
     .slice()
     .reverse()
-    .map((it) => `<div class="agent-journal-item"><span class="time">${esc(journalTime(it.ts))}</span><span class="kind">${esc(it.kind)}</span><span class="text">${renderJournalTextHtml(it.text)}</span></div>`)
+    .map((raw) => {
+      const it = normalizeJournalEntry(raw);
+      const level = esc(String(it.level || "info"));
+      const status = renderJournalStatusBadge(it.status);
+      const aux = renderJournalAuxInfo(it);
+      const meta = renderJournalMetaBlock(it.meta);
+      return `<div class="agent-journal-item level-${level}">
+        <span class="time">${esc(journalTime(it.ts))}</span>
+        <span class="kind">${esc(it.kind)}</span>
+        <span class="text">${status}${aux}${renderJournalTextHtml(it.text)}${meta}</span>
+      </div>`;
+    })
     .join("");
   listEl.innerHTML = html;
 }
@@ -371,17 +487,128 @@ function renderJournalTextHtml(textRaw) {
   for (const chunk of chunks) {
     if (chunk.type === "json") {
       const pretty = JSON.stringify(chunk.value, null, 2);
-      parts.push(`<details class="journal-json-block"><summary>JSON ${jsonIdx}</summary><pre>${esc(pretty)}</pre></details>`);
+      const label = classifyJournalJsonChunk(chunk.value, jsonIdx);
+      parts.push(`<details class="journal-json-block"><summary>${esc(label)}</summary><pre>${esc(pretty)}</pre></details>`);
       jsonIdx += 1;
       continue;
     }
 
     const text = String(chunk.text || "");
     if (!text) continue;
-    parts.push(`<span class="journal-text-frag">${esc(text).replace(/\n/g, "<br/>")}</span>`);
+    parts.push(`<span class="journal-text-frag">${renderMarkdownLite(text)}</span>`);
   }
 
   return parts.join("");
+}
+
+function renderJournalStatusBadge(statusRaw) {
+  const status = String(statusRaw || "").trim();
+  if (!status) return "";
+  const code = status.toLowerCase();
+  let cls = "state-running";
+  if (code === "completed" || code === "done" || code === "ok") cls = "state-done";
+  if (code === "error" || code === "failed") cls = "state-error";
+  const labelMap = {
+    running: "Выполняет",
+    streaming: "Думает",
+    completed: "Готово",
+    done: "Готово",
+    ok: "Готово",
+    error: "Ошибка",
+    failed: "Ошибка",
+    start: "Старт",
+  };
+  const label = labelMap[code] || status;
+  return `<span class="journal-status-badge ${cls}">${esc(label)}</span>`;
+}
+
+function renderJournalAuxInfo(it) {
+  const parts = [];
+  if (it.source) parts.push(`src=${it.source}`);
+  if (it.turn_id) parts.push(`turn=${it.turn_id}`);
+  if (it.request_id) parts.push(`req=${it.request_id}`);
+  if (it.response_id) parts.push(`resp=${it.response_id}`);
+  if (Number.isFinite(it.duration_ms)) parts.push(`${Math.max(0, Math.round(it.duration_ms))}ms`);
+  if (!parts.length) return "";
+  return `<div class="journal-aux">${esc(parts.join(" | "))}</div>`;
+}
+
+function renderJournalMetaBlock(meta) {
+  if (meta === undefined || meta === null) return "";
+  let pretty = "";
+  try {
+    pretty = JSON.stringify(meta, null, 2);
+  } catch {
+    pretty = String(meta);
+  }
+  if (!pretty.trim()) return "";
+  return `<details class="journal-meta-block"><summary>Meta</summary><pre>${esc(pretty)}</pre></details>`;
+}
+
+function classifyJournalJsonChunk(value, idx) {
+  if (value && typeof value === "object") {
+    const name = String(value.name || value.id || "").toLowerCase();
+    if (name.startsWith("functions.") || value.args || value.arguments || value.call_id) return "Tool call";
+    if (value.ok !== undefined || value.error !== undefined || value.applied !== undefined || value.result !== undefined) return "Tool result";
+  }
+  return `JSON ${idx}`;
+}
+
+function renderMarkdownLite(textRaw) {
+  const text = String(textRaw || "").trim();
+  if (!text) return "";
+  const blocks = text.split(/\n{2,}/);
+  const html = [];
+
+  for (const block of blocks) {
+    const lines = block.split("\n").map((x) => x.trimEnd());
+    if (!lines.length) continue;
+
+    if (lines.every((line) => /^\s*[-*]\s+/.test(line))) {
+      const li = lines
+        .map((line) => line.replace(/^\s*[-*]\s+/, ""))
+        .map((line) => `<li>${renderInlineMarkdown(line)}</li>`)
+        .join("");
+      html.push(`<ul class="journal-list">${li}</ul>`);
+      continue;
+    }
+
+    if (lines.every((line) => /^\s*\d+\.\s+/.test(line))) {
+      const li = lines
+        .map((line) => line.replace(/^\s*\d+\.\s+/, ""))
+        .map((line) => `<li>${renderInlineMarkdown(line)}</li>`)
+        .join("");
+      html.push(`<ol class="journal-list">${li}</ol>`);
+      continue;
+    }
+
+    const header = lines[0].match(/^\s{0,3}#{1,3}\s+(.*)$/);
+    if (header) {
+      const body = lines.slice(1).join("\n").trim();
+      html.push(`<div class="journal-md-head">${renderInlineMarkdown(header[1])}</div>`);
+      if (body) html.push(`<p class="journal-md-par">${renderInlineMarkdown(body).replace(/\n/g, "<br/>")}</p>`);
+      continue;
+    }
+
+    html.push(`<p class="journal-md-par">${renderInlineMarkdown(lines.join("\n")).replace(/\n/g, "<br/>")}</p>`);
+  }
+
+  return html.join("");
+}
+
+function renderInlineMarkdown(textRaw) {
+  const src = String(textRaw || "");
+  if (!src) return "";
+  const chunks = src.split(/(`[^`]+`)/g);
+  return chunks
+    .map((chunk) => {
+      if (!chunk) return "";
+      if (chunk.startsWith("`") && chunk.endsWith("`") && chunk.length >= 2) {
+        return `<code>${esc(chunk.slice(1, -1))}</code>`;
+      }
+      return esc(chunk);
+    })
+    .join("");
 }
 
 function splitTextAndJsonChunks(text) {
@@ -485,11 +712,29 @@ function formatJournalForCopy(kind) {
   lines.push(`# ${title}`);
   lines.push(`Количество записей: ${items.length}`);
   lines.push("");
-  for (const it of items) {
-    const ts = journalDateTime(it?.ts);
-    const k = String(it?.kind || "").trim();
-    const t = formatJournalTextForCopy(it?.text);
-    lines.push(`[${ts}] ${k}: ${t}`);
+  for (const raw of items) {
+    const it = normalizeJournalEntry(raw);
+    const ts = journalDateTime(it.ts);
+    const main = [`[${ts}]`, it.kind].filter(Boolean).join(" ");
+    lines.push(`${main}: ${formatJournalTextForCopy(it.text)}`);
+    const metaLine = [
+      it.level ? `level=${it.level}` : "",
+      it.source ? `source=${it.source}` : "",
+      it.status ? `status=${it.status}` : "",
+      it.turn_id ? `turn=${it.turn_id}` : "",
+      it.request_id ? `request=${it.request_id}` : "",
+      it.response_id ? `response=${it.response_id}` : "",
+      Number.isFinite(it.duration_ms) ? `duration_ms=${Math.round(it.duration_ms)}` : "",
+    ].filter(Boolean).join(", ");
+    if (metaLine) lines.push(`  ${metaLine}`);
+    if (it.meta !== undefined) {
+      lines.push("  meta:");
+      try {
+        lines.push(JSON.stringify(it.meta, null, 2).split("\n").map((line) => `    ${line}`).join("\n"));
+      } catch {
+        lines.push(`    ${String(it.meta)}`);
+      }
+    }
   }
   return lines.join("\n");
 }
@@ -526,26 +771,66 @@ async function copyJournal(kind) {
   }
 }
 
-function addTableJournal(kind, text) {
-  addJournalEntry(app.ai.tableJournal, MAX_TABLE_JOURNAL, kind, text);
+function addTableJournal(kind, text, options = {}) {
+  addJournalEntry(app.ai.tableJournal, MAX_TABLE_JOURNAL, kind, text, MAX_COMMON_JOURNAL_TEXT, {
+    source: options?.source || "table",
+    level: options?.level || "info",
+    turn_id: options?.turn_id || app.ai.turnId || "",
+    request_id: options?.request_id || "",
+    response_id: options?.response_id || "",
+    duration_ms: options?.duration_ms,
+    status: options?.status || "",
+    meta: options?.meta,
+  });
 }
 
-function addExternalJournal(kind, text) {
-  addJournalEntry(app.ai.externalJournal, MAX_EXTERNAL_JOURNAL, kind, text);
+function addExternalJournal(kind, text, options = {}) {
+  addJournalEntry(app.ai.externalJournal, MAX_EXTERNAL_JOURNAL, kind, text, MAX_COMMON_JOURNAL_TEXT, {
+    source: options?.source || "openai",
+    level: options?.level || "info",
+    turn_id: options?.turn_id || app.ai.turnId || "",
+    request_id: options?.request_id || "",
+    response_id: options?.response_id || "",
+    duration_ms: options?.duration_ms,
+    status: options?.status || "",
+    meta: options?.meta,
+  });
 }
 
-function addChangesJournal(kind, text) {
-  addJournalEntry(app.ai.changesJournal, MAX_CHANGES_JOURNAL, kind, text);
+function addChangesJournal(kind, text, options = {}) {
+  addJournalEntry(app.ai.changesJournal, MAX_CHANGES_JOURNAL, kind, text, MAX_COMMON_JOURNAL_TEXT, {
+    source: options?.source || "ui",
+    level: options?.level || "info",
+    turn_id: options?.turn_id || app.ai.turnId || "",
+    request_id: options?.request_id || "",
+    response_id: options?.response_id || "",
+    duration_ms: options?.duration_ms,
+    status: options?.status || "",
+    meta: options?.meta,
+  });
 }
 
 function addJournalEntry(target, limit, kind, text, maxTextLen = MAX_COMMON_JOURNAL_TEXT) {
+  const options = arguments.length > 5 ? arguments[5] : {};
   const rawText = String(text || "").trim();
-  const entry = {
-    ts: Date.now(),
+  const clipped = maxTextLen > 0 ? rawText.slice(0, maxTextLen) : rawText;
+  if (!clipped && !options?.allowEmpty) return 0;
+
+  const entry = normalizeJournalEntry({
+    id: String(options?.id || uid()),
+    ts: Number.isFinite(options?.ts) ? options.ts : Date.now(),
     kind: String(kind || "event").slice(0, 60),
-    text: maxTextLen > 0 ? rawText.slice(0, maxTextLen) : rawText,
-  };
-  if (!entry.text) return 0;
+    text: clipped || "",
+    level: String(options?.level || "info"),
+    source: String(options?.source || ""),
+    turn_id: String(options?.turn_id || ""),
+    request_id: String(options?.request_id || ""),
+    response_id: String(options?.response_id || ""),
+    duration_ms: Number.isFinite(options?.duration_ms) ? num(options.duration_ms, 0) : undefined,
+    status: String(options?.status || ""),
+    meta: options?.meta,
+  });
+
   target.push(entry);
   let removed = 0;
   if (target.length > limit) {
@@ -562,6 +847,40 @@ function journalTime(ts) {
   const m = String(d.getMinutes()).padStart(2, "0");
   const s = String(d.getSeconds()).padStart(2, "0");
   return `${h}:${m}:${s}`;
+}
+
+function normalizeJournalEntry(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  return {
+    id: String(src.id || uid()),
+    ts: num(src.ts, Date.now()),
+    kind: String(src.kind || "event").slice(0, 60),
+    text: String(src.text || ""),
+    level: String(src.level || "info"),
+    source: String(src.source || ""),
+    turn_id: String(src.turn_id || ""),
+    request_id: String(src.request_id || ""),
+    response_id: String(src.response_id || ""),
+    duration_ms: src.duration_ms === undefined ? undefined : num(src.duration_ms, 0),
+    status: String(src.status || ""),
+    meta: src.meta,
+  };
+}
+
+function findJournalEntry(list, id) {
+  if (!Array.isArray(list) || !id) return null;
+  const idx = list.findIndex((it) => String(it?.id || "") === String(id));
+  if (idx < 0) return null;
+  return { idx, item: list[idx] };
+}
+
+function patchJournalEntry(list, id, patch) {
+  const found = findJournalEntry(list, id);
+  if (!found) return false;
+  const next = { ...found.item, ...patch };
+  list[found.idx] = normalizeJournalEntry(next);
+  renderAgentJournals();
+  return true;
 }
 
 function renderSidebarMode() {
@@ -1721,6 +2040,13 @@ function bindEvents() {
     dom.app.classList.toggle("sidebar-collapsed", app.ui.sidebarCollapsed);
   };
 
+  if (dom.sidebarResizeHandle) {
+    dom.sidebarResizeHandle.onpointerdown = onSidebarResizePointerDown;
+  }
+  window.addEventListener("pointermove", onSidebarResizePointerMove);
+  window.addEventListener("pointerup", onSidebarResizePointerUp);
+  window.addEventListener("pointercancel", onSidebarResizePointerUp);
+
   if (dom.btnSidebarTabTree) {
     dom.btnSidebarTabTree.onclick = () => {
       app.ui.sidebarTab = "tree";
@@ -1785,6 +2111,9 @@ function bindEvents() {
       app.ai.chatSummary = "";
       app.ai.chatSummaryCount = 0;
       app.ai.lastTaskPrompt = "";
+      app.ai.lastActionablePrompt = "";
+      app.ai.pendingTask = "";
+      app.ai.lastStreamBuffer = "";
       renderAgentJournals();
     };
   }
@@ -2134,29 +2463,106 @@ async function sendAgentPrompt() {
     toast("Введите запрос для ИИ");
     return;
   }
-  const text = normalizeAgentPrompt(rawText);
+  const normalized = normalizeAgentPrompt(rawText);
+  const text = String(normalized?.text || "").trim();
   if (!text) {
     toast("Нет задачи для выполнения");
     return;
   }
-  if (!AI_CONTINUE_PROMPT_RE.test(rawText)) {
+  if (!AI_CONTINUE_PROMPT_RE.test(rawText) && !AI_SHORT_ACK_PROMPT_RE.test(rawText)) {
     app.ai.lastTaskPrompt = rawText;
   }
+  if (normalized.actionable) {
+    app.ai.lastActionablePrompt = normalized.basePrompt || rawText;
+    app.ai.pendingTask = normalized.basePrompt || rawText;
+  }
+  app.ai.turnId = nextAgentTurnId();
+  app.ai.taskState = "running";
+  app.ai.lastStreamBuffer = "";
+  app.ai.streamDeltaCount = 0;
+  app.ai.streamResponseId = "";
 
   app.ai.sending = true;
   renderAiUi();
-  addAgentLog("user", rawText);
-  addChangesJournal("ai.prompt", `Отправлен запрос (${rawText.length} символов)`);
+  addAgentLog("user", rawText, {
+    turn_id: app.ai.turnId,
+    status: "done",
+    meta: {
+      normalized_prompt: text,
+      mode: normalized.mode,
+      pending_task_used: Boolean(normalized.usedPendingTask),
+    },
+  });
+  addChangesJournal("ai.prompt", `Отправлен запрос (${rawText.length} символов)`, {
+    turn_id: app.ai.turnId,
+    meta: { normalized: text.slice(0, 300) },
+  });
+  const streamEntryId = beginAgentStreamingEntry(app.ai.turnId);
+  let streamDeltaEvents = 0;
+  let streamDeltaChars = 0;
+  const turnStartedAt = Date.now();
 
   try {
     const input = buildAgentInput(text);
-    const out = await runOpenAiAgentTurn(input, text);
-    addAgentLog("assistant", out || "Готово.");
+    const out = await runOpenAiAgentTurn(input, text, {
+      rawUserText: rawText,
+      turnId: app.ai.turnId,
+      streamEntryId,
+      onStreamDelta: (delta) => appendAgentStreamingDelta(streamEntryId, delta),
+      onStreamEvent: (eventName, eventData) => {
+        const isDelta = eventName === "response.output_text.delta";
+        if (isDelta) {
+          streamDeltaEvents += 1;
+          streamDeltaChars += String(eventData?.delta || "").length;
+          if (streamDeltaEvents % 8 !== 0) return;
+          addExternalJournal("stream.delta", `chunks=${streamDeltaEvents}, chars=${streamDeltaChars}`, {
+            turn_id: app.ai.turnId,
+            request_id: String(eventData?.__request_id || ""),
+            response_id: String(eventData?.response?.id || eventData?.id || ""),
+            status: "streaming",
+            meta: { chunks: streamDeltaEvents, chars: streamDeltaChars },
+          });
+          return;
+        }
+        addExternalJournal("stream.event", String(eventName || "event"), {
+          turn_id: app.ai.turnId,
+          request_id: String(eventData?.__request_id || ""),
+          response_id: String(eventData?.response?.id || eventData?.id || ""),
+          status: "streaming",
+          meta: compactForTool(eventData),
+        });
+      },
+    });
+    const finalText = sanitizeAgentOutputText(out || "Готово.");
+    finalizeAgentStreamingEntry(streamEntryId, finalText, "completed", "info", {
+      response_id: app.ai.streamResponseId || "",
+      duration_ms: Date.now() - turnStartedAt,
+    });
+    app.ai.taskState = "completed";
+    if (normalized.actionable) app.ai.pendingTask = "";
+    addChangesJournal("ai.task.complete", `turn=${app.ai.turnId}`, {
+      turn_id: app.ai.turnId,
+      status: "completed",
+      meta: {
+        duration_ms: Date.now() - turnStartedAt,
+        delta_chunks: streamDeltaEvents,
+        delta_chars: streamDeltaChars,
+      },
+    });
     dom.agentPrompt.value = "";
   } catch (err) {
     console.error(err);
     const details = String(err?.message || "Неизвестная ошибка").slice(0, 400);
-    addAgentLog("assistant", `Ошибка выполнения: ${details}`);
+    finalizeAgentStreamingEntry(streamEntryId, `Ошибка выполнения: ${details}`, "error", "error", {
+      duration_ms: Date.now() - turnStartedAt,
+    });
+    app.ai.taskState = "failed";
+    addChangesJournal("ai.task.error", `turn=${app.ai.turnId}`, {
+      turn_id: app.ai.turnId,
+      level: "error",
+      status: "error",
+      meta: { error: details, duration_ms: Date.now() - turnStartedAt },
+    });
     toast("Ошибка выполнения запроса ИИ");
   } finally {
     app.ai.sending = false;
@@ -2166,13 +2572,29 @@ async function sendAgentPrompt() {
 
 function normalizeAgentPrompt(rawText) {
   const text = String(rawText || "").trim();
-  if (!text) return "";
-  if (!AI_CONTINUE_PROMPT_RE.test(text)) return text;
+  if (!text) return { text: "", actionable: false, mode: "empty", usedPendingTask: false };
 
-  const lastTask = String(app.ai.lastTaskPrompt || "").trim();
-  if (!lastTask) return text;
-  addChangesJournal("ai.prompt.continue", "Использована последняя задача");
-  return `Продолжи и заверши предыдущую задачу пользователя без уточнений: ${lastTask}`;
+  const lastTask = String(app.ai.pendingTask || app.ai.lastActionablePrompt || app.ai.lastTaskPrompt || "").trim();
+  const wantsContinue = AI_CONTINUE_PROMPT_RE.test(text) || AI_SHORT_ACK_PROMPT_RE.test(text);
+  if (wantsContinue && lastTask) {
+    addChangesJournal("ai.prompt.continue", "Использована последняя задача", { meta: { task: lastTask.slice(0, 220) } });
+    return {
+      text: `Продолжи и заверши предыдущую задачу пользователя без уточнений и без вопросов: ${lastTask}`,
+      basePrompt: lastTask,
+      actionable: true,
+      mode: "continue-last-task",
+      usedPendingTask: true,
+    };
+  }
+
+  const actionable = AI_MUTATION_INTENT_RE.test(text);
+  return {
+    text,
+    basePrompt: text,
+    actionable,
+    mode: actionable ? "actionable" : "plain",
+    usedPendingTask: false,
+  };
 }
 
 function buildAgentInput(userText) {
@@ -2274,10 +2696,11 @@ function serializeSheetPreview(sheet, maxRows = 40, maxCols = 12, maxChars = 100
   return lines.join("\n").slice(0, maxChars);
 }
 
-async function runOpenAiAgentTurn(userInput, rawUserText = "") {
+async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
   const modelId = currentAiModelMeta().id;
   const input = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
-  const userText = String(rawUserText || "").trim();
+  const userText = String(options?.rawUserText || rawUserText || "").trim();
+  const turnId = String(options?.turnId || app.ai.turnId || "");
   const intentToMutate = AI_MUTATION_INTENT_RE.test(userText);
   const expectedMutations = estimateExpectedMutationCount(userText, intentToMutate);
   const toolStats = {
@@ -2291,6 +2714,7 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "") {
     webSearchQueries: [],
     webSearchUrls: [],
   };
+  const startedAt = Date.now();
 
   let response = await callOpenAiResponses({
     model: modelId,
@@ -2298,10 +2722,15 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "") {
     input,
     tools: agentToolsSpec(),
     tool_choice: "auto",
+  }, {
+    turnId,
+    onDelta: options?.onStreamDelta,
+    onEvent: options?.onStreamEvent,
   });
+  app.ai.streamResponseId = String(response?.id || "");
   updateAgentTurnWebEvidence(turnCtx, response);
 
-  for (let i = 0; i < 16; i += 1) {
+  for (let i = 0; i < 24; i += 1) {
     const calls = extractAgentFunctionCalls(response);
     if (!calls.length) {
       const text = extractAgentText(response);
@@ -2309,7 +2738,17 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "") {
       if (shouldForceAgentContinuation(intentToMutate, expectedMutations, toolStats, text) && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
         const reason = buildAgentRetryReason(expectedMutations, toolStats, text);
         toolStats.forcedRetries += 1;
-        addTableJournal("agent.retry", `Автоповтор: ${reason}`);
+        addTableJournal("agent.retry", `Автоповтор: ${reason}`, {
+          turn_id: turnId,
+          status: "running",
+          meta: {
+            reason,
+            phase: "forced_tool_followup",
+            retries: toolStats.forcedRetries,
+            expected_mutations: expectedMutations,
+            successful_mutations: toolStats.successfulMutations,
+          },
+        });
         response = await callOpenAiResponses({
           model: modelId,
           previous_response_id: response.id,
@@ -2317,10 +2756,15 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "") {
             role: "user",
             content: [{
               type: "input_text",
-              text: buildAgentContinuationInstruction(reason),
+              text: buildAgentContinuationInstruction(reason, true),
             }],
           }],
+        }, {
+          turnId,
+          onDelta: options?.onStreamDelta,
+          onEvent: options?.onStreamEvent,
         });
+        app.ai.streamResponseId = String(response?.id || app.ai.streamResponseId || "");
         updateAgentTurnWebEvidence(turnCtx, response);
         continue;
       }
@@ -2332,20 +2776,63 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "") {
       if (intentToMutate && toolStats.mutationCalls === 0) {
         return "Изменения не применены: модель не вызвала инструменты изменения.";
       }
+      if (intentToMutate && isAgentTextIncomplete(text)) {
+        if (toolStats.successfulMutations > 0) {
+          return `Готово. Изменения применены (${toolStats.successfulMutations}).`;
+        }
+        const reason = toolStats.failedMutations.slice(-2).join("; ") || "задача не завершена";
+        return `Изменения не применены: ${reason}.`;
+      }
 
-      return text || "Готово.";
+      const finalText = text || (toolStats.successfulMutations > 0 ? "Готово, изменения применены." : "Готово.");
+      return sanitizeAgentOutputText(finalText);
     }
 
     const outputs = [];
     for (const call of calls) {
       const args = parseJsonSafe(call.arguments, {});
-      const result = await executeAgentTool(call.name, args, turnCtx);
+      addExternalJournal("tool.call", `${call.name}`, {
+        turn_id: turnId,
+        request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+        response_id: String(response?.id || ""),
+        status: "running",
+        meta: { tool: call.name, args: compactForTool(args) },
+      });
+      addTableJournal("tool.call", `${call.name}`, {
+        turn_id: turnId,
+        request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+        status: "running",
+        meta: { args: summarizeToolArgs(args) },
+      });
+      const result = normalizeToolResult(call.name, await executeAgentTool(call.name, args, turnCtx));
+      addExternalJournal("tool.result", `${call.name}: ${result.ok ? "ok" : "error"}`, {
+        turn_id: turnId,
+        request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+        response_id: String(response?.id || ""),
+        status: result.ok ? "completed" : "error",
+        level: result.ok ? "info" : "error",
+        meta: compactForTool(result),
+      });
+      addTableJournal("tool.result", `${call.name}: ${result.ok ? "ok" : "error"}, applied=${num(result.applied, 0)}`, {
+        turn_id: turnId,
+        request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+        status: result.ok ? "completed" : "error",
+        level: result.ok ? "info" : "error",
+        meta: {
+          tool: call.name,
+          applied: num(result.applied, 0),
+          entity: result.entity || null,
+          warnings: result.warnings || [],
+          error: result.error || "",
+        },
+      });
       if (isMutationToolName(call.name)) {
         toolStats.mutationCalls += 1;
         const isOk = Boolean(result?.ok);
-        const applied = call.name === "write_cells" ? Math.max(0, Number(result?.applied || 0)) : (isOk ? 1 : 0);
+        const applied = Math.max(0, Number(result?.applied || (isOk ? 1 : 0)));
         if (applied > 0) {
           toolStats.successfulMutations += applied;
+          app.ai.lastSuccessfulMutationTs = Date.now();
         } else {
           const errText = String(result?.error || "изменение не применено").replace(/\s+/g, " ").trim().slice(0, 160);
           toolStats.failedMutations.push(`${call.name}: ${errText}`);
@@ -2362,10 +2849,26 @@ async function runOpenAiAgentTurn(userInput, rawUserText = "") {
       model: modelId,
       previous_response_id: response.id,
       input: outputs,
+    }, {
+      turnId,
+      onDelta: options?.onStreamDelta,
+      onEvent: options?.onStreamEvent,
     });
+    app.ai.streamResponseId = String(response?.id || app.ai.streamResponseId || "");
     updateAgentTurnWebEvidence(turnCtx, response);
   }
 
+  addExternalJournal("agent.error", "tool loop limit reached", {
+    turn_id: turnId,
+    level: "error",
+    status: "error",
+    duration_ms: Date.now() - startedAt,
+    meta: {
+      expected_mutations: expectedMutations,
+      successful_mutations: toolStats.successfulMutations,
+      retries: toolStats.forcedRetries,
+    },
+  });
   throw new Error("agent tool loop limit");
 }
 
@@ -2408,15 +2911,81 @@ function buildAgentRetryReason(expectedMutations, toolStats, text) {
   return "задача не завершена";
 }
 
-function buildAgentContinuationInstruction(reason) {
-  return `Причина автоповтора: ${reason}. Доведи запрос до конечного результата в этом же ходе через tools. Нельзя задавать вопросы, нельзя просить "продолжай", нельзя откладывать. Если сборка не найдена по assembly_id, используй актуальную выбранную/последнюю сборку или создай новую и продолжи. Для позиций обязателен verification: web_search (query + URL) или attachments. В финальном ответе дай 1-2 коротких предложения без JSON.`;
+function buildAgentContinuationInstruction(reason, forcedToolFollowup = false) {
+  const phase = forcedToolFollowup ? "forced_tool_followup" : "auto_followup";
+  return `Фаза ${phase}. Причина автоповтора: ${reason}. Доведи запрос до конечного результата в этом же ходе через tools. Нельзя задавать вопросы, нельзя просить "продолжай", нельзя откладывать. Если сборка не найдена по assembly_id, используй актуальную выбранную/последнюю сборку или создай новую и продолжи. Для позиций обязателен verification: web_search (query + URL) или attachments. В финальном ответе дай 1-2 коротких предложения без JSON.`;
+}
+
+function sanitizeAgentOutputText(textRaw) {
+  const src = String(textRaw || "").trim();
+  if (!src) return "Готово.";
+
+  const parts = src
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^\[(json|tool)/i.test(line))
+    .filter((line) => !/^\{[\s\S]*\}$/.test(line))
+    .filter((line) => !/^if you want\b/i.test(line))
+    .filter((line) => !/^если нужно\b/i.test(line))
+    .filter((line) => !/^если хотите\b/i.test(line))
+    .filter((line) => !/^дальше могу\b/i.test(line));
+
+  const clean = parts.join(" ").replace(/\s{2,}/g, " ").trim();
+  if (!clean) return "Готово.";
+  if (clean.length > 900) return `${clean.slice(0, 897)}...`;
+  return clean;
+}
+
+function summarizeToolArgs(args) {
+  if (!args || typeof args !== "object") return {};
+  const out = {};
+  for (const [k, v] of Object.entries(args)) {
+    if (v === undefined) continue;
+    if (k === "verification") {
+      const sources = Array.isArray(v?.sources) ? v.sources.length : 0;
+      const attachments = Array.isArray(v?.attachments) ? v.attachments.length : 0;
+      out[k] = { query: String(v?.query || "").slice(0, 180), sources, attachments };
+      continue;
+    }
+    if (Array.isArray(v)) {
+      out[k] = `[array:${v.length}]`;
+      continue;
+    }
+    if (v && typeof v === "object") {
+      out[k] = `[object:${Object.keys(v).length}]`;
+      continue;
+    }
+    const txt = String(v);
+    out[k] = txt.length > 160 ? `${txt.slice(0, 160)}...` : v;
+  }
+  return out;
+}
+
+function normalizeToolResult(name, raw) {
+  const src = raw && typeof raw === "object" ? { ...raw } : { ok: false, error: "invalid tool result" };
+  if (src.ok === undefined) src.ok = !src.error;
+  if (!Array.isArray(src.warnings)) src.warnings = [];
+  if (src.applied === undefined) {
+    if (!isMutationToolName(name)) src.applied = 0;
+    else if (name === "write_cells") src.applied = Math.max(0, num(src.applied, 0));
+    else src.applied = src.ok ? 1 : 0;
+  }
+  if (!src.entity) {
+    if (src.assembly) src.entity = { type: "assembly", id: src.assembly.id || "" };
+    else if (src.position) src.entity = { type: "position", id: src.position.id || "" };
+    else if (src.sheet) src.entity = { type: "sheet", id: src.sheet.id || "" };
+  }
+  return src;
 }
 
 function agentSystemPrompt() {
   return [
     "Ты AI-агент внутри SpecForge.",
     "Ты можешь читать и изменять таблицы и состояние проекта через tools.",
-    "Для операций со сборками и позициями используй специализированные tools: create_assembly, update_assembly, delete_assembly, duplicate_assembly, add_position, update_position, delete_position, add_project_position, update_project_position, delete_project_position.",
+    "Для операций со сборками и позициями используй специализированные tools: create_assembly, update_assembly, delete_assembly, duplicate_assembly, bulk_delete_assemblies, add_position, update_position, delete_position, duplicate_position, add_project_position, update_project_position, delete_project_position, list_project_positions, read_position, resolve_target_context.",
+    "Если пользователь просит удалить все сборки, вызывай bulk_delete_assemblies со scope=all.",
     "Нельзя выдумывать оборудование/материалы: перед add_position/update_position/add_project_position/update_project_position обязательно передай verification.",
     "Verification допустим двумя способами: web_search (query + sources URL) или подтверждение через прикрепленные документы (attachments).",
     "Для подтверждения через документы в verification.attachments укажи name или id прикрепленного файла.",
@@ -2425,6 +2994,7 @@ function agentSystemPrompt() {
     "Не запрашивай подтверждение перед выполнением действий.",
     "Если пользователь просит выполнить изменение, выполняй сразу через tools и сообщай факт.",
     "Если данных недостаточно, выбирай типовой разумный вариант и продолжай без вопросов.",
+    "Нельзя спрашивать подтверждения/уточнения. Любой запрос доводи до результата в текущем ходе.",
     "Не проси пользователя написать \"продолжай\" и не откладывай выполнение на следующий ход.",
     "Если assembly_id не найден, определи целевую сборку по текущему контексту и продолжай.",
     "Никогда не утверждай, что изменение применено, если tool вернул ok=false или applied=0.",
@@ -2503,6 +3073,63 @@ function agentToolsSpec() {
       parameters: {
         type: "object",
         properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "bulk_delete_assemblies",
+      description: "Удалить несколько сборок или все сборки проекта без подтверждения",
+      parameters: {
+        type: "object",
+        properties: {
+          scope: { type: "string", enum: ["all", "filtered"], description: "all удаляет все, filtered удаляет по фильтрам" },
+          assembly_ids: { type: "array", items: { type: "string" } },
+          assembly_names: { type: "array", items: { type: "string" } },
+          match: { type: "string", description: "Фрагмент имени для фильтрации" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "resolve_target_context",
+      description: "Определить целевой контекст: активный лист, выбранная сборка, список и позиция",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+          list: { type: "string", enum: ["main", "consumable", "project"] },
+          position_id: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "read_settings",
+      description: "Прочитать общие настройки проекта",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "update_settings",
+      description: "Изменить общие настройки проекта",
+      parameters: {
+        type: "object",
+        properties: {
+          order_number: { type: "string" },
+          request_number: { type: "string" },
+          change_date: { type: "string" },
+          version: { type: "string" },
+          vat_rate: { type: "number" },
+          total_mode: { type: "string", enum: ["withoutDiscount", "withDiscount"] },
+        },
         additionalProperties: false,
       },
     },
@@ -2602,7 +3229,7 @@ function agentToolsSpec() {
         properties: {
           assembly_id: { type: "string" },
           assembly_name: { type: "string" },
-          list: { type: "string", description: "main или consumable" },
+          list: { type: "string", enum: ["main", "consumable"], description: "main или consumable" },
           include_details: { type: "boolean" },
         },
         additionalProperties: false,
@@ -2617,7 +3244,7 @@ function agentToolsSpec() {
         properties: {
           assembly_id: { type: "string", description: "ID сборки" },
           assembly_name: { type: "string", description: "Имя или аббревиатура сборки" },
-          list: { type: "string", description: "main или consumable" },
+          list: { type: "string", enum: ["main", "consumable"], description: "main или consumable" },
           name: { type: "string", description: "Наименование позиции" },
           qty: { type: "number", description: "Количество" },
           unit: { type: "string", description: "Ед. изм., например шт" },
@@ -2637,6 +3264,22 @@ function agentToolsSpec() {
     },
     {
       type: "function",
+      name: "read_position",
+      description: "Прочитать одну позицию по ID",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+          list: { type: "string", enum: ["main", "consumable", "project"] },
+          position_id: { type: "string" },
+        },
+        required: ["position_id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
       name: "update_position",
       description: "Изменить позицию внутри сборки",
       parameters: {
@@ -2644,7 +3287,7 @@ function agentToolsSpec() {
         properties: {
           assembly_id: { type: "string" },
           assembly_name: { type: "string" },
-          list: { type: "string", description: "main или consumable" },
+          list: { type: "string", enum: ["main", "consumable"], description: "main или consumable" },
           position_id: { type: "string" },
           name: { type: "string" },
           qty: { type: "number" },
@@ -2672,7 +3315,23 @@ function agentToolsSpec() {
         properties: {
           assembly_id: { type: "string" },
           assembly_name: { type: "string" },
-          list: { type: "string", description: "main или consumable" },
+          list: { type: "string", enum: ["main", "consumable"], description: "main или consumable" },
+          position_id: { type: "string" },
+        },
+        required: ["position_id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "duplicate_position",
+      description: "Дублировать позицию в сборке или проектных расходниках",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+          list: { type: "string", enum: ["main", "consumable", "project"] },
           position_id: { type: "string" },
         },
         required: ["position_id"],
@@ -2700,6 +3359,18 @@ function agentToolsSpec() {
           verification: verificationParam,
         },
         required: ["name", "verification"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "list_project_positions",
+      description: "Список позиций листа проектных расходников",
+      parameters: {
+        type: "object",
+        properties: {
+          include_details: { type: "boolean" },
+        },
         additionalProperties: false,
       },
     },
@@ -2869,14 +3540,42 @@ function agentToolsSpec() {
   return tools;
 }
 
-async function callOpenAiResponses(payload) {
+async function callOpenAiResponses(payload, options = {}) {
+  const preferStream = app.ai.streaming !== false;
+  if (!preferStream) return callOpenAiResponsesJson(payload, options);
+
+  try {
+    return await callOpenAiResponsesStream(payload, options);
+  } catch (err) {
+    if (err?.no_fallback) throw err;
+    addExternalJournal("openai.stream.fallback", String(err?.message || err), {
+      level: "warning",
+      status: "error",
+      turn_id: options?.turnId || app.ai.turnId || "",
+      meta: { reason: String(err?.message || err || "stream failed") },
+    });
+    return callOpenAiResponsesJson(payload, options);
+  }
+}
+
+async function callOpenAiResponsesJson(payload, options = {}) {
   const startedAt = Date.now();
   const isContinuation = Boolean(payload?.previous_response_id);
   const model = String(payload?.model || app.ai.model || "");
-  addExternalJournal(
-    "openai.request",
-    `${isContinuation ? "continue" : "start"} model=${model} tools=${Array.isArray(payload?.tools) ? payload.tools.length : 0}`,
-  );
+  const requestId = uid();
+  app.ai.currentRequestId = requestId;
+
+  addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${Array.isArray(payload?.tools) ? payload.tools.length : 0}`, {
+    turn_id: options?.turnId || app.ai.turnId || "",
+    request_id: requestId,
+    status: "start",
+    meta: {
+      stream: false,
+      model,
+      continuation: isContinuation,
+      tools_count: Array.isArray(payload?.tools) ? payload.tools.length : 0,
+    },
+  });
 
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -2890,24 +3589,296 @@ async function callOpenAiResponses(payload) {
   if (!res.ok) {
     const body = await res.text();
     const ms = Date.now() - startedAt;
-    const shortBody = String(body || "").replace(/\s+/g, " ").trim().slice(0, 240);
-    addExternalJournal("openai.error", `HTTP ${res.status} /v1/responses (${ms}ms) ${shortBody}`);
+    const shortBody = String(body || "").replace(/\s+/g, " ").trim().slice(0, 800);
+    addExternalJournal("request.error", `HTTP ${res.status} /v1/responses`, {
+      level: "error",
+      status: "error",
+      turn_id: options?.turnId || app.ai.turnId || "",
+      request_id: requestId,
+      duration_ms: ms,
+      meta: { status: res.status, body: shortBody },
+    });
     if (res.status === 401 || res.status === 403) {
       disconnectOpenAi();
-      throw new Error("openai unauthorized");
+      const e = new Error("openai unauthorized");
+      e.no_fallback = true;
+      throw e;
     }
-    throw new Error(`openai ${res.status}: ${shortBody || "unknown error"}`);
+    const e = new Error(`openai ${res.status}: ${shortBody || "unknown error"}`);
+    e.no_fallback = true;
+    throw e;
   }
 
   const parsed = await res.json();
   const ms = Date.now() - startedAt;
   const outCount = Array.isArray(parsed?.output) ? parsed.output.length : 0;
-  addExternalJournal("openai.response", `HTTP 200 /v1/responses (${ms}ms), output=${outCount}`);
+  const responseId = String(parsed?.id || "");
+
+  addExternalJournal("request.complete", `HTTP 200 /v1/responses (json), output=${outCount}`, {
+    turn_id: options?.turnId || app.ai.turnId || "",
+    request_id: requestId,
+    response_id: responseId,
+    duration_ms: ms,
+    status: "completed",
+    meta: { output_count: outCount, model },
+  });
 
   const hasWebSearch = Array.isArray(parsed?.output) && parsed.output.some((item) => String(item?.type || "").includes("web_search"));
-  if (hasWebSearch) addExternalJournal("web.search", "OpenAI выполнил web_search tool");
+  if (hasWebSearch) {
+    addExternalJournal("web.search", "OpenAI выполнил web_search tool", {
+      turn_id: options?.turnId || app.ai.turnId || "",
+      request_id: requestId,
+      response_id: responseId,
+      status: "completed",
+    });
+  }
 
+  if (typeof options?.onEvent === "function") {
+    options.onEvent("response.completed", { response: parsed, __request_id: requestId });
+  }
+  parsed.__request_id = requestId;
+  app.ai.currentRequestId = requestId;
   return parsed;
+}
+
+async function callOpenAiResponsesStream(payload, options = {}) {
+  const startedAt = Date.now();
+  const model = String(payload?.model || app.ai.model || "");
+  const isContinuation = Boolean(payload?.previous_response_id);
+  const requestId = uid();
+  const turnId = options?.turnId || app.ai.turnId || "";
+  app.ai.currentRequestId = requestId;
+  const timeoutMs = Math.max(30000, num(options?.timeout_ms, 180000));
+
+  addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${Array.isArray(payload?.tools) ? payload.tools.length : 0}`, {
+    turn_id: turnId,
+    request_id: requestId,
+    status: "start",
+    meta: {
+      stream: true,
+      model,
+      continuation: isContinuation,
+      tools_count: Array.isArray(payload?.tools) ? payload.tools.length : 0,
+    },
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("timeout"), timeoutMs);
+  let res = null;
+  try {
+    res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${app.ai.apiKey}`,
+      },
+      body: JSON.stringify({ ...payload, stream: true }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    const e = new Error(`stream transport failed: ${String(err?.message || err)}`);
+    throw e;
+  }
+
+  const headerRequestId = String(res.headers.get("x-request-id") || "");
+  const reqId = headerRequestId || requestId;
+  const ct = String(res.headers.get("content-type") || "").toLowerCase();
+
+  if (!res.ok) {
+    clearTimeout(timer);
+    const body = await res.text();
+    const ms = Date.now() - startedAt;
+    const shortBody = String(body || "").replace(/\s+/g, " ").trim().slice(0, 800);
+    addExternalJournal("request.error", `HTTP ${res.status} /v1/responses (stream)`, {
+      level: "error",
+      status: "error",
+      turn_id: turnId,
+      request_id: reqId,
+      duration_ms: ms,
+      meta: { status: res.status, body: shortBody },
+    });
+    if (res.status === 401 || res.status === 403) {
+      disconnectOpenAi();
+      const e = new Error("openai unauthorized");
+      e.no_fallback = true;
+      throw e;
+    }
+    const e = new Error(`openai ${res.status}: ${shortBody || "unknown error"}`);
+    e.no_fallback = true;
+    throw e;
+  }
+
+  if (!ct.includes("text/event-stream") || !res.body) {
+    clearTimeout(timer);
+    let parsed = null;
+    try {
+      parsed = await res.json();
+    } catch {
+      const body = await res.text();
+      throw new Error(`stream expected event-stream, got: ${ct || "unknown"} (${String(body).slice(0, 240)})`);
+    }
+    const ms = Date.now() - startedAt;
+    const outCount = Array.isArray(parsed?.output) ? parsed.output.length : 0;
+    addExternalJournal("request.complete", `HTTP 200 /v1/responses (stream->json), output=${outCount}`, {
+      turn_id: turnId,
+      request_id: reqId,
+      response_id: String(parsed?.id || ""),
+      duration_ms: ms,
+      status: "completed",
+      meta: { output_count: outCount, model, stream_fallback: "content_type" },
+    });
+    parsed.__request_id = reqId;
+    app.ai.currentRequestId = reqId;
+    return parsed;
+  }
+
+  const decoder = new TextDecoder("utf-8");
+  const reader = res.body.getReader();
+  let buf = "";
+  let completed = null;
+  let failed = null;
+  let responseId = "";
+  let deltaCounter = 0;
+  let deltaChars = 0;
+
+  try {
+    while (true) {
+      const step = await reader.read();
+      if (step.done) break;
+      buf += decoder.decode(step.value, { stream: true });
+      buf = buf.replace(/\r\n/g, "\n");
+
+      let sepIdx = buf.indexOf("\n\n");
+      while (sepIdx >= 0) {
+        const rawEvent = buf.slice(0, sepIdx);
+        buf = buf.slice(sepIdx + 2);
+        sepIdx = buf.indexOf("\n\n");
+        const parsedEvent = parseSseEvent(rawEvent);
+        if (!parsedEvent) continue;
+        const eventName = parsedEvent.event || String(parsedEvent.data?.type || "");
+        const eventData = parsedEvent.data || {};
+        if (eventData?.response?.id) responseId = String(eventData.response.id);
+        if (eventData?.id) responseId = String(eventData.id);
+
+        if (typeof options?.onEvent === "function") {
+          options.onEvent(eventName, { ...eventData, __request_id: reqId });
+        }
+
+        if (eventName === "response.output_text.delta") {
+          const delta = String(eventData?.delta || "");
+          if (delta) {
+            deltaCounter += 1;
+            deltaChars += delta.length;
+            if (typeof options?.onDelta === "function") options.onDelta(delta);
+          }
+        } else if (eventName === "response.output_item.added") {
+          addExternalJournal("stream.event", "response.output_item.added", {
+            turn_id: turnId,
+            request_id: reqId,
+            response_id: responseId,
+            status: "streaming",
+            meta: compactForTool(eventData?.item || eventData),
+          });
+        } else if (eventName === "response.completed") {
+          completed = eventData?.response || eventData;
+          if (!responseId && completed?.id) responseId = String(completed.id);
+        } else if (eventName === "response.failed") {
+          failed = eventData?.error || eventData;
+        }
+      }
+    }
+    if (buf.trim()) {
+      const parsedEvent = parseSseEvent(buf);
+      if (parsedEvent) {
+        const eventName = parsedEvent.event || String(parsedEvent.data?.type || "");
+        const eventData = parsedEvent.data || {};
+        if (eventName === "response.completed") {
+          completed = eventData?.response || eventData;
+          if (!responseId && completed?.id) responseId = String(completed.id);
+        } else if (eventName === "response.failed") {
+          failed = eventData?.error || eventData;
+        }
+      }
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  if (failed) {
+    const ms = Date.now() - startedAt;
+    addExternalJournal("request.error", "response.failed", {
+      level: "error",
+      status: "error",
+      turn_id: turnId,
+      request_id: reqId,
+      response_id: responseId,
+      duration_ms: ms,
+      meta: compactForTool(failed),
+    });
+    const e = new Error(`openai stream failed: ${String(failed?.message || failed || "unknown")}`);
+    throw e;
+  }
+  if (!completed) {
+    const e = new Error("openai stream ended without response.completed");
+    throw e;
+  }
+
+  const ms = Date.now() - startedAt;
+  const outCount = Array.isArray(completed?.output) ? completed.output.length : 0;
+  addExternalJournal("request.complete", `HTTP 200 /v1/responses (stream), output=${outCount}`, {
+    turn_id: turnId,
+    request_id: reqId,
+    response_id: responseId || String(completed?.id || ""),
+    duration_ms: ms,
+    status: "completed",
+    meta: {
+      output_count: outCount,
+      model,
+      stream: true,
+      delta_count: deltaCounter,
+      delta_chars: deltaChars,
+    },
+  });
+
+  const hasWebSearch = Array.isArray(completed?.output) && completed.output.some((item) => String(item?.type || "").includes("web_search"));
+  if (hasWebSearch) {
+    addExternalJournal("web.search", "OpenAI выполнил web_search tool", {
+      turn_id: turnId,
+      request_id: reqId,
+      response_id: responseId || String(completed?.id || ""),
+      status: "completed",
+    });
+  }
+
+  completed.__request_id = reqId;
+  app.ai.currentRequestId = reqId;
+  return completed;
+}
+
+function parseSseEvent(raw) {
+  const src = String(raw || "").trim();
+  if (!src) return null;
+  const lines = src.split(/\r?\n/);
+  let eventName = "";
+  const dataLines = [];
+
+  for (const line of lines) {
+    if (line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+
+  if (!dataLines.length) return null;
+  const dataRaw = dataLines.join("\n").trim();
+  if (!dataRaw || dataRaw === "[DONE]") return null;
+  const data = parseJsonSafe(dataRaw, { raw: dataRaw });
+  return { event: eventName, data };
 }
 
 function extractAgentFunctionCalls(response) {
@@ -2954,13 +3925,16 @@ function isMutationToolName(name) {
   const n = String(name || "").trim();
   return n === "write_cells"
     || n === "set_state_value"
+    || n === "update_settings"
     || n === "create_assembly"
     || n === "update_assembly"
     || n === "duplicate_assembly"
     || n === "delete_assembly"
+    || n === "bulk_delete_assemblies"
     || n === "add_position"
     || n === "update_position"
     || n === "delete_position"
+    || n === "duplicate_position"
     || n === "add_project_position"
     || n === "update_project_position"
     || n === "delete_project_position"
@@ -3288,6 +4262,137 @@ async function executeAgentTool(name, args, turnCtx = null) {
     return { ok: true, assemblies };
   }
 
+  if (name === "bulk_delete_assemblies") {
+    const scope = String(args?.scope || "").trim().toLowerCase() === "all" ? "all" : "filtered";
+    let targets = [];
+    if (scope === "all") {
+      targets = [...app.state.assemblies];
+    } else {
+      const idSet = new Set((Array.isArray(args?.assembly_ids) ? args.assembly_ids : []).map((x) => String(x || "").trim()).filter(Boolean));
+      const nameSet = new Set((Array.isArray(args?.assembly_names) ? args.assembly_names : []).map((x) => String(x || "").trim().toLowerCase()).filter(Boolean));
+      const match = String(args?.match || "").trim().toLowerCase();
+      targets = app.state.assemblies.filter((a) => {
+        if (idSet.has(a.id)) return true;
+        const full = String(a.fullName || "").trim().toLowerCase();
+        const abbr = String(a.abbreviation || "").trim().toLowerCase();
+        if (nameSet.has(full) || nameSet.has(abbr)) return true;
+        if (match && (full.includes(match) || abbr.includes(match))) return true;
+        return false;
+      });
+    }
+
+    if (!targets.length) {
+      addTableJournal("bulk_delete_assemblies", "Ничего не удалено: цели не найдены");
+      return { ok: true, applied: 0, scope, deleted_count: 0, warnings: ["no targets"], entity: { type: "assembly_collection" } };
+    }
+
+    const targetIds = new Set(targets.map((a) => a.id));
+    app.state.assemblies = app.state.assemblies.filter((a) => !targetIds.has(a.id));
+    if (targetIds.has(app.ai.lastAssemblyId)) {
+      app.ai.lastAssemblyId = app.state.assemblies.length ? app.state.assemblies[app.state.assemblies.length - 1].id : "";
+    }
+    app.ui.treeSel = { type: "settings" };
+    app.ui.activeSheetId = "summary";
+    renderAll();
+    addTableJournal("bulk_delete_assemblies", `Удалено сборок: ${targets.length}`, {
+      meta: {
+        scope,
+        deleted: targets.map((a) => ({ id: a.id, full_name: a.fullName })),
+      },
+    });
+    addChangesJournal("assembly.delete.bulk", `scope=${scope}, count=${targets.length}`);
+    return {
+      ok: true,
+      applied: targets.length,
+      scope,
+      deleted_count: targets.length,
+      deleted: targets.map((a) => ({ id: a.id, full_name: a.fullName })),
+      entity: { type: "assembly_collection" },
+      warnings: [],
+    };
+  }
+
+  if (name === "resolve_target_context") {
+    const assembly = resolveAgentAssembly(args);
+    const listRaw = String(args?.list || "").trim().toLowerCase();
+    const list = listRaw === "project" ? "project" : normalizeAgentPositionList(args?.list);
+    let position = null;
+    if (args?.position_id) {
+      const posId = String(args.position_id || "").trim();
+      if (list === "project") {
+        position = app.state.projectConsumables.find((p) => p.id === posId) || null;
+      } else if (assembly) {
+        const arr = list === "consumable" ? assembly.consumable : assembly.main;
+        position = arr.find((p) => p.id === posId) || null;
+      }
+    }
+    const sheet = activeSheet();
+    const result = {
+      ok: true,
+      applied: 0,
+      entity: { type: "context" },
+      warnings: [],
+      context: {
+        active_sheet: sheet ? { id: sheet.id, name: sheet.name } : null,
+        tree_selection: compactForTool(app.ui.treeSel || {}),
+        assembly: assembly ? { id: assembly.id, full_name: assembly.fullName, abbreviation: assembly.abbreviation } : null,
+        list,
+        position: position ? { id: position.id, name: position.name } : null,
+      },
+    };
+    addTableJournal("resolve_target_context", `Контекст: лист=${result.context.active_sheet?.name || "-"}, list=${list}`);
+    return result;
+  }
+
+  if (name === "read_settings") {
+    const settings = {
+      order_number: app.state.settings.orderNumber,
+      request_number: app.state.settings.requestNumber,
+      change_date: app.state.settings.changeDate,
+      version: app.state.settings.version,
+      vat_rate: num(app.state.settings.vatRate, 0),
+      total_mode: app.state.settings.totalMode,
+    };
+    addTableJournal("read_settings", "Прочитаны общие настройки");
+    return { ok: true, applied: 0, entity: { type: "settings" }, warnings: [], settings };
+  }
+
+  if (name === "update_settings") {
+    const changed = [];
+    if (args?.order_number !== undefined) {
+      app.state.settings.orderNumber = String(args.order_number || "").trim();
+      changed.push("order_number");
+    }
+    if (args?.request_number !== undefined) {
+      app.state.settings.requestNumber = String(args.request_number || "").trim();
+      changed.push("request_number");
+    }
+    if (args?.change_date !== undefined) {
+      app.state.settings.changeDate = String(args.change_date || "").trim();
+      changed.push("change_date");
+    }
+    if (args?.version !== undefined) {
+      app.state.settings.version = String(args.version || "").trim();
+      changed.push("version");
+    }
+    if (args?.vat_rate !== undefined) {
+      app.state.settings.vatRate = normalizePercentDecimal(args.vat_rate);
+      changed.push("vat_rate");
+    }
+    if (args?.total_mode !== undefined) {
+      app.state.settings.totalMode = String(args.total_mode || "").trim() === "withDiscount" ? "withDiscount" : "withoutDiscount";
+      changed.push("total_mode");
+    }
+    if (!changed.length) {
+      addTableJournal("update_settings", "Ошибка: нет полей для изменения");
+      return { ok: false, applied: 0, entity: { type: "settings" }, warnings: [], error: "no fields to update" };
+    }
+    renderAll();
+    addTableJournal("update_settings", `Обновлены поля: ${changed.join(", ")}`);
+    addChangesJournal("settings.update", changed.join(", "));
+    return { ok: true, applied: 1, entity: { type: "settings" }, warnings: [], changed };
+  }
+
   if (name === "read_assembly") {
     const assembly = resolveAgentAssembly(args);
     if (!assembly) {
@@ -3511,6 +4616,54 @@ async function executeAgentTool(name, args, turnCtx = null) {
     };
   }
 
+  if (name === "read_position") {
+    const posId = String(args?.position_id || "").trim();
+    if (!posId) {
+      addTableJournal("read_position", "Ошибка: position_id required");
+      return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "position_id required" };
+    }
+    const listRaw = String(args?.list || "").trim().toLowerCase();
+    if (listRaw === "project") {
+      const pos = app.state.projectConsumables.find((p) => p.id === posId) || null;
+      if (!pos) {
+        addTableJournal("read_position", "Ошибка: позиция не найдена");
+        return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "position not found" };
+      }
+      addTableJournal("read_position", `project.${pos.id}`);
+      return {
+        ok: true,
+        applied: 0,
+        entity: { type: "position", id: pos.id },
+        warnings: [],
+        position: compactForTool(pos),
+        list: "project",
+      };
+    }
+
+    const assembly = resolveAgentAssembly(args);
+    if (!assembly) {
+      addTableJournal("read_position", "Ошибка: сборка не найдена");
+      return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "assembly not found" };
+    }
+    const listKey = normalizeAgentPositionList(args?.list);
+    const arr = listKey === "consumable" ? assembly.consumable : assembly.main;
+    const pos = arr.find((p) => p.id === posId) || null;
+    if (!pos) {
+      addTableJournal("read_position", "Ошибка: позиция не найдена");
+      return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "position not found" };
+    }
+    addTableJournal("read_position", `${assembly.fullName}.${listKey}.${pos.id}`);
+    return {
+      ok: true,
+      applied: 0,
+      entity: { type: "position", id: pos.id },
+      warnings: [],
+      assembly: { id: assembly.id, full_name: assembly.fullName },
+      list: listKey,
+      position: compactForTool(pos),
+    };
+  }
+
   if (name === "add_position") {
     let assembly = resolveAgentAssembly(args);
     const listKey = normalizeAgentPositionList(args?.list);
@@ -3623,6 +4776,71 @@ async function executeAgentTool(name, args, turnCtx = null) {
     return { ok: true, deleted: { assembly_id: assembly.id, list: listKey, position_id: posId } };
   }
 
+  if (name === "duplicate_position") {
+    const posId = String(args?.position_id || "").trim();
+    if (!posId) {
+      addTableJournal("duplicate_position", "Ошибка: position_id required");
+      return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "position_id required" };
+    }
+    const listRaw = String(args?.list || "").trim().toLowerCase();
+    if (listRaw === "project") {
+      const arr = app.state.projectConsumables;
+      const idx = arr.findIndex((p) => p.id === posId);
+      if (idx < 0) {
+        addTableJournal("duplicate_position", "Ошибка: позиция не найдена");
+        return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "position not found" };
+      }
+      const src = arr[idx];
+      const copy = { ...src, id: uid() };
+      arr.splice(idx + 1, 0, copy);
+      app.ui.treeSel = { type: "projpos", pos: copy.id };
+      app.ui.activeSheetId = "project-consumables";
+      renderAll();
+      addTableJournal("duplicate_position", `project: ${src.id} -> ${copy.id}`);
+      addChangesJournal("project.position.duplicate", `${src.id} -> ${copy.id}`);
+      return {
+        ok: true,
+        applied: 1,
+        entity: { type: "position", id: copy.id },
+        warnings: [],
+        list: "project",
+        source: { id: src.id, name: src.name },
+        copy: { id: copy.id, name: copy.name },
+      };
+    }
+
+    const assembly = resolveAgentAssembly(args);
+    if (!assembly) {
+      addTableJournal("duplicate_position", "Ошибка: сборка не найдена");
+      return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "assembly not found" };
+    }
+    const listKey = normalizeAgentPositionList(args?.list);
+    const arr = listKey === "consumable" ? assembly.consumable : assembly.main;
+    const idx = arr.findIndex((p) => p.id === posId);
+    if (idx < 0) {
+      addTableJournal("duplicate_position", "Ошибка: позиция не найдена");
+      return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "position not found" };
+    }
+    const src = arr[idx];
+    const copy = { ...src, id: uid() };
+    arr.splice(idx + 1, 0, copy);
+    app.ui.treeSel = { type: "pos", id: assembly.id, list: listKey === "consumable" ? "cons" : "main", pos: copy.id };
+    app.ui.activeSheetId = listKey === "consumable" ? `assembly:${assembly.id}:cons` : `assembly:${assembly.id}:main`;
+    renderAll();
+    addTableJournal("duplicate_position", `${assembly.fullName}.${listKey}: ${src.id} -> ${copy.id}`);
+    addChangesJournal("position.duplicate", `${assembly.id}.${listKey}.${src.id} -> ${copy.id}`);
+    return {
+      ok: true,
+      applied: 1,
+      entity: { type: "position", id: copy.id },
+      warnings: [],
+      assembly: { id: assembly.id, full_name: assembly.fullName },
+      list: listKey,
+      source: { id: src.id, name: src.name },
+      copy: { id: copy.id, name: copy.name },
+    };
+  }
+
   if (name === "add_project_position") {
     const baseName = String(args?.name || "").trim();
     if (!baseName) {
@@ -3645,6 +4863,27 @@ async function executeAgentTool(name, args, turnCtx = null) {
     addTableJournal("add_project_position", `project: ${pos.name}, qty=${pos.qty} ${pos.unit}`);
     addChangesJournal("project.position.add", pos.id);
     return { ok: true, position: { id: pos.id, name: pos.name, qty: pos.qty, unit: pos.unit } };
+  }
+
+  if (name === "list_project_positions") {
+    const includeDetails = Boolean(args?.include_details);
+    const positions = app.state.projectConsumables.map((p) => (includeDetails ? compactForTool(p) : {
+      id: p.id,
+      name: p.name,
+      qty: p.qty,
+      unit: p.unit,
+      manufacturer: p.manufacturer,
+      article: p.article,
+    }));
+    addTableJournal("list_project_positions", `Получено позиций: ${positions.length}`);
+    return {
+      ok: true,
+      applied: 0,
+      entity: { type: "project_positions" },
+      warnings: [],
+      enabled: Boolean(app.state.hasProjectConsumables),
+      positions,
+    };
   }
 
   if (name === "update_project_position") {
@@ -3933,6 +5172,8 @@ function resolveAgentSheet(args) {
 
 function resolveAgentAssembly(args) {
   const id = String(args?.assembly_id || "").trim();
+  const nameRaw = String(args?.assembly_name || "").trim();
+  const explicitTarget = Boolean(id || nameRaw);
   if (id) {
     const byId = assemblyById(id);
     if (byId) {
@@ -3941,7 +5182,6 @@ function resolveAgentAssembly(args) {
     }
   }
 
-  const nameRaw = String(args?.assembly_name || "").trim();
   if (nameRaw) {
     const name = nameRaw.toLowerCase();
     const exact = app.state.assemblies.find((a) => {
@@ -3970,6 +5210,12 @@ function resolveAgentAssembly(args) {
     const remembered = assemblyById(rememberedId);
     if (remembered) {
       app.ai.lastAssemblyId = remembered.id;
+      if (explicitTarget) {
+        addTableJournal("agent.fallback", `assembly fallback -> remembered (${remembered.fullName})`, {
+          status: "running",
+          meta: { requested_id: id || null, requested_name: nameRaw || null, resolved_id: remembered.id, reason: "remembered" },
+        });
+      }
       return remembered;
     }
   }
@@ -3979,6 +5225,12 @@ function resolveAgentAssembly(args) {
     const selected = assemblyById(selId);
     if (selected) {
       app.ai.lastAssemblyId = selected.id;
+      if (explicitTarget) {
+        addTableJournal("agent.fallback", `assembly fallback -> selected (${selected.fullName})`, {
+          status: "running",
+          meta: { requested_id: id || null, requested_name: nameRaw || null, resolved_id: selected.id, reason: "selected" },
+        });
+      }
       return selected;
     }
   }
@@ -3989,17 +5241,35 @@ function resolveAgentAssembly(args) {
     const bySheet = assemblyById(m[1]);
     if (bySheet) {
       app.ai.lastAssemblyId = bySheet.id;
+      if (explicitTarget) {
+        addTableJournal("agent.fallback", `assembly fallback -> active sheet (${bySheet.fullName})`, {
+          status: "running",
+          meta: { requested_id: id || null, requested_name: nameRaw || null, resolved_id: bySheet.id, reason: "active_sheet" },
+        });
+      }
       return bySheet;
     }
   }
 
   if (app.state.assemblies.length === 1) {
     app.ai.lastAssemblyId = app.state.assemblies[0].id;
+    if (explicitTarget) {
+      addTableJournal("agent.fallback", `assembly fallback -> only assembly (${app.state.assemblies[0].fullName})`, {
+        status: "running",
+        meta: { requested_id: id || null, requested_name: nameRaw || null, resolved_id: app.state.assemblies[0].id, reason: "single" },
+      });
+    }
     return app.state.assemblies[0];
   }
   if (app.state.assemblies.length > 1) {
     const fallback = app.state.assemblies[app.state.assemblies.length - 1];
     app.ai.lastAssemblyId = fallback.id;
+    if (explicitTarget) {
+      addTableJournal("agent.fallback", `assembly fallback -> last (${fallback.fullName})`, {
+        status: "running",
+        meta: { requested_id: id || null, requested_name: nameRaw || null, resolved_id: fallback.id, reason: "last" },
+      });
+    }
     return fallback;
   }
   return null;
@@ -4341,6 +5611,36 @@ function getPositionRef(assemblyId, list, posId) {
   if (!a) return null;
   const arr = list === "main" ? a.main : a.consumable;
   return arr.find((p) => p.id === posId) || null;
+}
+
+function onSidebarResizePointerDown(e) {
+  if (app.ui.sidebarCollapsed) return;
+  app.ui.sidebarResizing = true;
+  app.ui.sidebarResizePointerId = e.pointerId;
+  app.ui.sidebarResizeStartX = e.clientX;
+  app.ui.sidebarResizeStartWidth = clampSidebarWidth(app.ui.sidebarWidth || dom.sidebar?.getBoundingClientRect()?.width || 360);
+  dom.sidebarResizeHandle?.setPointerCapture?.(e.pointerId);
+  document.body.classList.add("sidebar-resizing");
+  e.preventDefault();
+}
+
+function onSidebarResizePointerMove(e) {
+  if (!app.ui.sidebarResizing) return;
+  const delta = e.clientX - num(app.ui.sidebarResizeStartX, 0);
+  const nextWidth = num(app.ui.sidebarResizeStartWidth, 360) + delta;
+  applySidebarWidth(nextWidth, false);
+}
+
+function onSidebarResizePointerUp(e) {
+  if (!app.ui.sidebarResizing) return;
+  if (app.ui.sidebarResizePointerId !== undefined && e.pointerId !== undefined && e.pointerId !== app.ui.sidebarResizePointerId) return;
+  app.ui.sidebarResizing = false;
+  app.ui.sidebarResizePointerId = undefined;
+  app.ui.sidebarResizeStartX = undefined;
+  app.ui.sidebarResizeStartWidth = undefined;
+  dom.sidebarResizeHandle?.releasePointerCapture?.(e.pointerId);
+  document.body.classList.remove("sidebar-resizing");
+  saveSidebarWidth();
 }
 
 function addPositionBySelection() {
