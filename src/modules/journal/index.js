@@ -8,8 +8,8 @@ function createAiJournalInternal(ctx) {
   const {
     app,
     dom,
-    windowRef = window,
-    localStorageRef = localStorage,
+    windowRef,
+    localStorageRef,
     config,
     helpers,
   } = ctx;
@@ -45,8 +45,8 @@ function createAiJournalInternal(ctx) {
     uid,
   } = helpers;
 
-  const window = windowRef;
-  const localStorage = localStorageRef;
+  const win = windowRef || globalThis.window;
+  const storage = localStorageRef || globalThis.localStorage;
   const journalRenderState = {
     timer: 0,
     kinds: new Set(),
@@ -54,22 +54,22 @@ function createAiJournalInternal(ctx) {
 
 function loadAiSettings() {
   try {
-    const key = String(localStorage.getItem(STORAGE_KEYS.openAiApiKey) || "").trim();
+    const key = String(storage.getItem(STORAGE_KEYS.openAiApiKey) || "").trim();
     app.ai.apiKey = key;
     app.ai.connected = Boolean(key);
   } catch {}
 
   try {
-    const storedModel = String(localStorage.getItem(STORAGE_KEYS.openAiModel) || "").trim();
+    const storedModel = String(storage.getItem(STORAGE_KEYS.openAiModel) || "").trim();
     if (isKnownAiModel(storedModel)) app.ai.model = storedModel;
   } catch {}
 
   try {
-    app.ai.collapsed = localStorage.getItem(STORAGE_KEYS.agentCollapsed) === "1";
+    app.ai.collapsed = storage.getItem(STORAGE_KEYS.agentCollapsed) === "1";
   } catch {}
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.agentOptions);
+    const raw = storage.getItem(STORAGE_KEYS.agentOptions);
     if (raw) {
       const parsed = JSON.parse(raw);
       for (const k of ["currentSheet", "allSheets", "selection", "webSearch"]) {
@@ -79,33 +79,33 @@ function loadAiSettings() {
   } catch {}
 
   try {
-    const rawWidth = num(localStorage.getItem(STORAGE_KEYS.sidebarWidth), app.ui.sidebarWidth);
+    const rawWidth = num(storage.getItem(STORAGE_KEYS.sidebarWidth), app.ui.sidebarWidth);
     app.ui.sidebarWidth = clampSidebarWidth(rawWidth);
   } catch {}
 }
 
 function saveAiOptions() {
   try {
-    localStorage.setItem(STORAGE_KEYS.agentOptions, JSON.stringify(app.ai.options));
+    storage.setItem(STORAGE_KEYS.agentOptions, JSON.stringify(app.ai.options));
   } catch {}
 }
 
 function saveAiCollapsed() {
   try {
-    localStorage.setItem(STORAGE_KEYS.agentCollapsed, app.ai.collapsed ? "1" : "0");
+    storage.setItem(STORAGE_KEYS.agentCollapsed, app.ai.collapsed ? "1" : "0");
   } catch {}
 }
 
 function saveOpenAiApiKey() {
   try {
-    if (app.ai.apiKey) localStorage.setItem(STORAGE_KEYS.openAiApiKey, app.ai.apiKey);
-    else localStorage.removeItem(STORAGE_KEYS.openAiApiKey);
+    if (app.ai.apiKey) storage.setItem(STORAGE_KEYS.openAiApiKey, app.ai.apiKey);
+    else storage.removeItem(STORAGE_KEYS.openAiApiKey);
   } catch {}
 }
 
 function saveOpenAiModel() {
   try {
-    if (isKnownAiModel(app.ai.model)) localStorage.setItem(STORAGE_KEYS.openAiModel, app.ai.model);
+    if (isKnownAiModel(app.ai.model)) storage.setItem(STORAGE_KEYS.openAiModel, app.ai.model);
   } catch {}
 }
 
@@ -116,7 +116,7 @@ function clampSidebarWidth(value) {
 
 function saveSidebarWidth() {
   try {
-    localStorage.setItem(STORAGE_KEYS.sidebarWidth, String(clampSidebarWidth(app.ui.sidebarWidth)));
+    storage.setItem(STORAGE_KEYS.sidebarWidth, String(clampSidebarWidth(app.ui.sidebarWidth)));
   } catch {}
 }
 
@@ -207,7 +207,7 @@ function beginAgentStreamingEntry(turnId) {
   app.ai.streamEntryId = entryId;
   app.ai.streamDeltaHasPending = false;
   if (app.ai.streamDeltaFlushTimer) {
-    window.clearTimeout(app.ai.streamDeltaFlushTimer);
+    win.clearTimeout(app.ai.streamDeltaFlushTimer);
     app.ai.streamDeltaFlushTimer = 0;
   }
   const removed = addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, "AI", "Думаю...", MAX_CHAT_JOURNAL_TEXT, {
@@ -234,7 +234,7 @@ function appendAgentStreamingDelta(entryId, delta) {
   app.ai.streamDeltaHasPending = true;
 
   if (app.ai.streamDeltaFlushTimer) return;
-  app.ai.streamDeltaFlushTimer = window.setTimeout(() => {
+  app.ai.streamDeltaFlushTimer = win.setTimeout(() => {
     app.ai.streamDeltaFlushTimer = 0;
     flushAgentStreamingDeltaPatch();
   }, STREAM_DELTA_FLUSH_MS);
@@ -242,7 +242,7 @@ function appendAgentStreamingDelta(entryId, delta) {
 
 function finalizeAgentStreamingEntry(entryId, finalText, status = "completed", level = "info", extraMeta = undefined) {
   if (app.ai.streamDeltaFlushTimer) {
-    window.clearTimeout(app.ai.streamDeltaFlushTimer);
+    win.clearTimeout(app.ai.streamDeltaFlushTimer);
     app.ai.streamDeltaFlushTimer = 0;
   }
   flushAgentStreamingDeltaPatch();
@@ -344,12 +344,12 @@ function requestJournalRender(kind = "all") {
   }
 
   if (journalRenderState.timer) return;
-  journalRenderState.timer = window.setTimeout(flushJournalRender, JOURNAL_RENDER_DEBOUNCE_MS);
+  journalRenderState.timer = win.setTimeout(flushJournalRender, JOURNAL_RENDER_DEBOUNCE_MS);
 }
 
 function flushJournalRender() {
   if (journalRenderState.timer) {
-    window.clearTimeout(journalRenderState.timer);
+    win.clearTimeout(journalRenderState.timer);
     journalRenderState.timer = 0;
   }
 
@@ -686,20 +686,20 @@ function formatJournalTextForCopy(textRaw) {
 
 async function copyText(text) {
   try {
-    if (window.navigator?.clipboard?.writeText) {
-      await window.navigator.clipboard.writeText(text);
+    if (win.navigator?.clipboard?.writeText) {
+      await win.navigator.clipboard.writeText(text);
       return;
     }
   } catch {}
 
-  const ta = window.document.createElement("textarea");
+  const ta = win.document.createElement("textarea");
   ta.value = text;
   ta.style.position = "fixed";
   ta.style.left = "-9999px";
-  window.document.body.appendChild(ta);
+  win.document.body.appendChild(ta);
   ta.select();
-  window.document.execCommand("copy");
-  window.document.body.removeChild(ta);
+  win.document.execCommand("copy");
+  win.document.body.removeChild(ta);
 }
 
 async function copyJournal(kind) {
