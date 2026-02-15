@@ -42,6 +42,7 @@ function createAgentProjectPositionToolsInternal(ctx) {
     if (name === "read_position") {
       const listRaw = String(args?.list || "").trim().toLowerCase();
       if (listRaw !== "project") return undefined;
+      if (!Array.isArray(app.state.projectConsumables)) app.state.projectConsumables = [];
 
       const posId = String(args?.position_id || "").trim();
       if (!posId) {
@@ -68,6 +69,7 @@ function createAgentProjectPositionToolsInternal(ctx) {
     if (name === "duplicate_position") {
       const listRaw = String(args?.list || "").trim().toLowerCase();
       if (listRaw !== "project") return undefined;
+      if (!Array.isArray(app.state.projectConsumables)) app.state.projectConsumables = [];
 
       const posId = String(args?.position_id || "").trim();
       if (!posId) {
@@ -111,6 +113,7 @@ function createAgentProjectPositionToolsInternal(ctx) {
       if (!verified.ok) return { ok: false, error: verified.error };
 
       if (!app.state.hasProjectConsumables) app.state.hasProjectConsumables = true;
+      if (!Array.isArray(app.state.projectConsumables)) app.state.projectConsumables = [];
       const pos = makePosition();
       applyAgentPositionPatch(pos, args);
       pos.name = baseName;
@@ -125,6 +128,7 @@ function createAgentProjectPositionToolsInternal(ctx) {
     }
 
     if (name === "list_project_positions") {
+      if (!Array.isArray(app.state.projectConsumables)) app.state.projectConsumables = [];
       const includeDetails = Boolean(args?.include_details);
       const positions = app.state.projectConsumables.map((p) => (includeDetails ? compactForTool(p) : {
         id: p.id,
@@ -146,6 +150,7 @@ function createAgentProjectPositionToolsInternal(ctx) {
     }
 
     if (name === "update_project_position") {
+      if (!Array.isArray(app.state.projectConsumables)) app.state.projectConsumables = [];
       const posId = String(args?.position_id || "");
       const pos = app.state.projectConsumables.find((p) => p.id === posId) || null;
       if (!pos) {
@@ -173,6 +178,7 @@ function createAgentProjectPositionToolsInternal(ctx) {
     }
 
     if (name === "delete_project_position") {
+      if (!Array.isArray(app.state.projectConsumables)) app.state.projectConsumables = [];
       const posId = String(args?.position_id || "");
       const exists = app.state.projectConsumables.some((p) => p.id === posId);
       if (!exists) {
@@ -186,9 +192,7 @@ function createAgentProjectPositionToolsInternal(ctx) {
 
     if (name === "toggle_project_consumables") {
       app.state.hasProjectConsumables = Boolean(args?.enabled);
-      if (app.state.hasProjectConsumables && !app.state.projectConsumables.length) {
-        app.state.projectConsumables = [makePosition()];
-      }
+      if (!Array.isArray(app.state.projectConsumables)) app.state.projectConsumables = [];
       app.ui.treeSel = { type: "projlist" };
       if (app.state.hasProjectConsumables) app.ui.activeSheetId = "project-consumables";
       renderAll();

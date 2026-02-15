@@ -129,6 +129,16 @@ export class AgentStateAccessModule {
 
     for (const r of sheet.rows) {
       while (r.cells.length < sheet.cols.length) r.cells.push({ styleId: 0, value: null, formula: "" });
+      for (let i = 0; i < sheet.cols.length; i += 1) {
+        const cell = r.cells[i];
+        if (!cell || typeof cell !== "object") {
+          r.cells[i] = { styleId: 0, value: null, formula: "" };
+          continue;
+        }
+        if (!Number.isFinite(Number(cell.styleId))) cell.styleId = 0;
+        if (!Object.prototype.hasOwnProperty.call(cell, "value")) cell.value = null;
+        if (!Object.prototype.hasOwnProperty.call(cell, "formula")) cell.formula = "";
+      }
     }
   }
 }

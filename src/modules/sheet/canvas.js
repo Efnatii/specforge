@@ -33,21 +33,24 @@ export class SheetCanvasModule {
     const body = this._document.createElement("tbody");
 
     for (let ri = 1; ri <= sheet.rows.length; ri += 1) {
-      const row = sheet.rows[ri - 1];
+      const row = sheet.rows[ri - 1] || { height: 20, cells: [] };
       const tr = this._document.createElement("tr");
-      tr.style.height = `${row.height}px`;
+      const rowHeight = Number(row.height);
+      tr.style.height = `${Number.isFinite(rowHeight) && rowHeight > 0 ? rowHeight : 20}px`;
 
       for (let ci = 1; ci <= sheet.cols.length; ci += 1) {
         const key = `${ri}:${ci}`;
         if (merge.skip.has(key)) continue;
 
-        const cell = row.cells[ci - 1];
+        const rawCell = row.cells?.[ci - 1];
+        const cell = rawCell && typeof rawCell === "object" ? rawCell : { styleId: 0, value: null, formula: "" };
+        const styleId = Number.isFinite(Number(cell.styleId)) ? Number(cell.styleId) : 0;
         const td = this._document.createElement("td");
-        td.className = `cell s-${cell.styleId}`;
+        td.className = `cell s-${styleId}`;
         td.dataset.row = String(ri);
         td.dataset.col = String(ci);
 
-        const style = templateStyles[cell.styleId];
+        const style = templateStyles?.[styleId];
         if (style?.align?.wrap) td.classList.add("wrap");
 
         const merged = merge.start.get(key);

@@ -123,8 +123,10 @@ export class WorkbookSheetLayoutModule {
     const row7Num = rows.length + 1;
     const row7 = this._sheetRow(templateSheet, 7, 7);
     this._copyRowValues(row7, templateSheet.rowValues[7]);
-    this._setRowCell(row7, 11, this._round2(metrics.baseNoDisc), `SUM(K${posStart}:K${posEnd})+K${row6Num}`);
-    this._setRowCell(row7, 17, this._round2(metrics.baseDisc), `Q${row6Num}+SUM(Q${posStart}:Q${posEnd})`);
+    const mainSumKFormula = metrics.main.length ? `SUM(K${posStart}:K${posEnd})` : "0";
+    const mainSumQFormula = metrics.main.length ? `SUM(Q${posStart}:Q${posEnd})` : "0";
+    this._setRowCell(row7, 11, this._round2(metrics.baseNoDisc), `${mainSumKFormula}+K${row6Num}`);
+    this._setRowCell(row7, 17, this._round2(metrics.baseDisc), `Q${row6Num}+${mainSumQFormula}`);
     rows.push(row7);
 
     const row8 = this._sheetRow(templateSheet, 8, 8);
@@ -235,8 +237,10 @@ export class WorkbookSheetLayoutModule {
     this._copyRowValues(row6, templateSheet.rowValues[6]);
     const totalK = this._ceil1(items.reduce((sum, item) => sum + item.sumVat, 0));
     const totalQ = this._ceil1(items.reduce((sum, item) => sum + item.discSumVat, 0));
-    this._setRowCell(row6, 11, this._round2(totalK), `CEILING((SUM(K${posStart}:K${posEnd})),1)`);
-    this._setRowCell(row6, 17, this._round2(totalQ), `CEILING((SUM(Q${posStart}:Q${posEnd})),1)`);
+    const consRangeK = items.length ? `SUM(K${posStart}:K${posEnd})` : "0";
+    const consRangeQ = items.length ? `SUM(Q${posStart}:Q${posEnd})` : "0";
+    this._setRowCell(row6, 11, this._round2(totalK), `CEILING((${consRangeK}),1)`);
+    this._setRowCell(row6, 17, this._round2(totalQ), `CEILING((${consRangeQ}),1)`);
     rows.push(row6);
 
     return {
@@ -252,11 +256,20 @@ export class WorkbookSheetLayoutModule {
   }
 
   _sheetRow(template, patternRow, heightRow = patternRow) {
-    const pattern = template.rowStyles[patternRow] || new Array(template.maxCol).fill(0);
-    const height = template.rowHeights[heightRow] || template.defaultRowHeight;
+    const maxCol = Math.max(
+      1,
+      Number(template.maxCol) || 0,
+      Array.isArray(template.cols) ? template.cols.length : 0,
+    );
+    const pattern = Array.isArray(template.rowStyles?.[patternRow]) ? template.rowStyles[patternRow] : [];
+    const height = template.rowHeights?.[heightRow] || template.defaultRowHeight;
     return {
       height,
-      cells: pattern.map((styleId) => ({ styleId: Number(styleId || 0), value: null, formula: "" })),
+      cells: Array.from({ length: maxCol }, (_, idx) => ({
+        styleId: Number(pattern[idx] || 0),
+        value: null,
+        formula: "",
+      })),
     };
   }
 

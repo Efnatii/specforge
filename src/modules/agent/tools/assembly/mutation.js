@@ -128,9 +128,7 @@ function createAgentAssemblyMutationToolsInternal(ctx) {
       }
 
       assembly.separateConsumables = Boolean(args?.separate_consumables);
-      if (assembly.separateConsumables && (!Array.isArray(assembly.consumable) || !assembly.consumable.length)) {
-        assembly.consumable = [makePosition()];
-      }
+      if (!Array.isArray(assembly.consumable)) assembly.consumable = [];
 
       app.state.assemblies.push(assembly);
       app.ai.lastAssemblyId = assembly.id;
@@ -174,7 +172,7 @@ function createAgentAssemblyMutationToolsInternal(ctx) {
       }
       if (args?.separate_consumables !== undefined) {
         assembly.separateConsumables = Boolean(args.separate_consumables);
-        if (assembly.separateConsumables && !assembly.consumable.length) assembly.consumable = [makePosition()];
+        if (!Array.isArray(assembly.consumable)) assembly.consumable = [];
         changed.push("separate_consumables");
       }
       if (args?.manual_cons_no_disc !== undefined) {
@@ -215,8 +213,8 @@ function createAgentAssemblyMutationToolsInternal(ctx) {
         ...source,
         id: uid(),
         fullName: nextCopyAssemblyName(source.fullName || "Сборка"),
-        main: Array.isArray(source.main) && source.main.length ? source.main.map((p) => ({ ...p, id: uid() })) : [makePosition()],
-        consumable: Array.isArray(source.consumable) && source.consumable.length ? source.consumable.map((p) => ({ ...p, id: uid() })) : [makePosition()],
+        main: Array.isArray(source.main) && source.main.length ? source.main.map((p) => ({ ...p, id: uid() })) : [],
+        consumable: Array.isArray(source.consumable) && source.consumable.length ? source.consumable.map((p) => ({ ...p, id: uid() })) : [],
         labor: { ...source.labor },
         manualConsNoDisc: num(source.manualConsNoDisc, 0),
         manualConsDisc: num(source.manualConsDisc, 0),

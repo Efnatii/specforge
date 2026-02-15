@@ -59,7 +59,8 @@ function createAgentAssemblyPositionToolsInternal(ctx) {
         return { ok: false, error: "assembly not found" };
       }
       const listKey = normalizeAgentPositionList(args?.list);
-      const arr = listKey === "consumable" ? assembly.consumable : assembly.main;
+      const arrRaw = listKey === "consumable" ? assembly.consumable : assembly.main;
+      const arr = Array.isArray(arrRaw) ? arrRaw : [];
       const includeDetails = Boolean(args?.include_details);
       const positions = arr.map((p) => (includeDetails ? compactForTool(p) : {
         id: p.id,
@@ -94,7 +95,8 @@ function createAgentAssemblyPositionToolsInternal(ctx) {
         return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "assembly not found" };
       }
       const listKey = normalizeAgentPositionList(args?.list);
-      const arr = listKey === "consumable" ? assembly.consumable : assembly.main;
+      const arrRaw = listKey === "consumable" ? assembly.consumable : assembly.main;
+      const arr = Array.isArray(arrRaw) ? arrRaw : [];
       const pos = arr.find((p) => p.id === posId) || null;
       if (!pos) {
         addTableJournal("read_position", "Ошибка: позиция не найдена");
@@ -177,7 +179,8 @@ function createAgentAssemblyPositionToolsInternal(ctx) {
         return { ok: false, error: "assembly not found" };
       }
       const listKey = normalizeAgentPositionList(args?.list);
-      const arr = listKey === "consumable" ? assembly.consumable : assembly.main;
+      const arrRaw = listKey === "consumable" ? assembly.consumable : assembly.main;
+      const arr = Array.isArray(arrRaw) ? arrRaw : [];
       const pos = arr.find((p) => p.id === String(args?.position_id || "")) || null;
       if (!pos) {
         addTableJournal("update_position", "Ошибка: позиция не найдена");
@@ -212,7 +215,8 @@ function createAgentAssemblyPositionToolsInternal(ctx) {
       }
       const listKey = normalizeAgentPositionList(args?.list);
       const listForDelete = listKey === "consumable" ? "cons" : "main";
-      const arr = listForDelete === "main" ? assembly.main : assembly.consumable;
+      const arrRaw = listForDelete === "main" ? assembly.main : assembly.consumable;
+      const arr = Array.isArray(arrRaw) ? arrRaw : [];
       const posId = String(args?.position_id || "");
       const exists = arr.some((p) => p.id === posId);
       if (!exists) {
@@ -240,7 +244,8 @@ function createAgentAssemblyPositionToolsInternal(ctx) {
         return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "assembly not found" };
       }
       const listKey = normalizeAgentPositionList(args?.list);
-      const arr = listKey === "consumable" ? assembly.consumable : assembly.main;
+      const arrRaw = listKey === "consumable" ? assembly.consumable : assembly.main;
+      const arr = Array.isArray(arrRaw) ? arrRaw : [];
       const idx = arr.findIndex((p) => p.id === posId);
       if (idx < 0) {
         addTableJournal("duplicate_position", "Ошибка: позиция не найдена");

@@ -61,9 +61,6 @@ export class ProjectMutationModule {
     if (field === "abbrManual" || field === "separateConsumables") {
       assembly[field] = Boolean(checked);
       if (field === "abbrManual" && !assembly.abbrManual) assembly.abbreviation = this.deriveAbbr(assembly.fullName);
-      if (field === "separateConsumables" && assembly.separateConsumables && !assembly.consumable.length) {
-        assembly.consumable = [this.createPosition()];
-      }
     } else if (field === "fullName") {
       assembly.fullName = String(value || "").trim();
       if (!assembly.abbrManual) assembly.abbreviation = this.deriveAbbr(assembly.fullName);
@@ -97,6 +94,8 @@ export class ProjectMutationModule {
   addPosition(state, { assemblyId, list }) {
     const assembly = this.findAssemblyById(state, assemblyId);
     if (!assembly) return { ok: false };
+    if (!Array.isArray(assembly.main)) assembly.main = [];
+    if (!Array.isArray(assembly.consumable)) assembly.consumable = [];
     const arr = list === "main" ? assembly.main : assembly.consumable;
     const position = this.createPosition();
     arr.push(position);
@@ -111,6 +110,7 @@ export class ProjectMutationModule {
 
   addProjectPosition(state) {
     if (!state?.hasProjectConsumables) return { ok: false };
+    if (!Array.isArray(state.projectConsumables)) state.projectConsumables = [];
     const position = this.createPosition();
     state.projectConsumables.push(position);
     return {
@@ -136,7 +136,6 @@ export class ProjectMutationModule {
 
   toggleProjectConsumables(state, { enabled } = {}) {
     state.hasProjectConsumables = enabled === undefined ? !state.hasProjectConsumables : Boolean(enabled);
-    if (state.hasProjectConsumables && !state.projectConsumables.length) state.projectConsumables = [this.createPosition()];
     return {
       ok: true,
       enabled: state.hasProjectConsumables,
@@ -172,10 +171,10 @@ export class ProjectMutationModule {
       fullName: this.nextCopyAssemblyName(state, source.fullName || "Сборка"),
       main: Array.isArray(source.main) && source.main.length
         ? source.main.map((position) => ({ ...position, id: this._newId() }))
-        : [this.createPosition()],
+        : [],
       consumable: Array.isArray(source.consumable) && source.consumable.length
         ? source.consumable.map((position) => ({ ...position, id: this._newId() }))
-        : [this.createPosition()],
+        : [],
       labor: { ...source.labor },
       manualConsNoDisc: this.num(source.manualConsNoDisc, 0),
       manualConsDisc: this.num(source.manualConsDisc, 0),
@@ -196,6 +195,7 @@ export class ProjectMutationModule {
 
   duplicatePosition(state, { assemblyId, list, posId }) {
     if (list === "project") {
+      if (!Array.isArray(state.projectConsumables)) state.projectConsumables = [];
       const arr = state.projectConsumables;
       const idx = arr.findIndex((position) => position.id === posId);
       if (idx < 0) return { ok: false };
@@ -228,11 +228,11 @@ export class ProjectMutationModule {
 
   deletePosition(state, { assemblyId, list, posId }) {
     if (list === "project") {
+      if (!Array.isArray(state.projectConsumables)) state.projectConsumables = [];
       const arr = state.projectConsumables;
       const idx = arr.findIndex((position) => position.id === posId);
       if (idx < 0) return { ok: false };
-      if (arr.length === 1) arr[0] = this.createPosition();
-      else arr.splice(idx, 1);
+      arr.splice(idx, 1);
       return {
         ok: true,
         treeSel: { type: "projlist" },
@@ -243,11 +243,12 @@ export class ProjectMutationModule {
 
     const assembly = this.findAssemblyById(state, assemblyId);
     if (!assembly) return { ok: false };
+    if (!Array.isArray(assembly.main)) assembly.main = [];
+    if (!Array.isArray(assembly.consumable)) assembly.consumable = [];
     const arr = list === "main" ? assembly.main : assembly.consumable;
     const idx = arr.findIndex((position) => position.id === posId);
     if (idx < 0) return { ok: false };
-    if (arr.length === 1) arr[0] = this.createPosition();
-    else arr.splice(idx, 1);
+    arr.splice(idx, 1);
     return {
       ok: true,
       treeSel: { type: "list", id: assemblyId, list },

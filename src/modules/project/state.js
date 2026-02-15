@@ -105,8 +105,8 @@ export class ProjectStateModule {
       abbreviation: this.deriveAbbr(fullName),
       abbrManual: false,
       separateConsumables: false,
-      main: [this.createPosition()],
-      consumable: [this.createPosition()],
+      main: [],
+      consumable: [],
       manualConsNoDisc: 0,
       manualConsDisc: 0,
       labor: {
@@ -133,7 +133,7 @@ export class ProjectStateModule {
       },
       assemblies: [],
       hasProjectConsumables: false,
-      projectConsumables: [this.createPosition()],
+      projectConsumables: [],
     };
   }
 
@@ -154,9 +154,9 @@ export class ProjectStateModule {
         ? raw.assemblies.map((assembly, idx) => this._normAssembly(assembly, idx + 1))
         : [],
       hasProjectConsumables: Boolean(raw?.hasProjectConsumables),
-      projectConsumables: Array.isArray(raw?.projectConsumables) && raw.projectConsumables.length
+      projectConsumables: Array.isArray(raw?.projectConsumables)
         ? raw.projectConsumables.map((position) => this._normPosition(position))
-        : [this.createPosition()],
+        : [],
     };
   }
 
@@ -213,9 +213,9 @@ export class ProjectStateModule {
   }
 
   _normPosList(list) {
-    return Array.isArray(list) && list.length
+    return Array.isArray(list)
       ? list.map((position) => this._normPosition(position))
-      : [this.createPosition()];
+      : [];
   }
 
   _normPosition(rawPosition) {

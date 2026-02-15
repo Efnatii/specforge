@@ -37,8 +37,10 @@ export class WorkbookCalculationModule {
   }
 
   calcAssemblyMetrics(assembly, vat) {
-    const main = assembly.main.map((position) => this.calcItem(position, vat));
-    const cons = assembly.consumable.map((position) => this.calcItem(position, vat));
+    const mainList = Array.isArray(assembly.main) ? assembly.main : [];
+    const consList = Array.isArray(assembly.consumable) ? assembly.consumable : [];
+    const main = mainList.map((position) => this.calcItem(position, vat));
+    const cons = consList.map((position) => this.calcItem(position, vat));
 
     const mainNoDisc = main.reduce((sum, item) => sum + item.sumVat, 0);
     const mainDisc = main.reduce((sum, item) => sum + item.discSumVat, 0);

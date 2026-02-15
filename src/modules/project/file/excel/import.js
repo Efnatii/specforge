@@ -78,7 +78,7 @@ export class ProjectFileExcelImportModule {
       assembly.abbrManual = true;
 
       const parsedMain = this._parser.parseSheetPositions(ws, settings.vatRate, "main");
-      assembly.main = parsedMain.length ? parsedMain : [this._state.createPosition()];
+      assembly.main = parsedMain;
 
       const labor = this._parser.parseLabor(ws);
       assembly.labor = {
@@ -94,10 +94,10 @@ export class ProjectFileExcelImportModule {
       if (item.separate || consWs) {
         assembly.separateConsumables = true;
         const parsedCons = this._parser.parseSheetPositions(consWs || ws, settings.vatRate, "consumable");
-        assembly.consumable = parsedCons.length ? parsedCons : [this._state.createPosition()];
+        assembly.consumable = parsedCons;
       } else {
         assembly.separateConsumables = false;
-        assembly.consumable = [this._state.createPosition()];
+        assembly.consumable = [];
       }
 
       assemblies.push(assembly);
@@ -107,13 +107,13 @@ export class ProjectFileExcelImportModule {
       settings,
       assemblies,
       hasProjectConsumables: false,
-      projectConsumables: [this._state.createPosition()],
+      projectConsumables: [],
     };
 
     if (projectWs) {
       const parsed = this._parser.parseSheetPositions(projectWs, settings.vatRate, "consumable");
       state.hasProjectConsumables = true;
-      state.projectConsumables = parsed.length ? parsed : [this._state.createPosition()];
+      state.projectConsumables = parsed;
     }
 
     return state;

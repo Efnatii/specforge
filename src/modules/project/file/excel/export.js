@@ -28,7 +28,10 @@ export class ProjectFileExcelExportModule {
         wsRow.height = this._template.pxToPt(sourceRow.height);
 
         for (let c = 0; c < sourceRow.cells.length; c += 1) {
-          const sourceCell = sourceRow.cells[c];
+          const sourceCellRaw = sourceRow.cells[c];
+          const sourceCell = sourceCellRaw && typeof sourceCellRaw === "object"
+            ? sourceCellRaw
+            : { styleId: 0, value: null, formula: "" };
           const wsCell = wsRow.getCell(c + 1);
           wsCell.value = sourceCell.formula
             ? { formula: sourceCell.formula, result: this._excelValue(sourceCell.value) }
