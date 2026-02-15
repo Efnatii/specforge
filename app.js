@@ -6,13 +6,24 @@ const SHEET_NAMES = {
   projectConsumable: "Расходники",
 };
 const DEV_LABEL = "Гороховицкий Егор Русланович";
-const AI_MODEL = "gpt-4.1-mini";
+const DEFAULT_AI_MODEL = "gpt-5-mini";
+const AI_MODELS = [
+  { id: "gpt-5-mini", label: "GPT-5 mini", inputUsdPer1M: 0.25, outputUsdPer1M: 2 },
+  { id: "gpt-5", label: "GPT-5", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+  { id: "gpt-5.1", label: "GPT-5.1", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+  { id: "gpt-5-nano", label: "GPT-5 nano", inputUsdPer1M: 0.05, outputUsdPer1M: 0.4 },
+  { id: "o1", label: "o1", inputUsdPer1M: 15, outputUsdPer1M: 60 },
+  { id: "o3-pro", label: "o3-pro", inputUsdPer1M: 20, outputUsdPer1M: 80 },
+];
+const WEB_SEARCH_PRICE_NOTE = "Веб-поиск (reasoning models): $10 за 1K tool calls + стоимость входных/выходных токенов.";
 const STORAGE_KEYS = {
   openAiApiKey: "specforge.openai.apiKey",
+  openAiModel: "specforge.openai.model",
   agentCollapsed: "specforge.openai.agentCollapsed",
-  agentOptions: "specforge.openai.agentOptions",
 };
 const MAX_AGENT_LOG = 14;
+const MAX_TABLE_JOURNAL = 240;
+const MAX_EXTERNAL_JOURNAL = 240;
 
 const dom = {
   app: document.getElementById("app"),
@@ -43,7 +54,10 @@ const dom = {
   openAiAuthDialog: document.getElementById("openAiAuthDialog"),
   openAiAuthForm: document.getElementById("openAiAuthForm"),
   openAiApiKeyInput: document.getElementById("openAiApiKeyInput"),
+  openAiModelSelect: document.getElementById("openAiModelSelect"),
+  openAiModelPrice: document.getElementById("openAiModelPrice"),
   openAiAuthHint: document.getElementById("openAiAuthHint"),
+  btnOpenAiCancel: document.getElementById("btnOpenAiCancel"),
   btnOpenAiDisconnect: document.getElementById("btnOpenAiDisconnect"),
   btnOpenAiSave: document.getElementById("btnOpenAiSave"),
   btnOpenAiAuth: document.getElementById("btnOpenAiAuth"),
@@ -51,11 +65,14 @@ const dom = {
   agentOverlay: document.getElementById("agentOverlay"),
   agentBody: document.getElementById("agentBody"),
   btnToggleAgentPanel: document.getElementById("btnToggleAgentPanel"),
-  agentConnectionLabel: document.getElementById("agentConnectionLabel"),
   agentLog: document.getElementById("agentLog"),
   agentChips: document.getElementById("agentContextChips"),
-  btnAgentContext: document.getElementById("btnAgentContext"),
-  agentContextMenu: document.getElementById("agentContextMenu"),
+  tableJournalList: document.getElementById("tableJournalList"),
+  externalJournalList: document.getElementById("externalJournalList"),
+  tableJournalCount: document.getElementById("tableJournalCount"),
+  externalJournalCount: document.getElementById("externalJournalCount"),
+  btnClearTableJournal: document.getElementById("btnClearTableJournal"),
+  btnClearExternalJournal: document.getElementById("btnClearExternalJournal"),
   agentPrompt: document.getElementById("agentPromptInput"),
   btnAgentSend: document.getElementById("btnAgentSend"),
   agentAttachmentInput: document.getElementById("agentAttachmentInput"),
@@ -77,17 +94,14 @@ const app = {
   },
   ai: {
     apiKey: "",
+    model: DEFAULT_AI_MODEL,
     connected: false,
     sending: false,
     collapsed: false,
-    options: {
-      currentSheet: true,
-      allSheets: false,
-      selection: false,
-      webSearch: false,
-    },
     attachments: [],
     log: [],
+    tableJournal: [],
+    externalJournal: [],
     sheetOverrides: {},
   },
 };
@@ -123,23 +137,12 @@ function loadAiSettings() {
   } catch {}
 
   try {
+    const storedModel = String(localStorage.getItem(STORAGE_KEYS.openAiModel) || "").trim();
+    if (isKnownAiModel(storedModel)) app.ai.model = storedModel;
+  } catch {}
+
+  try {
     app.ai.collapsed = localStorage.getItem(STORAGE_KEYS.agentCollapsed) === "1";
-  } catch {}
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.agentOptions);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    app.ai.options.currentSheet = Boolean(parsed.currentSheet);
-    app.ai.options.allSheets = Boolean(parsed.allSheets);
-    app.ai.options.selection = Boolean(parsed.selection);
-    app.ai.options.webSearch = Boolean(parsed.webSearch);
-  } catch {}
-}
-
-function saveAiOptions() {
-  try {
-    localStorage.setItem(STORAGE_KEYS.agentOptions, JSON.stringify(app.ai.options));
   } catch {}
 }
 
@@ -156,10 +159,16 @@ function saveOpenAiApiKey() {
   } catch {}
 }
 
+function saveOpenAiModel() {
+  try {
+    if (isKnownAiModel(app.ai.model)) localStorage.setItem(STORAGE_KEYS.openAiModel, app.ai.model);
+  } catch {}
+}
+
 function renderAiUi() {
   if (dom.btnOpenAiAuth) {
     dom.btnOpenAiAuth.classList.toggle("is-connected", app.ai.connected);
-    dom.btnOpenAiAuth.title = app.ai.connected ? "OpenAI подключен: нажмите для замены/выхода" : "Подключить OpenAI";
+    dom.btnOpenAiAuth.title = app.ai.connected ? "OpenAI: настройки подключения" : "Подключить OpenAI";
     dom.btnOpenAiAuth.setAttribute("aria-label", dom.btnOpenAiAuth.title);
   }
 
@@ -168,22 +177,18 @@ function renderAiUi() {
     dom.agentOverlay.classList.toggle("is-collapsed", app.ai.collapsed);
   }
 
-  if (dom.agentConnectionLabel) {
-    dom.agentConnectionLabel.textContent = app.ai.connected ? "OpenAI подключен" : "OpenAI отключен";
-  }
-
   if (dom.btnAgentSend) dom.btnAgentSend.disabled = !app.ai.connected || app.ai.sending;
   if (dom.agentPrompt) dom.agentPrompt.disabled = !app.ai.connected || app.ai.sending;
 
   renderAgentLog();
   renderAgentChips();
-  renderAgentContextMenu();
+  renderAgentJournals();
 }
 
 function renderAgentLog() {
   if (!dom.agentLog) return;
   if (!app.ai.log.length) {
-    dom.agentLog.innerHTML = `<div class="agent-log-empty">ИИ готов. Можно дать команду, например: "подними цену выбранной позиции на 7%".</div>`;
+    dom.agentLog.innerHTML = "";
     return;
   }
   dom.agentLog.innerHTML = app.ai.log
@@ -192,25 +197,9 @@ function renderAgentLog() {
   dom.agentLog.scrollTop = dom.agentLog.scrollHeight;
 }
 
-function agentOptionDefs() {
-  return {
-    currentSheet: { label: "Текущий лист", code: "sheet" },
-    allSheets: { label: "Все листы", code: "all" },
-    selection: { label: "Выделение", code: "sel" },
-    webSearch: { label: "Веб-поиск", code: "web" },
-  };
-}
-
 function renderAgentChips() {
   if (!dom.agentChips) return;
-  const defs = agentOptionDefs();
   const parts = [];
-
-  for (const key of Object.keys(defs)) {
-    if (!app.ai.options[key]) continue;
-    const d = defs[key];
-    parts.push(`<span class="agent-chip" data-chip-type="option" data-chip-key="${esc(key)}"><b>${esc(d.code)}</b><span>${esc(d.label)}</span><button type="button" class="remove" title="Убрать" aria-label="Убрать">×</button></span>`);
-  }
 
   for (const f of app.ai.attachments) {
     const kb = Math.max(1, Math.round(num(f.size) / 1024));
@@ -220,20 +209,98 @@ function renderAgentChips() {
   dom.agentChips.innerHTML = parts.join("");
 }
 
-function renderAgentContextMenu() {
-  if (!dom.agentContextMenu) return;
-  dom.agentContextMenu.querySelectorAll("[data-ai-option]").forEach((btn) => {
-    const key = btn.dataset.aiOption;
-    btn.classList.toggle("is-selected", Boolean(app.ai.options[key]));
-  });
-}
-
 function addAgentLog(role, text) {
   const clean = String(text || "").trim();
   if (!clean) return;
   app.ai.log.push({ role: role === "assistant" ? "assistant" : "user", text: clean });
   if (app.ai.log.length > MAX_AGENT_LOG) app.ai.log.splice(0, app.ai.log.length - MAX_AGENT_LOG);
   renderAgentLog();
+}
+
+function renderAgentJournals() {
+  renderJournalList("table");
+  renderJournalList("external");
+}
+
+function renderJournalList(kind) {
+  const isTable = kind === "table";
+  const listEl = isTable ? dom.tableJournalList : dom.externalJournalList;
+  const countEl = isTable ? dom.tableJournalCount : dom.externalJournalCount;
+  const items = isTable ? app.ai.tableJournal : app.ai.externalJournal;
+  if (!listEl || !countEl) return;
+
+  countEl.textContent = String(items.length);
+  if (!items.length) {
+    listEl.innerHTML = `<div class="agent-journal-empty">Пока пусто</div>`;
+    return;
+  }
+
+  const html = items
+    .slice()
+    .reverse()
+    .map((it) => `<div class="agent-journal-item"><span class="time">${esc(journalTime(it.ts))}</span><span class="kind">${esc(it.kind)}</span><span class="text">${esc(it.text)}</span></div>`)
+    .join("");
+  listEl.innerHTML = html;
+}
+
+function addTableJournal(kind, text) {
+  addJournalEntry(app.ai.tableJournal, MAX_TABLE_JOURNAL, kind, text);
+}
+
+function addExternalJournal(kind, text) {
+  addJournalEntry(app.ai.externalJournal, MAX_EXTERNAL_JOURNAL, kind, text);
+}
+
+function addJournalEntry(target, limit, kind, text) {
+  const entry = {
+    ts: Date.now(),
+    kind: String(kind || "event").slice(0, 60),
+    text: String(text || "").trim().slice(0, 2000),
+  };
+  if (!entry.text) return;
+  target.push(entry);
+  if (target.length > limit) target.splice(0, target.length - limit);
+  renderAgentJournals();
+}
+
+function journalTime(ts) {
+  const d = new Date(num(ts, Date.now()));
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
+
+function isKnownAiModel(modelId) {
+  const id = String(modelId || "").trim();
+  return AI_MODELS.some((m) => m.id === id);
+}
+
+function currentAiModelMeta() {
+  const id = isKnownAiModel(app.ai.model) ? app.ai.model : DEFAULT_AI_MODEL;
+  return AI_MODELS.find((m) => m.id === id) || AI_MODELS[0];
+}
+
+function renderOpenAiModelOptions() {
+  if (!dom.openAiModelSelect) return;
+  dom.openAiModelSelect.innerHTML = AI_MODELS
+    .map((m) => `<option value="${esc(m.id)}">${esc(m.label)} (${moneyUsd(m.inputUsdPer1M)} in / ${moneyUsd(m.outputUsdPer1M)} out за 1M)</option>`)
+    .join("");
+
+  const selectedId = isKnownAiModel(app.ai.model) ? app.ai.model : DEFAULT_AI_MODEL;
+  dom.openAiModelSelect.value = selectedId;
+  renderOpenAiModelPrice();
+}
+
+function renderOpenAiModelPrice() {
+  if (!dom.openAiModelPrice || !dom.openAiModelSelect) return;
+  const selectedId = String(dom.openAiModelSelect.value || "").trim();
+  const model = AI_MODELS.find((m) => m.id === selectedId) || currentAiModelMeta();
+  dom.openAiModelPrice.textContent = `${model.label}: вход ${moneyUsd(model.inputUsdPer1M)} / выход ${moneyUsd(model.outputUsdPer1M)} за 1M токенов. ${WEB_SEARCH_PRICE_NOTE}`;
+}
+
+function moneyUsd(v) {
+  return `$${num(v).toFixed(2).replace(/\.00$/, "")}`;
 }
 
 function parseTemplate(report, stylesRaw) {
@@ -1247,23 +1314,34 @@ function bindEvents() {
 
   dom.btnOpenAiAuth.onclick = onOpenAiAuthClick;
   if (dom.openAiAuthForm) dom.openAiAuthForm.onsubmit = onOpenAiAuthSubmit;
+  if (dom.btnOpenAiCancel) dom.btnOpenAiCancel.onclick = () => dom.openAiAuthDialog?.close();
   if (dom.btnOpenAiDisconnect) {
     dom.btnOpenAiDisconnect.onclick = () => {
       disconnectOpenAi();
       if (dom.openAiAuthDialog?.open) dom.openAiAuthDialog.close();
     };
   }
+  if (dom.openAiModelSelect) {
+    dom.openAiModelSelect.onchange = () => renderOpenAiModelPrice();
+  }
   dom.btnToggleAgentPanel.onclick = () => {
     app.ai.collapsed = !app.ai.collapsed;
     saveAiCollapsed();
     renderAiUi();
   };
-  dom.btnAgentContext.onclick = () => {
-    if (!app.ai.connected) return;
-    dom.agentContextMenu.hidden = !dom.agentContextMenu.hidden;
-  };
-  dom.agentContextMenu.onclick = onAgentContextMenuClick;
   dom.agentChips.onclick = onAgentChipClick;
+  if (dom.btnClearTableJournal) {
+    dom.btnClearTableJournal.onclick = () => {
+      app.ai.tableJournal = [];
+      renderAgentJournals();
+    };
+  }
+  if (dom.btnClearExternalJournal) {
+    dom.btnClearExternalJournal.onclick = () => {
+      app.ai.externalJournal = [];
+      renderAgentJournals();
+    };
+  }
   dom.btnAgentSend.onclick = sendAgentPrompt;
   dom.agentPrompt.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -1382,26 +1460,23 @@ function bindEvents() {
     }
   });
 
-  document.addEventListener("mousedown", (e) => {
-    if (!dom.agentContextMenu || dom.agentContextMenu.hidden) return;
-    const inMenu = e.target.closest("#agentContextMenu");
-    const inButton = e.target.closest("#btnAgentContext");
-    if (!inMenu && !inButton) dom.agentContextMenu.hidden = true;
-  });
 }
 
 async function onOpenAiAuthClick() {
-  if (!dom.openAiAuthDialog || typeof dom.openAiAuthDialog.showModal !== "function" || !dom.openAiApiKeyInput || !dom.openAiAuthHint || !dom.btnOpenAiDisconnect || !dom.btnOpenAiSave) {
+  if (!dom.openAiAuthDialog || typeof dom.openAiAuthDialog.showModal !== "function" || !dom.openAiApiKeyInput || !dom.openAiAuthHint || !dom.btnOpenAiDisconnect || !dom.btnOpenAiSave || !dom.openAiModelSelect) {
     const key = window.prompt("Введите OpenAI API key (формат sk-...)");
     if (key === null) return;
-    await connectOpenAiWithKey(key);
+    await connectOpenAiWithKey(key, app.ai.model);
     return;
   }
 
+  renderOpenAiModelOptions();
+  if (dom.openAiModelSelect) dom.openAiModelSelect.value = isKnownAiModel(app.ai.model) ? app.ai.model : DEFAULT_AI_MODEL;
+  renderOpenAiModelPrice();
   dom.openAiApiKeyInput.value = "";
   dom.openAiAuthHint.textContent = app.ai.connected
-    ? "OpenAI уже подключен. Введите новый API key, чтобы заменить текущий."
-    : "Введите OpenAI API key и нажмите Сохранить.";
+    ? "Ключ уже сохранен. Можно заменить ключ и/или модель."
+    : "Введите OpenAI API key, выберите модель и нажмите Сохранить.";
   dom.btnOpenAiDisconnect.hidden = !app.ai.connected;
   dom.btnOpenAiSave.disabled = false;
   dom.openAiAuthDialog.showModal();
@@ -1409,12 +1484,24 @@ async function onOpenAiAuthClick() {
 
 async function onOpenAiAuthSubmit(e) {
   e.preventDefault();
+  if (String(e.submitter?.value || "") === "cancel") {
+    dom.openAiAuthDialog?.close();
+    return;
+  }
   if (!dom.openAiApiKeyInput) return;
+  const selectedModel = String(dom.openAiModelSelect?.value || DEFAULT_AI_MODEL).trim();
+  if (!isKnownAiModel(selectedModel)) {
+    toast("Выберите корректную модель");
+    return;
+  }
+
   const token = String(dom.openAiApiKeyInput.value || "").trim();
   if (!token) {
     if (app.ai.connected) {
+      app.ai.model = selectedModel;
+      saveOpenAiModel();
       dom.openAiAuthDialog.close();
-      toast("Ключ не изменен");
+      toast("Настройки сохранены");
       return;
     }
     toast("Введите API key");
@@ -1422,27 +1509,30 @@ async function onOpenAiAuthSubmit(e) {
   }
 
   if (dom.btnOpenAiSave) dom.btnOpenAiSave.disabled = true;
-  const ok = await connectOpenAiWithKey(token);
+  const ok = await connectOpenAiWithKey(token, selectedModel);
   if (dom.btnOpenAiSave) dom.btnOpenAiSave.disabled = false;
   if (ok && dom.openAiAuthDialog?.open) dom.openAiAuthDialog.close();
 }
 
-async function connectOpenAiWithKey(token) {
+async function connectOpenAiWithKey(token, modelId = DEFAULT_AI_MODEL) {
   const clean = String(token || "").trim();
   if (!clean) {
     toast("Ключ не введен");
     return false;
   }
+  const model = isKnownAiModel(modelId) ? modelId : DEFAULT_AI_MODEL;
   const verified = await verifyOpenAiApiKey(clean);
   if (!verified.ok) {
     toast(verified.error || "OpenAI: ключ не принят");
     return false;
   }
   app.ai.apiKey = clean;
+  app.ai.model = model;
   app.ai.connected = true;
   saveOpenAiApiKey();
+  saveOpenAiModel();
   renderAiUi();
-  toast("OpenAI подключен");
+  toast("Ключ API сохранен");
   return true;
 }
 
@@ -1451,39 +1541,31 @@ function disconnectOpenAi() {
   app.ai.connected = false;
   app.ai.sending = false;
   app.ai.attachments = [];
+  addExternalJournal("auth", "Ключ OpenAI отключен");
   saveOpenAiApiKey();
-  if (dom.agentContextMenu) dom.agentContextMenu.hidden = true;
   renderAiUi();
   toast("OpenAI отключен");
 }
 
 async function verifyOpenAiApiKey(key) {
+  const startedAt = Date.now();
+  addExternalJournal("auth.request", "POST /v1/models (проверка API key)");
   try {
     const res = await fetch("https://api.openai.com/v1/models?limit=1", {
       headers: {
         Authorization: `Bearer ${key}`,
       },
     });
+    const ms = Date.now() - startedAt;
+    addExternalJournal("auth.response", `HTTP ${res.status} /v1/models (${ms}ms)`);
     if (res.ok) return { ok: true };
     if (res.status === 401 || res.status === 403) return { ok: false, error: "OpenAI: неверный ключ" };
     return { ok: false, error: `OpenAI: ошибка ${res.status}` };
   } catch {
+    const ms = Date.now() - startedAt;
+    addExternalJournal("auth.error", `Сетевая ошибка при проверке ключа (${ms}ms)`);
     return { ok: false, error: "OpenAI: сеть недоступна" };
   }
-}
-
-function onAgentContextMenuClick(e) {
-  const b = e.target.closest("[data-ai-option]");
-  if (!b) return;
-  const option = String(b.dataset.aiOption || "");
-  if (option === "files") {
-    dom.agentAttachmentInput.click();
-    return;
-  }
-  if (!(option in app.ai.options)) return;
-  app.ai.options[option] = !app.ai.options[option];
-  saveAiOptions();
-  renderAiUi();
 }
 
 function onAgentChipClick(e) {
@@ -1492,14 +1574,6 @@ function onAgentChipClick(e) {
   const chip = e.target.closest(".agent-chip");
   if (!chip) return;
   const type = chip.dataset.chipType;
-  if (type === "option") {
-    const key = chip.dataset.chipKey;
-    if (!key || !(key in app.ai.options)) return;
-    app.ai.options[key] = false;
-    saveAiOptions();
-    renderAiUi();
-    return;
-  }
   if (type === "file") {
     const id = chip.dataset.chipId;
     app.ai.attachments = app.ai.attachments.filter((f) => f.id !== id);
@@ -1590,28 +1664,17 @@ function buildAgentContextText() {
   const out = [];
   const s = activeSheet();
 
-  if (app.ai.options.currentSheet && s) {
+  if (s) {
     out.push(`Текущий лист (${s.name}, id=${s.id}):\n${serializeSheetPreview(s, 40, 12, 10000)}`);
   }
 
-  if (app.ai.options.allSheets) {
-    const blocks = app.workbook.sheets.map((sh) => {
-      const preview = serializeSheetPreview(sh, 20, 10, 2600);
-      return `Лист ${sh.name} (id=${sh.id}, строк=${sh.rows.length}, колонок=${sh.cols.length}):\n${preview}`;
-    });
-    out.push(`Все листы:\n${blocks.join("\n\n")}`);
-  }
-
-  if (app.ai.options.selection) {
-    const sel = app.ui.selection;
-    if (!sel || !s || sel.sheet !== s.id) out.push("Выделение: нет активного выделения.");
-    else {
-      const r1 = Math.min(sel.sr, sel.er);
-      const r2 = Math.max(sel.sr, sel.er);
-      const c1 = Math.min(sel.sc, sel.ec);
-      const c2 = Math.max(sel.sc, sel.ec);
-      out.push(`Выделение ${toA1(r1, c1)}:${toA1(r2, c2)} на листе ${s.name}:\n${selectionText(s, sel)}`);
-    }
+  const sel = app.ui.selection;
+  if (sel && s && sel.sheet === s.id) {
+    const r1 = Math.min(sel.sr, sel.er);
+    const r2 = Math.max(sel.sr, sel.er);
+    const c1 = Math.min(sel.sc, sel.ec);
+    const c2 = Math.max(sel.sc, sel.ec);
+    out.push(`Выделение ${toA1(r1, c1)}:${toA1(r2, c2)} на листе ${s.name}:\n${selectionText(s, sel)}`);
   }
 
   if (app.ai.attachments.length) {
@@ -1647,6 +1710,7 @@ function serializeSheetPreview(sheet, maxRows = 40, maxCols = 12, maxChars = 100
 }
 
 async function runOpenAiAgentTurn(userInput) {
+  const modelId = currentAiModelMeta().id;
   const history = app.ai.log
     .filter((m) => m.role === "user" || m.role === "assistant")
     .slice(-8)
@@ -1659,7 +1723,7 @@ async function runOpenAiAgentTurn(userInput) {
   if (history.length) input[input.length - 1] = { role: "user", content: [{ type: "input_text", text: userInput }] };
 
   let response = await callOpenAiResponses({
-    model: AI_MODEL,
+    model: modelId,
     instructions: agentSystemPrompt(),
     input,
     tools: agentToolsSpec(),
@@ -1685,7 +1749,7 @@ async function runOpenAiAgentTurn(userInput) {
     }
 
     response = await callOpenAiResponses({
-      model: AI_MODEL,
+      model: modelId,
       previous_response_id: response.id,
       input: outputs,
       tools: agentToolsSpec(),
@@ -1798,11 +1862,19 @@ function agentToolsSpec() {
     },
   ];
 
-  if (app.ai.options.webSearch) tools.push({ type: "web_search_preview" });
+  tools.push({ type: "web_search_preview" });
   return tools;
 }
 
 async function callOpenAiResponses(payload) {
+  const startedAt = Date.now();
+  const isContinuation = Boolean(payload?.previous_response_id);
+  const model = String(payload?.model || app.ai.model || "");
+  addExternalJournal(
+    "openai.request",
+    `${isContinuation ? "continue" : "start"} model=${model} tools=${Array.isArray(payload?.tools) ? payload.tools.length : 0}`,
+  );
+
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -1814,6 +1886,8 @@ async function callOpenAiResponses(payload) {
 
   if (!res.ok) {
     const body = await res.text();
+    const ms = Date.now() - startedAt;
+    addExternalJournal("openai.error", `HTTP ${res.status} /v1/responses (${ms}ms)`);
     if (res.status === 401 || res.status === 403) {
       disconnectOpenAi();
       throw new Error("openai unauthorized");
@@ -1821,7 +1895,15 @@ async function callOpenAiResponses(payload) {
     throw new Error(`openai ${res.status}: ${body.slice(0, 500)}`);
   }
 
-  return res.json();
+  const parsed = await res.json();
+  const ms = Date.now() - startedAt;
+  const outCount = Array.isArray(parsed?.output) ? parsed.output.length : 0;
+  addExternalJournal("openai.response", `HTTP 200 /v1/responses (${ms}ms), output=${outCount}`);
+
+  const hasWebSearch = Array.isArray(parsed?.output) && parsed.output.some((item) => String(item?.type || "").includes("web_search"));
+  if (hasWebSearch) addExternalJournal("web.search", "OpenAI выполнил web_search tool");
+
+  return parsed;
 }
 
 function extractAgentFunctionCalls(response) {
@@ -1855,7 +1937,7 @@ function parseJsonSafe(text, fallback) {
 
 async function executeAgentTool(name, args) {
   if (name === "list_sheets") {
-    return {
+    const result = {
       sheets: app.workbook.sheets.map((s) => ({
         id: s.id,
         name: s.name,
@@ -1863,14 +1945,22 @@ async function executeAgentTool(name, args) {
         cols: s.cols.length,
       })),
     };
+    addTableJournal("list_sheets", `Получено листов: ${result.sheets.length}`);
+    return result;
   }
 
   if (name === "read_range") {
     const sheet = resolveAgentSheet(args);
-    if (!sheet) return { ok: false, error: "sheet not found" };
+    if (!sheet) {
+      addTableJournal("read_range", "Ошибка: лист не найден");
+      return { ok: false, error: "sheet not found" };
+    }
 
     const parsed = parseA1Range(args?.range || "A1");
-    if (!parsed) return { ok: false, error: "bad range" };
+    if (!parsed) {
+      addTableJournal("read_range", "Ошибка: некорректный диапазон");
+      return { ok: false, error: "bad range" };
+    }
 
     const rowCount = parsed.r2 - parsed.r1 + 1;
     const colCount = parsed.c2 - parsed.c1 + 1;
@@ -1899,20 +1989,28 @@ async function executeAgentTool(name, args) {
       rows.push(curr);
     }
 
-    return {
+    const result = {
       ok: true,
       sheet: { id: sheet.id, name: sheet.name },
       range: `${toA1(parsed.r1, parsed.c1)}:${toA1(r2, c2)}`,
       rows,
     };
+    addTableJournal("read_range", `${sheet.name}: ${result.range}`);
+    return result;
   }
 
   if (name === "write_cells") {
     const sheet = resolveAgentSheet(args);
-    if (!sheet) return { ok: false, error: "sheet not found" };
+    if (!sheet) {
+      addTableJournal("write_cells", "Ошибка: лист не найден");
+      return { ok: false, error: "sheet not found" };
+    }
 
     const updates = Array.isArray(args?.updates) ? args.updates : [];
-    if (!updates.length) return { ok: false, error: "updates required" };
+    if (!updates.length) {
+      addTableJournal("write_cells", "Ошибка: пустой список updates");
+      return { ok: false, error: "updates required" };
+    }
 
     let applied = 0;
     for (const u of updates) {
@@ -1923,18 +2021,22 @@ async function executeAgentTool(name, args) {
     }
 
     renderAll();
+    addTableJournal("write_cells", `${sheet.name}: изменено ячеек ${applied}`);
     return { ok: true, applied, sheet: { id: sheet.id, name: sheet.name } };
   }
 
   if (name === "get_selection") {
     const sel = app.ui.selection;
     const s = activeSheet();
-    if (!sel || !s || sel.sheet !== s.id) return { ok: true, selection: null };
+    if (!sel || !s || sel.sheet !== s.id) {
+      addTableJournal("get_selection", "Выделение отсутствует");
+      return { ok: true, selection: null };
+    }
     const r1 = Math.min(sel.sr, sel.er);
     const r2 = Math.max(sel.sr, sel.er);
     const c1 = Math.min(sel.sc, sel.ec);
     const c2 = Math.max(sel.sc, sel.ec);
-    return {
+    const result = {
       ok: true,
       selection: {
         sheet_id: s.id,
@@ -1943,20 +2045,28 @@ async function executeAgentTool(name, args) {
         text: selectionText(s, sel),
       },
     };
+    addTableJournal("get_selection", `${s.name}: ${result.selection.range}`);
+    return result;
   }
 
   if (name === "get_state") {
     const value = args?.path ? getStatePath(args.path) : app.state;
+    addTableJournal("get_state", args?.path ? `Чтение пути ${args.path}` : "Чтение полного state");
     return { ok: true, path: args?.path || "", value: compactForTool(value) };
   }
 
   if (name === "set_state_value") {
-    if (!args?.path) return { ok: false, error: "path required" };
+    if (!args?.path) {
+      addTableJournal("set_state_value", "Ошибка: path required");
+      return { ok: false, error: "path required" };
+    }
     try {
       setStatePath(args.path, args.value);
       renderAll();
+      addTableJournal("set_state_value", `Изменен путь ${args.path}`);
       return { ok: true };
     } catch (err) {
+      addTableJournal("set_state_value", `Ошибка: ${String(err?.message || err)}`);
       return { ok: false, error: String(err?.message || err) };
     }
   }

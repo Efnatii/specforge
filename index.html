@@ -65,37 +65,32 @@
             </button>
             <div class="agent-head-title">
               <strong>AI агент</strong>
-              <span id="agentConnectionLabel" class="agent-connection-label">OpenAI подключен</span>
             </div>
           </div>
           <div id="agentBody" class="agent-body">
             <div id="agentLog" class="agent-log" aria-live="polite"></div>
             <div id="agentContextChips" class="agent-chips"></div>
             <div class="agent-input-row">
-              <button id="btnAgentContext" class="icon-btn agent-action-btn" title="Добавить контекст" aria-label="Добавить контекст">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-              </button>
               <textarea id="agentPromptInput" rows="2" placeholder="Попросите ИИ прочитать или изменить таблицу"></textarea>
               <button id="btnAgentSend" class="icon-btn agent-action-btn" title="Отправить" aria-label="Отправить">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 4l-5 16-3-6-8-2zM12 14l8-10" /></svg>
               </button>
             </div>
-            <div id="agentContextMenu" class="agent-context-menu" hidden>
-              <button type="button" class="agent-menu-btn" data-ai-option="currentSheet" title="Текущий лист">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 4v16M4 9h16" /></svg>
-              </button>
-              <button type="button" class="agent-menu-btn" data-ai-option="allSheets" title="Все листы">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h11v11H5zM8 8h11v11H8" /></svg>
-              </button>
-              <button type="button" class="agent-menu-btn" data-ai-option="selection" title="Выделенная область">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
-              </button>
-              <button type="button" class="agent-menu-btn" data-ai-option="files" title="Прикрепить файлы">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12v5a5 5 0 0 0 10 0V8a3 3 0 1 0-6 0v9a1 1 0 1 0 2 0v-7" /></svg>
-              </button>
-              <button type="button" class="agent-menu-btn" data-ai-option="webSearch" title="Поиск в интернете">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9m-9-9c2.7 2.4 2.7 15.6 0 18m0-18c-2.7 2.4-2.7 15.6 0 18m-9-9h18" /></svg>
-              </button>
+            <div class="agent-journals">
+              <details class="agent-journal" open>
+                <summary>Журнал действий ИИ с таблицей <span id="tableJournalCount" class="journal-count">0</span></summary>
+                <div class="agent-journal-actions">
+                  <button id="btnClearTableJournal" type="button" class="btn-flat">Очистить</button>
+                </div>
+                <div id="tableJournalList" class="agent-journal-list"></div>
+              </details>
+              <details class="agent-journal">
+                <summary>Журнал внешних запросов <span id="externalJournalCount" class="journal-count">0</span></summary>
+                <div class="agent-journal-actions">
+                  <button id="btnClearExternalJournal" type="button" class="btn-flat">Очистить</button>
+                </div>
+                <div id="externalJournalList" class="agent-journal-list"></div>
+              </details>
             </div>
           </div>
         </div>
@@ -153,10 +148,14 @@
         <label>API key
           <input id="openAiApiKeyInput" type="password" placeholder="sk-..." autocomplete="off" />
         </label>
+        <label>Модель
+          <select id="openAiModelSelect"></select>
+        </label>
       </div>
+      <div id="openAiModelPrice" class="openai-model-price"></div>
       <div id="openAiAuthHint" class="openai-auth-hint"></div>
       <menu>
-        <button value="cancel" class="btn-flat">Отмена</button>
+        <button id="btnOpenAiCancel" type="button" class="btn-flat">Закрыть</button>
         <button id="btnOpenAiDisconnect" type="button" class="btn-flat danger">Отключить</button>
         <button id="btnOpenAiSave" value="default" class="btn-flat btn-accent">Сохранить</button>
       </menu>
