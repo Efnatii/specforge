@@ -26,6 +26,9 @@ const MAX_CHAT_JOURNAL = 220;
 const MAX_TABLE_JOURNAL = 240;
 const MAX_EXTERNAL_JOURNAL = 240;
 const MAX_CHANGES_JOURNAL = 320;
+const CHAT_CONTEXT_RECENT_MESSAGES = 5;
+const CHAT_SUMMARY_CHUNK_SIZE = 5;
+const MAX_CHAT_SUMMARY_CHARS = 3600;
 
 const dom = {
   app: document.getElementById("app"),
@@ -123,6 +126,8 @@ const app = {
     },
     attachments: [],
     chatJournal: [],
+    chatSummary: "",
+    chatSummaryCount: 0,
     tableJournal: [],
     externalJournal: [],
     changesJournal: [],
@@ -264,7 +269,46 @@ function addAgentLog(role, text) {
   const clean = String(text || "").trim();
   if (!clean) return;
   const kind = role === "assistant" ? "AI" : "Вы";
-  addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, kind, clean);
+  const removed = addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, kind, clean);
+  if (removed > 0 && app.ai.chatSummaryCount > 0) {
+    app.ai.chatSummaryCount = Math.max(0, app.ai.chatSummaryCount - removed);
+  }
+  rollupChatSummaryState();
+}
+
+function rollupChatSummaryState() {
+  const total = app.ai.chatJournal.length;
+  const olderCount = Math.max(0, total - CHAT_CONTEXT_RECENT_MESSAGES);
+  if (app.ai.chatSummaryCount > olderCount) app.ai.chatSummaryCount = olderCount;
+
+  while (app.ai.chatSummaryCount + CHAT_SUMMARY_CHUNK_SIZE <= olderCount) {
+    const from = app.ai.chatSummaryCount;
+    const to = from + CHAT_SUMMARY_CHUNK_SIZE;
+    const chunk = app.ai.chatJournal.slice(from, to);
+    const chunkSummary = summarizeChatChunk(chunk);
+    app.ai.chatSummary = mergeChatSummary(app.ai.chatSummary, chunkSummary);
+    app.ai.chatSummaryCount = to;
+  }
+}
+
+function summarizeChatChunk(chunk) {
+  const rows = [];
+  for (const item of chunk || []) {
+    const role = String(item?.kind || "").trim() === "AI" ? "assistant" : "user";
+    const text = String(item?.text || "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    rows.push(`${role}:${text.slice(0, 180)}`);
+  }
+  return rows.join(" | ");
+}
+
+function mergeChatSummary(prev, next) {
+  const a = String(prev || "").trim();
+  const b = String(next || "").trim();
+  if (!b) return a;
+  const joined = a ? `${a} || ${b}` : b;
+  if (joined.length <= MAX_CHAT_SUMMARY_CHARS) return joined;
+  return `...${joined.slice(-(MAX_CHAT_SUMMARY_CHARS - 3))}`;
 }
 
 function renderAgentJournals() {
@@ -318,10 +362,15 @@ function addJournalEntry(target, limit, kind, text) {
     kind: String(kind || "event").slice(0, 60),
     text: String(text || "").trim().slice(0, 2000),
   };
-  if (!entry.text) return;
+  if (!entry.text) return 0;
   target.push(entry);
-  if (target.length > limit) target.splice(0, target.length - limit);
+  let removed = 0;
+  if (target.length > limit) {
+    removed = target.length - limit;
+    target.splice(0, removed);
+  }
   renderAgentJournals();
+  return removed;
 }
 
 function journalTime(ts) {
@@ -1442,6 +1491,8 @@ function bindEvents() {
   if (dom.btnClearChatJournal) {
     dom.btnClearChatJournal.onclick = () => {
       app.ai.chatJournal = [];
+      app.ai.chatSummary = "";
+      app.ai.chatSummaryCount = 0;
       renderAgentJournals();
     };
   }
@@ -1815,12 +1866,44 @@ async function sendAgentPrompt() {
 
 function buildAgentInput(userText) {
   const parts = [];
-  parts.push(`Запрос пользователя:\n${userText}`);
+  const chatCtx = buildChatHistoryContext();
+  if (chatCtx) parts.push(`История диалога:\n${chatCtx}`);
+
+  parts.push(`Текущий запрос пользователя:\n${userText}`);
 
   const ctx = buildAgentContextText();
   if (ctx) parts.push(`Контекст проекта:\n${ctx}`);
 
   return parts.join("\n\n");
+}
+
+function buildChatHistoryContext(maxMessages = CHAT_CONTEXT_RECENT_MESSAGES, maxChars = 12000) {
+  const src = Array.isArray(app.ai.chatJournal) ? app.ai.chatJournal : [];
+  if (!src.length) return "";
+
+  const olderCount = Math.max(0, src.length - maxMessages);
+  const summaryStart = Math.min(app.ai.chatSummaryCount, olderCount);
+  const remainder = src.slice(summaryStart, olderCount);
+
+  let summary = String(app.ai.chatSummary || "").trim();
+  if (remainder.length) {
+    const remainderSummary = summarizeChatChunk(remainder);
+    summary = mergeChatSummary(summary, remainderSummary);
+  }
+
+  const recent = src.slice(-maxMessages);
+  const lines = [];
+  if (summary) lines.push(`summary: ${summary}`);
+
+  for (const item of recent) {
+    const kind = String(item?.kind || "").trim();
+    const text = String(item?.text || "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    const role = kind === "AI" ? "assistant" : "user";
+    lines.push(`${role}: ${text}`);
+  }
+
+  return lines.join("\n").slice(0, maxChars);
 }
 
 function buildAgentContextText() {
@@ -1924,6 +2007,10 @@ function agentSystemPrompt() {
     "Ты AI-агент внутри SpecForge.",
     "Ты можешь читать и изменять таблицы и состояние проекта через tools.",
     "Для set_state_value передавай поле value_json как валидную JSON-строку.",
+    "Не запрашивай подтверждение перед выполнением действий.",
+    "Если пользователь просит выполнить изменение, выполняй сразу через tools и сообщай факт.",
+    "Подтверждение или уточнение запрашивай только если пользователь сам явно просит это сделать.",
+    "Отвечай кратко и по делу: 1-3 коротких предложения, без воды.",
     "Перед изменениями проверяй целевые листы/диапазоны.",
     "При изменениях кратко подтверждай, что именно поменял.",
     "Если запрос неясен, задай короткий уточняющий вопрос.",
