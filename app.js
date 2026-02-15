@@ -34,6 +34,9 @@ const CHAT_SUMMARY_CHUNK_SIZE = 5;
 const MAX_CHAT_SUMMARY_CHARS = 3600;
 const MIN_SIDEBAR_WIDTH = 280;
 const MAX_SIDEBAR_WIDTH = 760;
+const JOURNAL_RENDER_DEBOUNCE_MS = 90;
+const STREAM_DELTA_FLUSH_MS = 120;
+const STREAM_TEXT_PREVIEW_LIMIT = 12000;
 const AI_MUTATION_INTENT_RE = /\b(создай|создать|добавь|добавить|измени|обнови|поменяй|замени|исправь|заполни|вставь|удали|увелич|уменьш|пересчитай|рассчитай|create|add|set|update|change|fill|replace|delete|write)\b/i;
 const AI_CONTINUE_PROMPT_RE = /^\s*(продолжай|продолжить|дальше|далее|продолжение|еще|ещё|continue|go on|next)\s*[.!?]*\s*$/i;
 const AI_SHORT_ACK_PROMPT_RE = /^\s*(да|ага|ок|окей|хорошо|сделай|делай|дальше|далее|продолжай|продолжить|continue|go on|next|удали|delete)\s*[.!?]*\s*$/i;
@@ -164,8 +167,16 @@ const app = {
     streamResponseId: "",
     currentRequestId: "",
     lastStreamBuffer: "",
+    streamDeltaFlushTimer: 0,
+    streamDeltaHasPending: false,
+    streamEntryId: "",
     lastSuccessfulMutationTs: 0,
   },
+};
+
+const journalRenderState = {
+  timer: 0,
+  kinds: new Set(),
 };
 
 init().catch((err) => {
@@ -344,6 +355,12 @@ function addAgentLog(role, text, options = {}) {
 
 function beginAgentStreamingEntry(turnId) {
   const entryId = uid();
+  app.ai.streamEntryId = entryId;
+  app.ai.streamDeltaHasPending = false;
+  if (app.ai.streamDeltaFlushTimer) {
+    window.clearTimeout(app.ai.streamDeltaFlushTimer);
+    app.ai.streamDeltaFlushTimer = 0;
+  }
   const removed = addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, "AI", "Думаю...", MAX_CHAT_JOURNAL_TEXT, {
     id: entryId,
     source: "chat",
@@ -362,20 +379,25 @@ function beginAgentStreamingEntry(turnId) {
 function appendAgentStreamingDelta(entryId, delta) {
   const text = String(delta || "");
   if (!text) return;
+  app.ai.streamEntryId = entryId || app.ai.streamEntryId || "";
   app.ai.lastStreamBuffer = `${app.ai.lastStreamBuffer || ""}${text}`;
   app.ai.streamDeltaCount = num(app.ai.streamDeltaCount, 0) + 1;
-  patchJournalEntry(app.ai.chatJournal, entryId, {
-    text: app.ai.lastStreamBuffer,
-    status: "streaming",
-    meta: {
-      stream: true,
-      delta_count: app.ai.streamDeltaCount,
-      chars: app.ai.lastStreamBuffer.length,
-    },
-  });
+  app.ai.streamDeltaHasPending = true;
+
+  if (app.ai.streamDeltaFlushTimer) return;
+  app.ai.streamDeltaFlushTimer = window.setTimeout(() => {
+    app.ai.streamDeltaFlushTimer = 0;
+    flushAgentStreamingDeltaPatch();
+  }, STREAM_DELTA_FLUSH_MS);
 }
 
 function finalizeAgentStreamingEntry(entryId, finalText, status = "completed", level = "info", extraMeta = undefined) {
+  if (app.ai.streamDeltaFlushTimer) {
+    window.clearTimeout(app.ai.streamDeltaFlushTimer);
+    app.ai.streamDeltaFlushTimer = 0;
+  }
+  flushAgentStreamingDeltaPatch();
+
   if (!entryId) return;
   const text = String(finalText || "").trim() || String(app.ai.lastStreamBuffer || "").trim() || "Готово.";
   const meta = {
@@ -386,8 +408,33 @@ function finalizeAgentStreamingEntry(entryId, finalText, status = "completed", l
   if (extraMeta && typeof extraMeta === "object") {
     Object.assign(meta, extraMeta);
   }
-  patchJournalEntry(app.ai.chatJournal, entryId, { text, status, level, meta });
+  patchJournalEntry(app.ai.chatJournal, entryId, { text, status, level, meta }, "chat");
+  app.ai.streamEntryId = "";
+  app.ai.streamDeltaHasPending = false;
   rollupChatSummaryState();
+}
+
+function buildStreamingPreviewText(textRaw) {
+  const text = String(textRaw || "");
+  if (text.length <= STREAM_TEXT_PREVIEW_LIMIT) return text;
+  return `[streaming preview: ${text.length} chars]\n...\n${text.slice(-STREAM_TEXT_PREVIEW_LIMIT)}`;
+}
+
+function flushAgentStreamingDeltaPatch() {
+  if (!app.ai.streamDeltaHasPending) return;
+  if (!app.ai.streamEntryId) return;
+
+  app.ai.streamDeltaHasPending = false;
+  patchJournalEntry(app.ai.chatJournal, app.ai.streamEntryId, {
+    text: buildStreamingPreviewText(app.ai.lastStreamBuffer),
+    status: "streaming",
+    meta: {
+      stream: true,
+      delta_count: app.ai.streamDeltaCount,
+      chars: String(app.ai.lastStreamBuffer || "").length,
+      preview: true,
+    },
+  }, "chat");
 }
 
 function nextAgentTurnId() {
@@ -438,6 +485,32 @@ function renderAgentJournals() {
   renderJournalList("changes");
 }
 
+function requestJournalRender(kind = "all") {
+  const normalized = String(kind || "all");
+  if (normalized === "all") {
+    journalRenderState.kinds.clear();
+    journalRenderState.kinds.add("all");
+  } else if (!journalRenderState.kinds.has("all")) {
+    journalRenderState.kinds.add(normalized);
+  }
+
+  if (journalRenderState.timer) return;
+  journalRenderState.timer = window.setTimeout(flushJournalRender, JOURNAL_RENDER_DEBOUNCE_MS);
+}
+
+function flushJournalRender() {
+  if (journalRenderState.timer) {
+    window.clearTimeout(journalRenderState.timer);
+    journalRenderState.timer = 0;
+  }
+
+  const kinds = journalRenderState.kinds.has("all") || !journalRenderState.kinds.size
+    ? ["chat", "table", "external", "changes"]
+    : Array.from(journalRenderState.kinds);
+  journalRenderState.kinds.clear();
+  for (const kind of kinds) renderJournalList(kind);
+}
+
 function journalConfig(kind) {
   const map = {
     chat: { listEl: dom.chatJournalList, countEl: dom.chatJournalCount, items: app.ai.chatJournal, title: "История чата" },
@@ -472,14 +545,20 @@ function renderJournalList(kind) {
       return `<div class="agent-journal-item level-${level}">
         <span class="time">${esc(journalTime(it.ts))}</span>
         <span class="kind">${esc(it.kind)}</span>
-        <span class="text">${status}${aux}${renderJournalTextHtml(it.text)}${meta}</span>
+        <span class="text">${status}${aux}${renderJournalTextHtml(it.text, { status: it.status })}${meta}</span>
       </div>`;
     })
     .join("");
   listEl.innerHTML = html;
 }
 
-function renderJournalTextHtml(textRaw) {
+function renderJournalTextHtml(textRaw, options = {}) {
+  const status = String(options?.status || "").toLowerCase();
+  if (status === "streaming") {
+    const text = String(textRaw || "");
+    return `<span class="journal-text-frag">${esc(text).replace(/\n/g, "<br/>")}</span>`;
+  }
+
   const chunks = splitTextAndJsonChunks(String(textRaw || ""));
   const parts = [];
   let jsonIdx = 1;
@@ -614,6 +693,8 @@ function renderInlineMarkdown(textRaw) {
 function splitTextAndJsonChunks(text) {
   const src = String(text || "");
   if (!src) return [{ type: "text", text: "" }];
+  if (!src.includes("{") && !src.includes("[")) return [{ type: "text", text: src }];
+  if (src.length > 40000) return [{ type: "text", text: src }];
 
   const out = [];
   let i = 0;
@@ -837,7 +918,7 @@ function addJournalEntry(target, limit, kind, text, maxTextLen = MAX_COMMON_JOUR
     removed = target.length - limit;
     target.splice(0, removed);
   }
-  renderAgentJournals();
+  requestJournalRender(journalKindForTarget(target));
   return removed;
 }
 
@@ -867,6 +948,14 @@ function normalizeJournalEntry(raw) {
   };
 }
 
+function journalKindForTarget(target) {
+  if (target === app.ai.chatJournal) return "chat";
+  if (target === app.ai.tableJournal) return "table";
+  if (target === app.ai.externalJournal) return "external";
+  if (target === app.ai.changesJournal) return "changes";
+  return "all";
+}
+
 function findJournalEntry(list, id) {
   if (!Array.isArray(list) || !id) return null;
   const idx = list.findIndex((it) => String(it?.id || "") === String(id));
@@ -874,12 +963,12 @@ function findJournalEntry(list, id) {
   return { idx, item: list[idx] };
 }
 
-function patchJournalEntry(list, id, patch) {
+function patchJournalEntry(list, id, patch, kindHint = "") {
   const found = findJournalEntry(list, id);
   if (!found) return false;
   const next = { ...found.item, ...patch };
   list[found.idx] = normalizeJournalEntry(next);
-  renderAgentJournals();
+  requestJournalRender(kindHint || journalKindForTarget(list));
   return true;
 }
 
@@ -2114,6 +2203,12 @@ function bindEvents() {
       app.ai.lastActionablePrompt = "";
       app.ai.pendingTask = "";
       app.ai.lastStreamBuffer = "";
+      app.ai.streamEntryId = "";
+      app.ai.streamDeltaHasPending = false;
+      if (app.ai.streamDeltaFlushTimer) {
+        window.clearTimeout(app.ai.streamDeltaFlushTimer);
+        app.ai.streamDeltaFlushTimer = 0;
+      }
       renderAgentJournals();
     };
   }
@@ -2345,10 +2440,17 @@ async function connectOpenAiWithKey(token, modelId = DEFAULT_AI_MODEL) {
 }
 
 function disconnectOpenAi() {
+  if (app.ai.streamDeltaFlushTimer) {
+    window.clearTimeout(app.ai.streamDeltaFlushTimer);
+    app.ai.streamDeltaFlushTimer = 0;
+  }
   app.ai.apiKey = "";
   app.ai.connected = false;
   app.ai.sending = false;
   app.ai.attachments = [];
+  app.ai.streamEntryId = "";
+  app.ai.streamDeltaHasPending = false;
+  app.ai.lastStreamBuffer = "";
   addExternalJournal("auth", "Ключ OpenAI отключен");
   addChangesJournal("auth.disconnect", "manual");
   saveOpenAiApiKey();
@@ -2481,6 +2583,12 @@ async function sendAgentPrompt() {
   app.ai.lastStreamBuffer = "";
   app.ai.streamDeltaCount = 0;
   app.ai.streamResponseId = "";
+  app.ai.streamEntryId = "";
+  app.ai.streamDeltaHasPending = false;
+  if (app.ai.streamDeltaFlushTimer) {
+    window.clearTimeout(app.ai.streamDeltaFlushTimer);
+    app.ai.streamDeltaFlushTimer = 0;
+  }
 
   app.ai.sending = true;
   renderAiUi();
@@ -2514,7 +2622,7 @@ async function sendAgentPrompt() {
         if (isDelta) {
           streamDeltaEvents += 1;
           streamDeltaChars += String(eventData?.delta || "").length;
-          if (streamDeltaEvents % 8 !== 0) return;
+          if (streamDeltaEvents % 40 !== 0) return;
           addExternalJournal("stream.delta", `chunks=${streamDeltaEvents}, chars=${streamDeltaChars}`, {
             turn_id: app.ai.turnId,
             request_id: String(eventData?.__request_id || ""),
