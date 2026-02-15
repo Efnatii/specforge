@@ -41,6 +41,8 @@ export class ProjectSidebarModule {
   `);
 
     for (const a of this._app.state.assemblies) {
+      const mainList = Array.isArray(a.main) ? a.main : [];
+      const consList = Array.isArray(a.consumable) ? a.consumable : [];
       p.push(`<details open><summary><span class="tree-summary-label">${this._esc(a.fullName || "Сборка")} [${this._esc(a.abbreviation)}]</span><button type="button" class="tree-mini-btn" data-tree-action="dup-assembly" data-id="${a.id}" title="Дублировать сборку" aria-label="Дублировать сборку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 5h10v10" /></svg></button></summary>`);
       p.push(`
       <div class="tree-item tree-item-with-actions ${this._selected(sel, { type: "assembly", id: a.id }) ? "is-selected" : ""}" data-node="assembly" data-id="${a.id}">
@@ -55,7 +57,7 @@ export class ProjectSidebarModule {
 
       p.push(`
       <div class="tree-item tree-item-with-actions ${this._selected(sel, { type: "list", id: a.id, list: "main" }) ? "is-selected" : ""}" data-node="list" data-id="${a.id}" data-list="main">
-        <span class="tree-item-label">Осн. материалы (${a.main.length})</span>
+        <span class="tree-item-label">Осн. материалы (${mainList.length})</span>
         <span class="tree-item-actions">
           <button type="button" class="tree-mini-btn" data-tree-action="add-pos" data-id="${a.id}" data-list="main" title="Добавить позицию" aria-label="Добавить позицию">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10M17 15v6M14 18h6" /></svg>
@@ -63,7 +65,7 @@ export class ProjectSidebarModule {
         </span>
       </div>
     `);
-      for (const pos of a.main) {
+      for (const pos of mainList) {
         p.push(`
         <div class="tree-item tree-item-with-actions small ${this._selected(sel, { type: "pos", id: a.id, list: "main", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="pos" data-id="${a.id}" data-list="main" data-pos="${pos.id}">
           <span class="tree-item-label">• ${this._esc(pos.name || "Позиция")}</span>
@@ -82,7 +84,7 @@ export class ProjectSidebarModule {
       if (a.separateConsumables) {
         p.push(`
         <div class="tree-item tree-item-with-actions ${this._selected(sel, { type: "list", id: a.id, list: "cons" }) ? "is-selected" : ""}" data-node="list" data-id="${a.id}" data-list="cons">
-          <span class="tree-item-label">Расх. материалы (${a.consumable.length})</span>
+          <span class="tree-item-label">Расх. материалы (${consList.length})</span>
           <span class="tree-item-actions">
             <button type="button" class="tree-mini-btn" data-tree-action="add-pos" data-id="${a.id}" data-list="cons" title="Добавить позицию" aria-label="Добавить позицию">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10M17 15v6M14 18h6" /></svg>
@@ -90,7 +92,7 @@ export class ProjectSidebarModule {
           </span>
         </div>
       `);
-        for (const pos of a.consumable) {
+        for (const pos of consList) {
           p.push(`
           <div class="tree-item tree-item-with-actions small ${this._selected(sel, { type: "pos", id: a.id, list: "cons", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="pos" data-id="${a.id}" data-list="cons" data-pos="${pos.id}">
             <span class="tree-item-label">• ${this._esc(pos.name || "Позиция")}</span>
@@ -125,7 +127,8 @@ export class ProjectSidebarModule {
     </div>
   `);
     if (this._app.state.hasProjectConsumables) {
-      for (const pos of this._app.state.projectConsumables) {
+      const projectList = Array.isArray(this._app.state.projectConsumables) ? this._app.state.projectConsumables : [];
+      for (const pos of projectList) {
         p.push(`
         <div class="tree-item tree-item-with-actions small ${this._selected(sel, { type: "projpos", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="projpos" data-pos="${pos.id}">
           <span class="tree-item-label">• ${this._esc(pos.name || "Позиция")}</span>
@@ -167,7 +170,8 @@ export class ProjectSidebarModule {
     if (s.type === "pos") {
       const a = this._projectMutationApi.findAssemblyById(this._app.state, s.id);
       if (!a) return;
-      const list = s.list === "main" ? a.main : a.consumable;
+      const listRaw = s.list === "main" ? a.main : a.consumable;
+      const list = Array.isArray(listRaw) ? listRaw : [];
       const p = list.find((x) => x.id === s.pos);
       if (!p) return;
       this._renderPositionInspector(p, s.id, s.list);
@@ -180,7 +184,8 @@ export class ProjectSidebarModule {
     }
 
     if (s.type === "projpos") {
-      const p = this._app.state.projectConsumables.find((x) => x.id === s.pos);
+      const list = Array.isArray(this._app.state.projectConsumables) ? this._app.state.projectConsumables : [];
+      const p = list.find((x) => x.id === s.pos);
       if (!p) return;
       this._renderPositionInspector(p, "project", "project");
       return;
