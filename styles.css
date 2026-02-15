@@ -90,6 +90,53 @@ button {
   font-size: 10px;
 }
 
+.sidebar-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+  background: #f5f5f5;
+  padding: 4px;
+}
+
+.sidebar-tab {
+  width: 34px;
+  height: 30px;
+  border: 1px solid #333;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-tab svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sidebar-tab.active {
+  background: #111;
+  color: #fff;
+}
+
+.sidebar-panel {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-panel[hidden] {
+  display: none !important;
+}
+
 .tree {
   flex: 1;
   overflow: auto;
@@ -275,6 +322,41 @@ button {
   gap: 5px;
 }
 
+.agent-context-icons {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.agent-icon-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #2f2f2f;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-icon-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agent-icon-btn:hover,
+.agent-icon-btn.is-selected {
+  background: #111;
+  color: #fff;
+}
+
 .agent-chip {
   display: inline-flex;
   align-items: center;
@@ -373,39 +455,18 @@ button {
   transform: rotate(180deg);
 }
 
-.agent-journals {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-}
-
-.agent-journal {
-  border: 1px solid #cfcfcf;
-  background: #fff;
-}
-
-.agent-journal > summary {
-  cursor: pointer;
-  padding: 4px 6px;
-  font-size: 11px;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .journal-count {
-  margin-left: auto;
   font-size: 10px;
   border: 1px solid #bcbcbc;
   background: #f7f7f7;
-  padding: 0 6px;
-  line-height: 1.6;
+  padding: 0 4px;
+  line-height: 1.4;
 }
 
 .agent-journal-actions {
-  padding: 0 6px 6px;
+  padding: 6px;
+  border-bottom: 1px solid #e2e2e2;
+  background: #fafafa;
 }
 
 .agent-journal-actions .btn-flat {
@@ -414,11 +475,12 @@ button {
 }
 
 .agent-journal-list {
-  border-top: 1px solid #e2e2e2;
-  max-height: 140px;
+  max-height: none;
   overflow: auto;
   padding: 6px;
   font-size: 10px;
+  min-height: 0;
+  flex: 1;
 }
 
 .agent-journal-item {
@@ -450,6 +512,56 @@ button {
 .agent-journal-empty {
   color: #666;
   font-size: 10px;
+}
+
+.journal-tabs {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+  padding: 6px;
+  border-bottom: 1px solid #d5d5d5;
+  background: #f4f4f4;
+}
+
+.journal-tab {
+  flex: 0 0 auto;
+  min-width: 38px;
+  height: 30px;
+  border: 1px solid #333;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
+}
+
+.journal-tab svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.journal-tab.active {
+  background: #111;
+  color: #fff;
+}
+
+.journal-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.journal-pane[hidden] {
+  display: none !important;
 }
 
 .sheet-viewport {
@@ -829,10 +941,6 @@ button {
   .agent-input-row {
     grid-template-columns: 1fr 30px;
     gap: 4px;
-  }
-
-  .agent-journal-list {
-    max-height: 100px;
   }
 
   .agent-journal-item {

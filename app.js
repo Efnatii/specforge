@@ -20,13 +20,22 @@ const STORAGE_KEYS = {
   openAiApiKey: "specforge.openai.apiKey",
   openAiModel: "specforge.openai.model",
   agentCollapsed: "specforge.openai.agentCollapsed",
+  agentOptions: "specforge.openai.agentOptions",
 };
-const MAX_AGENT_LOG = 14;
+const MAX_CHAT_JOURNAL = 220;
 const MAX_TABLE_JOURNAL = 240;
 const MAX_EXTERNAL_JOURNAL = 240;
+const MAX_CHANGES_JOURNAL = 320;
 
 const dom = {
   app: document.getElementById("app"),
+  sidebar: document.getElementById("sidebar"),
+  btnSidebarTabTree: document.getElementById("btnSidebarTabTree"),
+  btnSidebarTabJournals: document.getElementById("btnSidebarTabJournals"),
+  sidebarPanelTree: document.getElementById("sidebarPanelTree"),
+  sidebarPanelJournals: document.getElementById("sidebarPanelJournals"),
+  journalTabs: Array.from(document.querySelectorAll(".journal-tab[data-journal-view]")),
+  journalPanes: Array.from(document.querySelectorAll(".journal-pane[data-journal-pane]")),
   tree: document.getElementById("tree"),
   inspector: document.getElementById("inspector"),
   tabs: document.getElementById("sheetTabs"),
@@ -65,14 +74,20 @@ const dom = {
   agentOverlay: document.getElementById("agentOverlay"),
   agentBody: document.getElementById("agentBody"),
   btnToggleAgentPanel: document.getElementById("btnToggleAgentPanel"),
-  agentLog: document.getElementById("agentLog"),
+  agentContextIcons: document.getElementById("agentContextIcons"),
   agentChips: document.getElementById("agentContextChips"),
+  chatJournalList: document.getElementById("chatJournalList"),
   tableJournalList: document.getElementById("tableJournalList"),
   externalJournalList: document.getElementById("externalJournalList"),
+  changesJournalList: document.getElementById("changesJournalList"),
+  chatJournalCount: document.getElementById("chatJournalCount"),
   tableJournalCount: document.getElementById("tableJournalCount"),
   externalJournalCount: document.getElementById("externalJournalCount"),
+  changesJournalCount: document.getElementById("changesJournalCount"),
+  btnClearChatJournal: document.getElementById("btnClearChatJournal"),
   btnClearTableJournal: document.getElementById("btnClearTableJournal"),
   btnClearExternalJournal: document.getElementById("btnClearExternalJournal"),
+  btnClearChangesJournal: document.getElementById("btnClearChangesJournal"),
   agentPrompt: document.getElementById("agentPromptInput"),
   btnAgentSend: document.getElementById("btnAgentSend"),
   agentAttachmentInput: document.getElementById("agentAttachmentInput"),
@@ -85,6 +100,8 @@ const app = {
   ui: {
     activeSheetId: "summary",
     treeSel: { type: "settings" },
+    sidebarTab: "tree",
+    journalView: "chat",
     selection: null,
     zoomBySheet: {},
     selecting: false,
@@ -98,10 +115,17 @@ const app = {
     connected: false,
     sending: false,
     collapsed: false,
+    options: {
+      currentSheet: true,
+      allSheets: false,
+      selection: false,
+      webSearch: true,
+    },
     attachments: [],
-    log: [],
+    chatJournal: [],
     tableJournal: [],
     externalJournal: [],
+    changesJournal: [],
     sheetOverrides: {},
   },
 };
@@ -144,6 +168,21 @@ function loadAiSettings() {
   try {
     app.ai.collapsed = localStorage.getItem(STORAGE_KEYS.agentCollapsed) === "1";
   } catch {}
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.agentOptions);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    for (const k of ["currentSheet", "allSheets", "selection", "webSearch"]) {
+      if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
+    }
+  } catch {}
+}
+
+function saveAiOptions() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.agentOptions, JSON.stringify(app.ai.options));
+  } catch {}
 }
 
 function saveAiCollapsed() {
@@ -180,26 +219,26 @@ function renderAiUi() {
   if (dom.btnAgentSend) dom.btnAgentSend.disabled = !app.ai.connected || app.ai.sending;
   if (dom.agentPrompt) dom.agentPrompt.disabled = !app.ai.connected || app.ai.sending;
 
-  renderAgentLog();
+  renderSidebarMode();
+  renderJournalViewMode();
   renderAgentChips();
+  renderAgentContextIcons();
   renderAgentJournals();
-}
-
-function renderAgentLog() {
-  if (!dom.agentLog) return;
-  if (!app.ai.log.length) {
-    dom.agentLog.innerHTML = "";
-    return;
-  }
-  dom.agentLog.innerHTML = app.ai.log
-    .map((m) => `<div class="agent-msg"><span class="role">${m.role === "assistant" ? "AI" : "Вы"}:</span> ${esc(m.text)}</div>`)
-    .join("");
-  dom.agentLog.scrollTop = dom.agentLog.scrollHeight;
 }
 
 function renderAgentChips() {
   if (!dom.agentChips) return;
   const parts = [];
+
+  for (const [key, title] of Object.entries({
+    currentSheet: "Текущий лист",
+    allSheets: "Все листы",
+    selection: "Выделение",
+    webSearch: "Веб-поиск",
+  })) {
+    if (!app.ai.options[key]) continue;
+    parts.push(`<span class="agent-chip"><b>${esc(key)}</b><span>${esc(title)}</span></span>`);
+  }
 
   for (const f of app.ai.attachments) {
     const kb = Math.max(1, Math.round(num(f.size) / 1024));
@@ -209,24 +248,42 @@ function renderAgentChips() {
   dom.agentChips.innerHTML = parts.join("");
 }
 
+function renderAgentContextIcons() {
+  if (!dom.agentContextIcons) return;
+  dom.agentContextIcons.querySelectorAll("[data-ai-option]").forEach((btn) => {
+    const key = String(btn.dataset.aiOption || "");
+    if (key === "files") {
+      btn.classList.toggle("is-selected", app.ai.attachments.length > 0);
+      return;
+    }
+    btn.classList.toggle("is-selected", Boolean(app.ai.options[key]));
+  });
+}
+
 function addAgentLog(role, text) {
   const clean = String(text || "").trim();
   if (!clean) return;
-  app.ai.log.push({ role: role === "assistant" ? "assistant" : "user", text: clean });
-  if (app.ai.log.length > MAX_AGENT_LOG) app.ai.log.splice(0, app.ai.log.length - MAX_AGENT_LOG);
-  renderAgentLog();
+  const kind = role === "assistant" ? "AI" : "Вы";
+  addJournalEntry(app.ai.chatJournal, MAX_CHAT_JOURNAL, kind, clean);
 }
 
 function renderAgentJournals() {
+  renderJournalList("chat");
   renderJournalList("table");
   renderJournalList("external");
+  renderJournalList("changes");
 }
 
 function renderJournalList(kind) {
-  const isTable = kind === "table";
-  const listEl = isTable ? dom.tableJournalList : dom.externalJournalList;
-  const countEl = isTable ? dom.tableJournalCount : dom.externalJournalCount;
-  const items = isTable ? app.ai.tableJournal : app.ai.externalJournal;
+  const map = {
+    chat: { listEl: dom.chatJournalList, countEl: dom.chatJournalCount, items: app.ai.chatJournal },
+    table: { listEl: dom.tableJournalList, countEl: dom.tableJournalCount, items: app.ai.tableJournal },
+    external: { listEl: dom.externalJournalList, countEl: dom.externalJournalCount, items: app.ai.externalJournal },
+    changes: { listEl: dom.changesJournalList, countEl: dom.changesJournalCount, items: app.ai.changesJournal },
+  };
+  const item = map[kind];
+  if (!item) return;
+  const { listEl, countEl, items } = item;
   if (!listEl || !countEl) return;
 
   countEl.textContent = String(items.length);
@@ -251,6 +308,10 @@ function addExternalJournal(kind, text) {
   addJournalEntry(app.ai.externalJournal, MAX_EXTERNAL_JOURNAL, kind, text);
 }
 
+function addChangesJournal(kind, text) {
+  addJournalEntry(app.ai.changesJournal, MAX_CHANGES_JOURNAL, kind, text);
+}
+
 function addJournalEntry(target, limit, kind, text) {
   const entry = {
     ts: Date.now(),
@@ -269,6 +330,34 @@ function journalTime(ts) {
   const m = String(d.getMinutes()).padStart(2, "0");
   const s = String(d.getSeconds()).padStart(2, "0");
   return `${h}:${m}:${s}`;
+}
+
+function renderSidebarMode() {
+  const isTree = app.ui.sidebarTab !== "journals";
+  if (dom.btnSidebarTabTree) {
+    dom.btnSidebarTabTree.classList.toggle("active", isTree);
+    dom.btnSidebarTabTree.setAttribute("aria-selected", isTree ? "true" : "false");
+  }
+  if (dom.btnSidebarTabJournals) {
+    dom.btnSidebarTabJournals.classList.toggle("active", !isTree);
+    dom.btnSidebarTabJournals.setAttribute("aria-selected", !isTree ? "true" : "false");
+  }
+  if (dom.sidebarPanelTree) dom.sidebarPanelTree.hidden = !isTree;
+  if (dom.sidebarPanelJournals) dom.sidebarPanelJournals.hidden = isTree;
+}
+
+function renderJournalViewMode() {
+  const active = app.ui.journalView || "table";
+  for (const btn of dom.journalTabs || []) {
+    const k = String(btn.dataset.journalView || "");
+    btn.classList.toggle("active", k === active);
+    btn.setAttribute("aria-selected", k === active ? "true" : "false");
+  }
+  for (const pane of dom.journalPanes || []) {
+    const k = String(pane.dataset.journalPane || "");
+    pane.hidden = k !== active;
+    pane.classList.toggle("active", k === active);
+  }
 }
 
 function isKnownAiModel(modelId) {
@@ -1312,6 +1401,26 @@ function bindEvents() {
     dom.app.classList.toggle("sidebar-collapsed", app.ui.sidebarCollapsed);
   };
 
+  if (dom.btnSidebarTabTree) {
+    dom.btnSidebarTabTree.onclick = () => {
+      app.ui.sidebarTab = "tree";
+      renderAiUi();
+    };
+  }
+  if (dom.btnSidebarTabJournals) {
+    dom.btnSidebarTabJournals.onclick = () => {
+      app.ui.sidebarTab = "journals";
+      renderAiUi();
+    };
+  }
+  for (const btn of dom.journalTabs || []) {
+    btn.onclick = () => {
+      const k = String(btn.dataset.journalView || "table");
+      app.ui.journalView = k;
+      renderJournalViewMode();
+    };
+  }
+
   dom.btnOpenAiAuth.onclick = onOpenAiAuthClick;
   if (dom.openAiAuthForm) dom.openAiAuthForm.onsubmit = onOpenAiAuthSubmit;
   if (dom.btnOpenAiCancel) dom.btnOpenAiCancel.onclick = () => dom.openAiAuthDialog?.close();
@@ -1330,6 +1439,12 @@ function bindEvents() {
     renderAiUi();
   };
   dom.agentChips.onclick = onAgentChipClick;
+  if (dom.btnClearChatJournal) {
+    dom.btnClearChatJournal.onclick = () => {
+      app.ai.chatJournal = [];
+      renderAgentJournals();
+    };
+  }
   if (dom.btnClearTableJournal) {
     dom.btnClearTableJournal.onclick = () => {
       app.ai.tableJournal = [];
@@ -1342,6 +1457,13 @@ function bindEvents() {
       renderAgentJournals();
     };
   }
+  if (dom.btnClearChangesJournal) {
+    dom.btnClearChangesJournal.onclick = () => {
+      app.ai.changesJournal = [];
+      renderAgentJournals();
+    };
+  }
+  if (dom.agentContextIcons) dom.agentContextIcons.onclick = onAgentContextIconsClick;
   dom.btnAgentSend.onclick = sendAgentPrompt;
   dom.agentPrompt.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -1359,6 +1481,7 @@ function bindEvents() {
     app.ui.treeSel = { type: "assembly", id: a.id };
     app.ui.activeSheetId = `assembly:${a.id}:main`;
     renderAll();
+    addChangesJournal("assembly.add", a.fullName || a.id);
     toast("Сборка добавлена");
   };
 
@@ -1371,6 +1494,7 @@ function bindEvents() {
     if (app.state.hasProjectConsumables && !app.state.projectConsumables.length) app.state.projectConsumables = [makePosition()];
     app.ui.treeSel = { type: "projlist" };
     renderAll();
+    addChangesJournal("project.consumables", app.state.hasProjectConsumables ? "включены" : "выключены");
   };
 
   dom.btnImportExcel.onclick = () => {
@@ -1500,6 +1624,7 @@ async function onOpenAiAuthSubmit(e) {
     if (app.ai.connected) {
       app.ai.model = selectedModel;
       saveOpenAiModel();
+      addChangesJournal("auth.model", selectedModel);
       dom.openAiAuthDialog.close();
       toast("Настройки сохранены");
       return;
@@ -1526,11 +1651,22 @@ async function connectOpenAiWithKey(token, modelId = DEFAULT_AI_MODEL) {
     toast(verified.error || "OpenAI: ключ не принят");
     return false;
   }
+  let finalModel = model;
+  if (Array.isArray(verified.modelIds) && verified.modelIds.length) {
+    if (!verified.modelIds.includes(finalModel)) {
+      const preferred = AI_MODELS.map((m) => m.id).find((id) => verified.modelIds.includes(id));
+      if (preferred) {
+        addExternalJournal("auth.model.fallback", `Модель ${finalModel} недоступна, выбрана ${preferred}`);
+        finalModel = preferred;
+      }
+    }
+  }
   app.ai.apiKey = clean;
-  app.ai.model = model;
+  app.ai.model = finalModel;
   app.ai.connected = true;
   saveOpenAiApiKey();
   saveOpenAiModel();
+  addChangesJournal("auth.connect", finalModel);
   renderAiUi();
   toast("Ключ API сохранен");
   return true;
@@ -1542,6 +1678,7 @@ function disconnectOpenAi() {
   app.ai.sending = false;
   app.ai.attachments = [];
   addExternalJournal("auth", "Ключ OpenAI отключен");
+  addChangesJournal("auth.disconnect", "manual");
   saveOpenAiApiKey();
   renderAiUi();
   toast("OpenAI отключен");
@@ -1549,16 +1686,20 @@ function disconnectOpenAi() {
 
 async function verifyOpenAiApiKey(key) {
   const startedAt = Date.now();
-  addExternalJournal("auth.request", "POST /v1/models (проверка API key)");
+  addExternalJournal("auth.request", "GET /v1/models (проверка API key)");
   try {
-    const res = await fetch("https://api.openai.com/v1/models?limit=1", {
+    const res = await fetch("https://api.openai.com/v1/models", {
       headers: {
         Authorization: `Bearer ${key}`,
       },
     });
     const ms = Date.now() - startedAt;
     addExternalJournal("auth.response", `HTTP ${res.status} /v1/models (${ms}ms)`);
-    if (res.ok) return { ok: true };
+    if (res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const ids = Array.isArray(body?.data) ? body.data.map((m) => String(m?.id || "").trim()).filter(Boolean) : [];
+      return { ok: true, modelIds: ids };
+    }
     if (res.status === 401 || res.status === 403) return { ok: false, error: "OpenAI: неверный ключ" };
     return { ok: false, error: `OpenAI: ошибка ${res.status}` };
   } catch {
@@ -1576,9 +1717,28 @@ function onAgentChipClick(e) {
   const type = chip.dataset.chipType;
   if (type === "file") {
     const id = chip.dataset.chipId;
+    const removed = app.ai.attachments.find((f) => f.id === id);
     app.ai.attachments = app.ai.attachments.filter((f) => f.id !== id);
+    if (removed) addChangesJournal("ai.file.detach", removed.name);
     renderAiUi();
   }
+}
+
+function onAgentContextIconsClick(e) {
+  const btn = e.target.closest("[data-ai-option]");
+  if (!btn) return;
+  const option = String(btn.dataset.aiOption || "");
+
+  if (option === "files") {
+    dom.agentAttachmentInput.click();
+    return;
+  }
+
+  if (!(option in app.ai.options)) return;
+  app.ai.options[option] = !app.ai.options[option];
+  saveAiOptions();
+  addChangesJournal("ai.option", `${option}=${app.ai.options[option] ? "on" : "off"}`);
+  renderAiUi();
 }
 
 async function onAgentAttachmentsPicked(e) {
@@ -1592,6 +1752,7 @@ async function onAgentAttachmentsPicked(e) {
   }
   app.ai.attachments.push(...incoming);
   dom.agentAttachmentInput.value = "";
+  addChangesJournal("ai.file.attach", `Добавлено файлов: ${incoming.length}`);
   renderAiUi();
   toast(`Файлы прикреплены: ${incoming.length}`);
 }
@@ -1634,6 +1795,7 @@ async function sendAgentPrompt() {
   app.ai.sending = true;
   renderAiUi();
   addAgentLog("user", text);
+  addChangesJournal("ai.prompt", `Отправлен запрос (${text.length} символов)`);
 
   try {
     const input = buildAgentInput(text);
@@ -1642,7 +1804,8 @@ async function sendAgentPrompt() {
     dom.agentPrompt.value = "";
   } catch (err) {
     console.error(err);
-    addAgentLog("assistant", "Не удалось выполнить запрос. Проверьте ключ OpenAI и сеть.");
+    const details = String(err?.message || "Неизвестная ошибка").slice(0, 400);
+    addAgentLog("assistant", `Ошибка выполнения: ${details}`);
     toast("Ошибка выполнения запроса ИИ");
   } finally {
     app.ai.sending = false;
@@ -1664,12 +1827,20 @@ function buildAgentContextText() {
   const out = [];
   const s = activeSheet();
 
-  if (s) {
+  if (app.ai.options.currentSheet && s) {
     out.push(`Текущий лист (${s.name}, id=${s.id}):\n${serializeSheetPreview(s, 40, 12, 10000)}`);
   }
 
+  if (app.ai.options.allSheets) {
+    const blocks = app.workbook.sheets.map((sh) => {
+      const preview = serializeSheetPreview(sh, 18, 10, 2200);
+      return `Лист ${sh.name} (id=${sh.id}, строк=${sh.rows.length}, колонок=${sh.cols.length}):\n${preview}`;
+    });
+    out.push(`Все листы:\n${blocks.join("\n\n")}`);
+  }
+
   const sel = app.ui.selection;
-  if (sel && s && sel.sheet === s.id) {
+  if (app.ai.options.selection && sel && s && sel.sheet === s.id) {
     const r1 = Math.min(sel.sr, sel.er);
     const r2 = Math.max(sel.sr, sel.er);
     const c1 = Math.min(sel.sc, sel.ec);
@@ -1711,24 +1882,30 @@ function serializeSheetPreview(sheet, maxRows = 40, maxCols = 12, maxChars = 100
 
 async function runOpenAiAgentTurn(userInput) {
   const modelId = currentAiModelMeta().id;
-  const history = app.ai.log
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .slice(-8)
-    .map((m) => ({
-      role: m.role,
-      content: [{ type: "input_text", text: m.text }],
-    }));
+  const input = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
+  let allowWebSearch = Boolean(app.ai.options.webSearch);
+  let response = null;
 
-  const input = history.length ? history : [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
-  if (history.length) input[input.length - 1] = { role: "user", content: [{ type: "input_text", text: userInput }] };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      response = await callOpenAiResponses({
+        model: modelId,
+        instructions: agentSystemPrompt(),
+        input,
+        tools: agentToolsSpec(allowWebSearch),
+        tool_choice: "auto",
+      });
+      break;
+    } catch (err) {
+      const msg = String(err?.message || "");
+      const canRetryWithoutWeb = allowWebSearch && isWebSearchToolError(msg);
+      if (!canRetryWithoutWeb) throw err;
+      allowWebSearch = false;
+      addExternalJournal("openai.fallback", "Повтор без web_search tool из-за ошибки 400");
+    }
+  }
 
-  let response = await callOpenAiResponses({
-    model: modelId,
-    instructions: agentSystemPrompt(),
-    input,
-    tools: agentToolsSpec(),
-    tool_choice: "auto",
-  });
+  if (!response) throw new Error("openai no response");
 
   for (let i = 0; i < 10; i += 1) {
     const calls = extractAgentFunctionCalls(response);
@@ -1752,12 +1929,15 @@ async function runOpenAiAgentTurn(userInput) {
       model: modelId,
       previous_response_id: response.id,
       input: outputs,
-      tools: agentToolsSpec(),
-      tool_choice: "auto",
     });
   }
 
   throw new Error("agent tool loop limit");
+}
+
+function isWebSearchToolError(message) {
+  const m = String(message || "").toLowerCase();
+  return m.includes("400") && (m.includes("web_search") || m.includes("tool") || m.includes("tools"));
 }
 
 function agentSystemPrompt() {
@@ -1770,7 +1950,7 @@ function agentSystemPrompt() {
   ].join(" ");
 }
 
-function agentToolsSpec() {
+function agentToolsSpec(useWebSearch = app.ai.options.webSearch) {
   const tools = [
     {
       type: "function",
@@ -1862,7 +2042,7 @@ function agentToolsSpec() {
     },
   ];
 
-  tools.push({ type: "web_search_preview" });
+  if (useWebSearch) tools.push({ type: "web_search_preview" });
   return tools;
 }
 
@@ -1887,12 +2067,13 @@ async function callOpenAiResponses(payload) {
   if (!res.ok) {
     const body = await res.text();
     const ms = Date.now() - startedAt;
-    addExternalJournal("openai.error", `HTTP ${res.status} /v1/responses (${ms}ms)`);
+    const shortBody = String(body || "").replace(/\s+/g, " ").trim().slice(0, 240);
+    addExternalJournal("openai.error", `HTTP ${res.status} /v1/responses (${ms}ms) ${shortBody}`);
     if (res.status === 401 || res.status === 403) {
       disconnectOpenAi();
       throw new Error("openai unauthorized");
     }
-    throw new Error(`openai ${res.status}: ${body.slice(0, 500)}`);
+    throw new Error(`openai ${res.status}: ${shortBody || "unknown error"}`);
   }
 
   const parsed = await res.json();
@@ -2022,6 +2203,7 @@ async function executeAgentTool(name, args) {
 
     renderAll();
     addTableJournal("write_cells", `${sheet.name}: изменено ячеек ${applied}`);
+    addChangesJournal("ai.write_cells", `${sheet.name}: ${applied}`);
     return { ok: true, applied, sheet: { id: sheet.id, name: sheet.name } };
   }
 
@@ -2064,6 +2246,7 @@ async function executeAgentTool(name, args) {
       setStatePath(args.path, args.value);
       renderAll();
       addTableJournal("set_state_value", `Изменен путь ${args.path}`);
+      addChangesJournal("ai.set_state", args.path);
       return { ok: true };
     } catch (err) {
       addTableJournal("set_state_value", `Ошибка: ${String(err?.message || err)}`);
@@ -2298,10 +2481,12 @@ function onInspectorClick(e) {
   }
 
   if (action === "del-assembly") {
+    const deleted = assemblyById(a.dataset.id);
     app.state.assemblies = app.state.assemblies.filter((x) => x.id !== a.dataset.id);
     app.ui.treeSel = { type: "settings" };
     app.ui.activeSheetId = "summary";
     renderAll();
+    addChangesJournal("assembly.delete", deleted?.fullName || a.dataset.id || "");
     toast("Сборка удалена");
     return;
   }
@@ -2321,6 +2506,7 @@ function onInspectorClick(e) {
     if (app.state.hasProjectConsumables && !app.state.projectConsumables.length) app.state.projectConsumables = [makePosition()];
     app.ui.treeSel = { type: "projlist" };
     renderAll();
+    addChangesJournal("project.consumables", app.state.hasProjectConsumables ? "включены" : "выключены");
     return;
   }
 
@@ -2330,6 +2516,7 @@ function onInspectorClick(e) {
     app.state.projectConsumables.push(p);
     app.ui.treeSel = { type: "projpos", pos: p.id };
     renderAll();
+    addChangesJournal("project.position.add", p.id);
   }
 }
 
@@ -2343,6 +2530,7 @@ function onInspectorChange(e) {
     else if (f === "totalMode") app.state.settings.totalMode = t.value === "withDiscount" ? "withDiscount" : "withoutDiscount";
     else app.state.settings[f] = String(t.value || "");
     renderAll();
+    addChangesJournal("settings.update", f);
     return;
   }
 
@@ -2363,6 +2551,7 @@ function onInspectorChange(e) {
       a[f] = num(t.value);
     }
     renderAll();
+    addChangesJournal("assembly.update", `${a.id}.${f}`);
     return;
   }
 
@@ -2371,6 +2560,7 @@ function onInspectorChange(e) {
     if (!a) return;
     a.labor[t.dataset.field] = num(t.value);
     renderAll();
+    addChangesJournal("labor.update", `${a.id}.${t.dataset.field}`);
     return;
   }
 
@@ -2382,6 +2572,7 @@ function onInspectorChange(e) {
     else if (f === "markup" || f === "discount") pos[f] = pctToDec(t.value);
     else pos[f] = String(t.value || "");
     renderAll();
+    addChangesJournal("position.update", `${t.dataset.list || ""}.${f}`);
   }
 }
 
@@ -2422,6 +2613,7 @@ function addPosition(assemblyId, list) {
   arr.push(p);
   app.ui.treeSel = { type: "pos", id: assemblyId, list, pos: p.id };
   renderAll();
+  addChangesJournal("position.add", `${assemblyId}.${list}.${p.id}`);
   toast("Позиция добавлена");
 }
 
@@ -2447,6 +2639,7 @@ function duplicateAssembly(assemblyId) {
   app.ui.treeSel = { type: "assembly", id: copy.id };
   app.ui.activeSheetId = `assembly:${copy.id}:main`;
   renderAll();
+  addChangesJournal("assembly.duplicate", `${src.id} -> ${copy.id}`);
   toast("Сборка продублирована");
 }
 
@@ -2471,6 +2664,7 @@ function deletePosition(assemblyId, list, posId) {
     else arr.splice(idx, 1);
     app.ui.treeSel = { type: "projlist" };
     renderAll();
+    addChangesJournal("project.position.delete", posId);
     return;
   }
 
@@ -2483,6 +2677,7 @@ function deletePosition(assemblyId, list, posId) {
   else arr.splice(idx, 1);
   app.ui.treeSel = { type: "list", id: assemblyId, list };
   renderAll();
+  addChangesJournal("position.delete", `${assemblyId}.${list}.${posId}`);
 }
 
 function onViewportMouseDown(e) {
@@ -2636,6 +2831,7 @@ function applySettingsForm() {
   app.state.settings.version = dom.settingVersion.value.trim();
   app.state.settings.vatRate = pctToDec(dom.settingVat.value);
   app.state.settings.totalMode = dom.settingMode.value === "withDiscount" ? "withDiscount" : "withoutDiscount";
+  addChangesJournal("settings.update", "dialog apply");
 }
 
 function exportJson() {
@@ -2661,6 +2857,7 @@ async function importJson(e) {
       const imported = await importExcelState(file);
       app.state = normalizeState(imported);
       app.ai.sheetOverrides = {};
+      addChangesJournal("import.xlsx", file.name);
       toast("Excel импортирован");
     } else {
       const text = await file.text();
@@ -2668,6 +2865,7 @@ async function importJson(e) {
       const raw = parsed.state || parsed;
       app.state = normalizeState(raw);
       app.ai.sheetOverrides = normalizeSheetOverrides(parsed.agent?.sheetOverrides || raw.agent?.sheetOverrides);
+      addChangesJournal("import.json", file.name);
       toast("JSON импортирован");
     }
     app.ui.treeSel = { type: "settings" };
