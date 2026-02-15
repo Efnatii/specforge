@@ -29,6 +29,10 @@ const MAX_CHANGES_JOURNAL = 320;
 const CHAT_CONTEXT_RECENT_MESSAGES = 5;
 const CHAT_SUMMARY_CHUNK_SIZE = 5;
 const MAX_CHAT_SUMMARY_CHARS = 3600;
+const AI_MUTATION_INTENT_RE = /\b(создай|создать|добавь|добавить|измени|обнови|поменяй|замени|исправь|заполни|вставь|удали|увелич|уменьш|пересчитай|рассчитай|create|add|set|update|change|fill|replace|delete|write)\b/i;
+const MARKET_VERIFICATION_MIN_SOURCES = 2;
+const MARKET_VERIFICATION_MAX_SOURCES = 6;
+const POSITION_MARKET_FIELDS = new Set(["name", "manufacturer", "article", "supplier", "note"]);
 
 const dom = {
   app: document.getElementById("app"),
@@ -87,6 +91,10 @@ const dom = {
   tableJournalCount: document.getElementById("tableJournalCount"),
   externalJournalCount: document.getElementById("externalJournalCount"),
   changesJournalCount: document.getElementById("changesJournalCount"),
+  btnCopyChatJournal: document.getElementById("btnCopyChatJournal"),
+  btnCopyTableJournal: document.getElementById("btnCopyTableJournal"),
+  btnCopyExternalJournal: document.getElementById("btnCopyExternalJournal"),
+  btnCopyChangesJournal: document.getElementById("btnCopyChangesJournal"),
   btnClearChatJournal: document.getElementById("btnClearChatJournal"),
   btnClearTableJournal: document.getElementById("btnClearTableJournal"),
   btnClearExternalJournal: document.getElementById("btnClearExternalJournal"),
@@ -318,14 +326,18 @@ function renderAgentJournals() {
   renderJournalList("changes");
 }
 
-function renderJournalList(kind) {
+function journalConfig(kind) {
   const map = {
-    chat: { listEl: dom.chatJournalList, countEl: dom.chatJournalCount, items: app.ai.chatJournal },
-    table: { listEl: dom.tableJournalList, countEl: dom.tableJournalCount, items: app.ai.tableJournal },
-    external: { listEl: dom.externalJournalList, countEl: dom.externalJournalCount, items: app.ai.externalJournal },
-    changes: { listEl: dom.changesJournalList, countEl: dom.changesJournalCount, items: app.ai.changesJournal },
+    chat: { listEl: dom.chatJournalList, countEl: dom.chatJournalCount, items: app.ai.chatJournal, title: "История чата" },
+    table: { listEl: dom.tableJournalList, countEl: dom.tableJournalCount, items: app.ai.tableJournal, title: "Действия ИИ с таблицей" },
+    external: { listEl: dom.externalJournalList, countEl: dom.externalJournalCount, items: app.ai.externalJournal, title: "Внешние запросы" },
+    changes: { listEl: dom.changesJournalList, countEl: dom.changesJournalCount, items: app.ai.changesJournal, title: "Журнал изменений" },
   };
-  const item = map[kind];
+  return map[kind] || null;
+}
+
+function renderJournalList(kind) {
+  const item = journalConfig(kind);
   if (!item) return;
   const { listEl, countEl, items } = item;
   if (!listEl || !countEl) return;
@@ -342,6 +354,52 @@ function renderJournalList(kind) {
     .map((it) => `<div class="agent-journal-item"><span class="time">${esc(journalTime(it.ts))}</span><span class="kind">${esc(it.kind)}</span><span class="text">${esc(it.text)}</span></div>`)
     .join("");
   listEl.innerHTML = html;
+}
+
+function journalDateTime(ts) {
+  const d = new Date(num(ts, Date.now()));
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${h}:${m}:${s}`;
+}
+
+function formatJournalForCopy(kind) {
+  const cfg = journalConfig(kind);
+  if (!cfg) return "";
+  const title = cfg.title || kind;
+  const items = Array.isArray(cfg.items) ? cfg.items : [];
+  const lines = [];
+  lines.push(`# ${title}`);
+  lines.push(`Количество записей: ${items.length}`);
+  lines.push("");
+  for (const it of items) {
+    const ts = journalDateTime(it?.ts);
+    const k = String(it?.kind || "").trim();
+    const t = String(it?.text || "").replace(/\s+/g, " ").trim();
+    lines.push(`[${ts}] ${k}: ${t}`);
+  }
+  return lines.join("\n");
+}
+
+async function copyJournal(kind) {
+  const cfg = journalConfig(kind);
+  if (!cfg) return;
+  if (!cfg.items.length) {
+    toast("Журнал пуст");
+    return;
+  }
+  const text = formatJournalForCopy(kind);
+  try {
+    await copyText(text);
+    addChangesJournal("journal.copy", String(kind));
+    toast("Журнал скопирован");
+  } catch {
+    toast("Не удалось скопировать журнал");
+  }
 }
 
 function addTableJournal(kind, text) {
@@ -1488,6 +1546,26 @@ function bindEvents() {
     renderAiUi();
   };
   dom.agentChips.onclick = onAgentChipClick;
+  if (dom.btnCopyChatJournal) {
+    dom.btnCopyChatJournal.onclick = () => {
+      void copyJournal("chat");
+    };
+  }
+  if (dom.btnCopyTableJournal) {
+    dom.btnCopyTableJournal.onclick = () => {
+      void copyJournal("table");
+    };
+  }
+  if (dom.btnCopyExternalJournal) {
+    dom.btnCopyExternalJournal.onclick = () => {
+      void copyJournal("external");
+    };
+  }
+  if (dom.btnCopyChangesJournal) {
+    dom.btnCopyChangesJournal.onclick = () => {
+      void copyJournal("changes");
+    };
+  }
   if (dom.btnClearChatJournal) {
     dom.btnClearChatJournal.onclick = () => {
       app.ai.chatJournal = [];
@@ -1850,7 +1928,7 @@ async function sendAgentPrompt() {
 
   try {
     const input = buildAgentInput(text);
-    const out = await runOpenAiAgentTurn(input);
+    const out = await runOpenAiAgentTurn(input, text);
     addAgentLog("assistant", out || "Готово.");
     dom.agentPrompt.value = "";
   } catch (err) {
@@ -1963,9 +2041,22 @@ function serializeSheetPreview(sheet, maxRows = 40, maxCols = 12, maxChars = 100
   return lines.join("\n").slice(0, maxChars);
 }
 
-async function runOpenAiAgentTurn(userInput) {
+async function runOpenAiAgentTurn(userInput, rawUserText = "") {
   const modelId = currentAiModelMeta().id;
   const input = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
+  const intentToMutate = AI_MUTATION_INTENT_RE.test(String(rawUserText || "").trim());
+  const toolStats = {
+    mutationCalls: 0,
+    successfulMutations: 0,
+    failedMutations: [],
+    forcedRetries: 0,
+  };
+  const turnCtx = {
+    webSearchUsed: false,
+    webSearchQueries: [],
+    webSearchUrls: [],
+  };
+
   let response = await callOpenAiResponses({
     model: modelId,
     instructions: agentSystemPrompt(),
@@ -1973,18 +2064,69 @@ async function runOpenAiAgentTurn(userInput) {
     tools: agentToolsSpec(),
     tool_choice: "auto",
   });
+  updateAgentTurnWebEvidence(turnCtx, response);
 
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < 12; i += 1) {
     const calls = extractAgentFunctionCalls(response);
     if (!calls.length) {
       const text = extractAgentText(response);
+      if (intentToMutate && toolStats.mutationCalls === 0 && toolStats.forcedRetries < 1) {
+        toolStats.forcedRetries += 1;
+        addTableJournal("agent.retry", "Автоповтор: модель не вызвала инструмент изменения");
+        response = await callOpenAiResponses({
+          model: modelId,
+          previous_response_id: response.id,
+          input: [{
+            role: "user",
+            content: [{
+              type: "input_text",
+              text: "Пользователь просил изменить данные. Выполни изменение через tools. Для позиций обязателен verification: либо web_search + sources URL, либо ссылки на прикрепленные документы.",
+            }],
+          }],
+        });
+        continue;
+      }
+
+      if (toolStats.mutationCalls > 0 && toolStats.successfulMutations === 0) {
+        if (toolStats.forcedRetries < 2) {
+          const reason = toolStats.failedMutations.slice(-2).join("; ") || "инструменты вернули 0 применений";
+          toolStats.forcedRetries += 1;
+          addTableJournal("agent.retry", `Автоповтор: ${reason}`);
+          response = await callOpenAiResponses({
+            model: modelId,
+            previous_response_id: response.id,
+            input: [{
+              role: "user",
+              content: [{
+                type: "input_text",
+                text: `Предыдущая попытка не применила изменения (${reason}). Повтори: корректные параметры tools; для позиций обязателен verification (web c источниками или прикрепленные документы).`,
+              }],
+            }],
+          });
+          continue;
+        }
+        const reason = toolStats.failedMutations.slice(-2).join("; ") || "инструмент изменения не внес правок";
+        return `Изменения не применены: ${reason}. Уточните лист, диапазон или путь.`;
+      }
+
       return text || "Готово.";
     }
 
     const outputs = [];
     for (const call of calls) {
       const args = parseJsonSafe(call.arguments, {});
-      const result = await executeAgentTool(call.name, args);
+      const result = await executeAgentTool(call.name, args, turnCtx);
+      if (isMutationToolName(call.name)) {
+        toolStats.mutationCalls += 1;
+        const isOk = Boolean(result?.ok);
+        const applied = call.name === "write_cells" ? Math.max(0, Number(result?.applied || 0)) : (isOk ? 1 : 0);
+        if (applied > 0) {
+          toolStats.successfulMutations += applied;
+        } else {
+          const errText = String(result?.error || "изменение не применено").replace(/\s+/g, " ").trim().slice(0, 160);
+          toolStats.failedMutations.push(`${call.name}: ${errText}`);
+        }
+      }
       outputs.push({
         type: "function_call_output",
         call_id: call.call_id,
@@ -1997,6 +2139,7 @@ async function runOpenAiAgentTurn(userInput) {
       previous_response_id: response.id,
       input: outputs,
     });
+    updateAgentTurnWebEvidence(turnCtx, response);
   }
 
   throw new Error("agent tool loop limit");
@@ -2006,10 +2149,16 @@ function agentSystemPrompt() {
   return [
     "Ты AI-агент внутри SpecForge.",
     "Ты можешь читать и изменять таблицы и состояние проекта через tools.",
+    "Для операций со сборками и позициями используй специализированные tools: create_assembly, update_assembly, delete_assembly, duplicate_assembly, add_position, update_position, delete_position, add_project_position, update_project_position, delete_project_position.",
+    "Нельзя выдумывать оборудование/материалы: перед add_position/update_position/add_project_position/update_project_position обязательно передай verification.",
+    "Verification допустим двумя способами: web_search (query + sources URL) или подтверждение через прикрепленные документы (attachments).",
+    "Для подтверждения через документы в verification.attachments укажи name или id прикрепленного файла.",
+    "Если подтверждения нет ни по web, ни по документам, сообщи об этом и не добавляй позицию.",
     "Для set_state_value передавай поле value_json как валидную JSON-строку.",
     "Не запрашивай подтверждение перед выполнением действий.",
     "Если пользователь просит выполнить изменение, выполняй сразу через tools и сообщай факт.",
     "Подтверждение или уточнение запрашивай только если пользователь сам явно просит это сделать.",
+    "Никогда не утверждай, что изменение применено, если tool вернул ok=false или applied=0.",
     "Отвечай кратко и по делу: 1-3 коротких предложения, без воды.",
     "Перед изменениями проверяй целевые листы/диапазоны.",
     "При изменениях кратко подтверждай, что именно поменял.",
@@ -2018,6 +2167,41 @@ function agentSystemPrompt() {
 }
 
 function agentToolsSpec() {
+  const verificationParam = {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Поисковый запрос (если подтверждение через web_search)" },
+      sources: {
+        type: "array",
+        description: "Ссылки из web_search, подтверждающие существование товара",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            url: { type: "string" },
+          },
+          required: ["url"],
+          additionalProperties: false,
+        },
+      },
+      attachments: {
+        type: "array",
+        description: "Подтверждение из прикрепленных файлов/документов",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            excerpt: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      },
+      notes: { type: "string" },
+    },
+    additionalProperties: false,
+  };
+
   const tools = [
     {
       type: "function",
@@ -2026,6 +2210,277 @@ function agentToolsSpec() {
       parameters: {
         type: "object",
         properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "set_active_sheet",
+      description: "Переключить активный лист таблицы",
+      parameters: {
+        type: "object",
+        properties: {
+          sheet_id: { type: "string" },
+          sheet_name: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "list_assemblies",
+      description: "Вернуть список сборок проекта",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "read_assembly",
+      description: "Прочитать данные сборки",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+          include_positions: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "create_assembly",
+      description: "Создать новую сборку",
+      parameters: {
+        type: "object",
+        properties: {
+          full_name: { type: "string", description: "Полное имя сборки" },
+          abbreviation: { type: "string", description: "Аббревиатура сборки (опционально)" },
+          separate_consumables: { type: "boolean", description: "Включить отдельный список расходников" },
+        },
+        required: ["full_name"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "update_assembly",
+      description: "Изменить параметры сборки",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+          full_name: { type: "string" },
+          abbreviation: { type: "string" },
+          abbr_manual: { type: "boolean" },
+          separate_consumables: { type: "boolean" },
+          manual_cons_no_disc: { type: "number" },
+          manual_cons_disc: { type: "number" },
+          labor: {
+            type: "object",
+            properties: {
+              devCoeff: { type: "number" },
+              devHours: { type: "number" },
+              devRate: { type: "number" },
+              assmCoeff: { type: "number" },
+              assmHours: { type: "number" },
+              assmRate: { type: "number" },
+              profitCoeff: { type: "number" },
+            },
+            additionalProperties: false,
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "duplicate_assembly",
+      description: "Дублировать сборку",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "delete_assembly",
+      description: "Удалить сборку",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "list_positions",
+      description: "Список позиций выбранной сборки",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+          list: { type: "string", description: "main или consumable" },
+          include_details: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "add_position",
+      description: "Добавить позицию в сборку",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string", description: "ID сборки" },
+          assembly_name: { type: "string", description: "Имя или аббревиатура сборки" },
+          list: { type: "string", description: "main или consumable" },
+          name: { type: "string", description: "Наименование позиции" },
+          qty: { type: "number", description: "Количество" },
+          unit: { type: "string", description: "Ед. изм., например шт" },
+          manufacturer: { type: "string" },
+          article: { type: "string" },
+          schematic: { type: "string" },
+          supplier: { type: "string" },
+          note: { type: "string" },
+          price_catalog_vat_markup: { type: "number", description: "Цена каталожная без НДС" },
+          markup: { type: "number", description: "Наценка (0..1 или 0..100)" },
+          discount: { type: "number", description: "Скидка (0..1 или 0..100)" },
+          verification: verificationParam,
+        },
+        required: ["name", "verification"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "update_position",
+      description: "Изменить позицию внутри сборки",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+          list: { type: "string", description: "main или consumable" },
+          position_id: { type: "string" },
+          name: { type: "string" },
+          qty: { type: "number" },
+          unit: { type: "string" },
+          manufacturer: { type: "string" },
+          article: { type: "string" },
+          schematic: { type: "string" },
+          supplier: { type: "string" },
+          note: { type: "string" },
+          price_catalog_vat_markup: { type: "number" },
+          markup: { type: "number" },
+          discount: { type: "number" },
+          verification: verificationParam,
+        },
+        required: ["position_id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "delete_position",
+      description: "Удалить позицию из сборки",
+      parameters: {
+        type: "object",
+        properties: {
+          assembly_id: { type: "string" },
+          assembly_name: { type: "string" },
+          list: { type: "string", description: "main или consumable" },
+          position_id: { type: "string" },
+        },
+        required: ["position_id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "add_project_position",
+      description: "Добавить позицию в проектные расходники",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          qty: { type: "number" },
+          unit: { type: "string" },
+          manufacturer: { type: "string" },
+          article: { type: "string" },
+          schematic: { type: "string" },
+          supplier: { type: "string" },
+          note: { type: "string" },
+          price_catalog_vat_markup: { type: "number" },
+          markup: { type: "number" },
+          discount: { type: "number" },
+          verification: verificationParam,
+        },
+        required: ["name", "verification"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "update_project_position",
+      description: "Изменить позицию в проектных расходниках",
+      parameters: {
+        type: "object",
+        properties: {
+          position_id: { type: "string" },
+          name: { type: "string" },
+          qty: { type: "number" },
+          unit: { type: "string" },
+          manufacturer: { type: "string" },
+          article: { type: "string" },
+          schematic: { type: "string" },
+          supplier: { type: "string" },
+          note: { type: "string" },
+          price_catalog_vat_markup: { type: "number" },
+          markup: { type: "number" },
+          discount: { type: "number" },
+          verification: verificationParam,
+        },
+        required: ["position_id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "delete_project_position",
+      description: "Удалить позицию из проектных расходников",
+      parameters: {
+        type: "object",
+        properties: {
+          position_id: { type: "string" },
+        },
+        required: ["position_id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "toggle_project_consumables",
+      description: "Включить или выключить лист проектных расходников",
+      parameters: {
+        type: "object",
+        properties: {
+          enabled: { type: "boolean" },
+        },
+        required: ["enabled"],
         additionalProperties: false,
       },
     },
@@ -2066,8 +2521,37 @@ function agentToolsSpec() {
               additionalProperties: false,
             },
           },
+          verification: verificationParam,
         },
         required: ["updates"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "clear_range",
+      description: "Очистить значения/формулы в диапазоне листа",
+      parameters: {
+        type: "object",
+        properties: {
+          sheet_id: { type: "string" },
+          sheet_name: { type: "string" },
+          range: { type: "string", description: "A1 или A1:C20" },
+        },
+        required: ["range"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "clear_sheet_overrides",
+      description: "Очистить AI-изменения на листе или во всей таблице",
+      parameters: {
+        type: "object",
+        properties: {
+          sheet_id: { type: "string" },
+          all: { type: "boolean" },
+        },
         additionalProperties: false,
       },
     },
@@ -2104,6 +2588,7 @@ function agentToolsSpec() {
       properties: {
         path: { type: "string" },
         value_json: { type: "string" },
+        verification: verificationParam,
       },
       required: ["path", "value_json"],
       additionalProperties: false,
@@ -2195,7 +2680,304 @@ function parseJsonValue(raw) {
   }
 }
 
-async function executeAgentTool(name, args) {
+function isMutationToolName(name) {
+  const n = String(name || "").trim();
+  return n === "write_cells"
+    || n === "set_state_value"
+    || n === "create_assembly"
+    || n === "update_assembly"
+    || n === "duplicate_assembly"
+    || n === "delete_assembly"
+    || n === "add_position"
+    || n === "update_position"
+    || n === "delete_position"
+    || n === "add_project_position"
+    || n === "update_project_position"
+    || n === "delete_project_position"
+    || n === "toggle_project_consumables"
+    || n === "clear_range"
+    || n === "clear_sheet_overrides";
+}
+
+function updateAgentTurnWebEvidence(turnCtx, response) {
+  if (!turnCtx || !response) return;
+  const evidence = extractWebSearchEvidence(response);
+  if (evidence.used) turnCtx.webSearchUsed = true;
+  for (const q of evidence.queries) pushUnique(turnCtx.webSearchQueries, q, 20);
+  for (const u of evidence.urls) pushUnique(turnCtx.webSearchUrls, u, 60);
+}
+
+function extractWebSearchEvidence(response) {
+  const out = { used: false, queries: [], urls: [] };
+  const pushUrl = (raw) => {
+    const cleaned = normalizeHttpUrl(raw);
+    if (!cleaned) return;
+    pushUnique(out.urls, cleaned, 60);
+  };
+  const pushQuery = (raw) => {
+    const txt = String(raw || "").replace(/\s+/g, " ").trim();
+    if (!txt) return;
+    pushUnique(out.queries, txt.slice(0, 300), 20);
+  };
+
+  for (const item of response?.output || []) {
+    const type = String(item?.type || "");
+    if (type.includes("web_search")) {
+      out.used = true;
+      pushQuery(item?.query);
+      pushQuery(item?.search_query);
+      pushQuery(item?.q);
+    }
+    if (item?.type !== "message") continue;
+    for (const c of item.content || []) {
+      if (Array.isArray(c?.annotations)) {
+        for (const a of c.annotations) {
+          pushUrl(a?.url || a?.uri || a?.link);
+        }
+      }
+      if (typeof c?.text === "string") {
+        for (const url of c.text.match(/https?:\/\/[^\s)]+/g) || []) pushUrl(url);
+      }
+    }
+  }
+  return out;
+}
+
+function normalizeHttpUrl(raw) {
+  const txt = String(raw || "").trim();
+  if (!txt) return "";
+  try {
+    const url = new URL(txt);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function pushUnique(target, value, max = 50) {
+  if (!Array.isArray(target)) return;
+  const v = String(value || "").trim();
+  if (!v) return;
+  if (!target.includes(v)) target.push(v);
+  if (target.length > max) target.splice(0, target.length - max);
+}
+
+function isMarketFieldTouched(args) {
+  for (const key of POSITION_MARKET_FIELDS) {
+    if (args?.[key] !== undefined) return true;
+  }
+  return false;
+}
+
+function statePathRequiresMarketVerification(path) {
+  const p = String(path || "").trim();
+  if (!p) return false;
+  if (/^assemblies\[\d+\]\.(main|consumable)\[\d+\]\.(name|manufacturer|article|supplier|note)$/.test(p)) return true;
+  if (/^projectConsumables\[\d+\]\.(name|manufacturer|article|supplier|note)$/.test(p)) return true;
+  return false;
+}
+
+function isMarketSheetId(sheetId) {
+  const id = String(sheetId || "").trim();
+  return id.startsWith("assembly:") || id === "project-consumables";
+}
+
+function normalizeMarketVerification(rawVerification) {
+  if (!rawVerification || typeof rawVerification !== "object") return null;
+  const query = String(rawVerification.query || "").replace(/\s+/g, " ").trim();
+  const src = Array.isArray(rawVerification.sources) ? rawVerification.sources : [];
+  const docs = Array.isArray(rawVerification.attachments) ? rawVerification.attachments : [];
+  const seen = new Set();
+  const sources = [];
+  const attachments = [];
+  const seenAttach = new Set();
+
+  for (const entry of src) {
+    const title = String(entry?.title || "").replace(/\s+/g, " ").trim();
+    const urlRaw = entry?.url || "";
+    const url = normalizeHttpUrl(urlRaw);
+    if (!url) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    sources.push({ title: title.slice(0, 200), url });
+    if (sources.length >= MARKET_VERIFICATION_MAX_SOURCES) break;
+  }
+
+  for (const item of docs) {
+    const ref = resolveAttachmentVerificationRef(item);
+    if (!ref) continue;
+    const key = ref.id || ref.name.toLowerCase();
+    if (!key || seenAttach.has(key)) continue;
+    seenAttach.add(key);
+    attachments.push({
+      id: ref.id,
+      name: ref.name,
+      excerpt: String(item?.excerpt || "").replace(/\s+/g, " ").trim().slice(0, 300),
+    });
+    if (attachments.length >= MARKET_VERIFICATION_MAX_SOURCES) break;
+  }
+
+  if (!query && !sources.length && !attachments.length) return null;
+  return { query: query.slice(0, 400), sources, attachments };
+}
+
+function resolveAttachmentVerificationRef(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = String(raw.id || "").trim();
+  if (id) {
+    const hit = app.ai.attachments.find((f) => f.id === id);
+    if (hit) return { id: hit.id, name: hit.name };
+  }
+  const name = String(raw.name || "").trim().toLowerCase();
+  if (name) {
+    const hit = app.ai.attachments.find((f) => String(f.name || "").trim().toLowerCase() === name);
+    if (hit) return { id: hit.id, name: hit.name };
+  }
+  return null;
+}
+
+function domainOfUrl(raw) {
+  try {
+    return new URL(raw).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function ensureMarketVerification(turnCtx, verification, actionLabel) {
+  const normalized = normalizeMarketVerification(verification);
+  if (!normalized) {
+    const message = `Нужно verification: web (query + минимум ${MARKET_VERIFICATION_MIN_SOURCES} URL) или attachments (ссылки на прикрепленные файлы).`;
+    addTableJournal(actionLabel, `Ошибка: ${message}`);
+    return { ok: false, error: message };
+  }
+
+  const errors = [];
+  const via = [];
+
+  const hasDocs = normalized.attachments.length > 0;
+  if (hasDocs) via.push("docs");
+
+  const hasWebPayload = normalized.sources.length > 0 || normalized.query.length > 0;
+  let webOk = false;
+  if (hasWebPayload) {
+    if (!app.ai.options.webSearch) {
+      errors.push("веб-поиск отключен");
+    } else if (!turnCtx?.webSearchUsed) {
+      errors.push("в этом ходе не было web_search");
+    } else if (!normalized.query || normalized.sources.length < MARKET_VERIFICATION_MIN_SOURCES) {
+      errors.push(`для web-подтверждения нужен query и минимум ${MARKET_VERIFICATION_MIN_SOURCES} URL`);
+    } else {
+      webOk = true;
+      if (Array.isArray(turnCtx.webSearchUrls) && turnCtx.webSearchUrls.length) {
+        const turnDomains = new Set(turnCtx.webSearchUrls.map(domainOfUrl).filter(Boolean));
+        const sourceDomains = new Set(normalized.sources.map((s) => domainOfUrl(s.url)).filter(Boolean));
+        let hasMatch = false;
+        for (const d of sourceDomains) {
+          if (turnDomains.has(d)) {
+            hasMatch = true;
+            break;
+          }
+        }
+        if (!hasMatch) {
+          webOk = false;
+          errors.push("домены verification не совпали с web_search этого хода");
+        }
+      }
+    }
+  }
+
+  if (webOk) via.push("web");
+  if (!via.length) {
+    const message = errors.length ? errors.join("; ") : "подтверждение не прошло";
+    addTableJournal(actionLabel, `Ошибка: ${message}`);
+    return { ok: false, error: message };
+  }
+
+  return {
+    ok: true,
+    verification: {
+      query: normalized.query,
+      sources: webOk ? normalized.sources : [],
+      attachments: normalized.attachments,
+      via: via.join("+"),
+    },
+  };
+}
+
+function appendVerificationToPosition(position, verification) {
+  if (!position || !verification) return;
+  const urls = Array.isArray(verification.sources) ? verification.sources.map((s) => s.url).slice(0, 3) : [];
+  const docs = Array.isArray(verification.attachments) ? verification.attachments.map((d) => d.name).slice(0, 3) : [];
+  if (!urls.length && !docs.length) return;
+  const mode = String(verification.via || "unknown");
+  const chunks = [];
+  if (verification.query) chunks.push(verification.query);
+  if (urls.length) chunks.push(`web: ${urls.join(" ; ")}`);
+  if (docs.length) chunks.push(`docs: ${docs.join(" ; ")}`);
+  const suffix = `[verified:${mode}] ${chunks.join(" | ")}`.trim();
+  const prev = String(position.note || "").trim();
+  const next = prev ? `${prev}\n${suffix}` : suffix;
+  position.note = next.slice(0, 4000);
+}
+
+function applyAgentPositionPatch(position, args) {
+  if (!position || !args || typeof args !== "object") return [];
+  const changed = [];
+  const str = (v) => String(v || "").trim();
+
+  if (args.name !== undefined) {
+    position.name = str(args.name);
+    changed.push("name");
+  }
+  if (args.qty !== undefined) {
+    position.qty = num(args.qty, position.qty);
+    changed.push("qty");
+  }
+  if (args.unit !== undefined) {
+    const u = str(args.unit);
+    if (u) {
+      position.unit = u;
+      changed.push("unit");
+    }
+  }
+  if (args.manufacturer !== undefined) {
+    position.manufacturer = str(args.manufacturer);
+    changed.push("manufacturer");
+  }
+  if (args.article !== undefined) {
+    position.article = str(args.article);
+    changed.push("article");
+  }
+  if (args.schematic !== undefined) {
+    position.schematic = str(args.schematic);
+    changed.push("schematic");
+  }
+  if (args.supplier !== undefined) {
+    position.supplier = str(args.supplier);
+    changed.push("supplier");
+  }
+  if (args.note !== undefined) {
+    position.note = String(args.note || "").trim();
+    changed.push("note");
+  }
+  if (args.price_catalog_vat_markup !== undefined) {
+    position.priceCatalogVatMarkup = num(args.price_catalog_vat_markup, position.priceCatalogVatMarkup);
+    changed.push("price_catalog_vat_markup");
+  }
+  if (args.markup !== undefined) {
+    position.markup = normalizeAgentRatio(args.markup, position.markup);
+    changed.push("markup");
+  }
+  if (args.discount !== undefined) {
+    position.discount = normalizeAgentRatio(args.discount, position.discount);
+    changed.push("discount");
+  }
+  return changed;
+}
+
+async function executeAgentTool(name, args, turnCtx = null) {
   if (name === "list_sheets") {
     const result = {
       sheets: app.workbook.sheets.map((s) => ({
@@ -2207,6 +2989,427 @@ async function executeAgentTool(name, args) {
     };
     addTableJournal("list_sheets", `Получено листов: ${result.sheets.length}`);
     return result;
+  }
+
+  if (name === "set_active_sheet") {
+    const sheet = resolveAgentSheet(args);
+    if (!sheet) {
+      addTableJournal("set_active_sheet", "Ошибка: лист не найден");
+      return { ok: false, error: "sheet not found" };
+    }
+    app.ui.activeSheetId = sheet.id;
+    app.ui.selection = null;
+    renderTabs();
+    renderSheet();
+    addTableJournal("set_active_sheet", `Активный лист: ${sheet.name}`);
+    return { ok: true, sheet: { id: sheet.id, name: sheet.name } };
+  }
+
+  if (name === "list_assemblies") {
+    const assemblies = app.state.assemblies.map((a) => ({
+      id: a.id,
+      full_name: a.fullName,
+      abbreviation: a.abbreviation,
+      main_count: Array.isArray(a.main) ? a.main.length : 0,
+      consumable_count: Array.isArray(a.consumable) ? a.consumable.length : 0,
+      separate_consumables: Boolean(a.separateConsumables),
+    }));
+    addTableJournal("list_assemblies", `Получено сборок: ${assemblies.length}`);
+    return { ok: true, assemblies };
+  }
+
+  if (name === "read_assembly") {
+    const assembly = resolveAgentAssembly(args);
+    if (!assembly) {
+      addTableJournal("read_assembly", "Ошибка: сборка не найдена");
+      return { ok: false, error: "assembly not found" };
+    }
+    const includePositions = Boolean(args?.include_positions);
+    const result = {
+      ok: true,
+      assembly: {
+        id: assembly.id,
+        full_name: assembly.fullName,
+        abbreviation: assembly.abbreviation,
+        abbr_manual: Boolean(assembly.abbrManual),
+        separate_consumables: Boolean(assembly.separateConsumables),
+        manual_cons_no_disc: num(assembly.manualConsNoDisc, 0),
+        manual_cons_disc: num(assembly.manualConsDisc, 0),
+        labor: { ...assembly.labor },
+        main_count: Array.isArray(assembly.main) ? assembly.main.length : 0,
+        consumable_count: Array.isArray(assembly.consumable) ? assembly.consumable.length : 0,
+      },
+    };
+    if (includePositions) {
+      result.assembly.main = compactForTool(assembly.main);
+      result.assembly.consumable = compactForTool(assembly.consumable);
+    }
+    addTableJournal("read_assembly", `Чтение сборки ${assembly.fullName}`);
+    return result;
+  }
+
+  if (name === "create_assembly") {
+    const fullName = String(args?.full_name || "").trim();
+    if (!fullName) {
+      addTableJournal("create_assembly", "Ошибка: full_name required");
+      return { ok: false, error: "full_name required" };
+    }
+
+    const existing = app.state.assemblies.find((a) => String(a.fullName || "").trim().toLowerCase() === fullName.toLowerCase());
+    if (existing) {
+      addTableJournal("create_assembly", `Пропуск: сборка уже существует (${existing.fullName})`);
+      return {
+        ok: true,
+        created: false,
+        assembly: {
+          id: existing.id,
+          full_name: existing.fullName,
+          abbreviation: existing.abbreviation,
+        },
+      };
+    }
+
+    const assembly = makeAssembly(app.state.assemblies.length + 1);
+    assembly.fullName = fullName;
+
+    const abbr = keepAbbr(args?.abbreviation);
+    if (abbr) {
+      assembly.abbreviation = abbr;
+      assembly.abbrManual = true;
+    } else {
+      assembly.abbreviation = deriveAbbr(fullName);
+      assembly.abbrManual = false;
+    }
+
+    assembly.separateConsumables = Boolean(args?.separate_consumables);
+    if (assembly.separateConsumables && (!Array.isArray(assembly.consumable) || !assembly.consumable.length)) {
+      assembly.consumable = [makePosition()];
+    }
+
+    app.state.assemblies.push(assembly);
+    app.ui.treeSel = { type: "assembly", id: assembly.id };
+    app.ui.activeSheetId = `assembly:${assembly.id}:main`;
+    renderAll();
+    addTableJournal("create_assembly", `Создана сборка ${assembly.fullName} (${assembly.id})`);
+    addChangesJournal("assembly.add", `${assembly.id}:${assembly.fullName}`);
+    return {
+      ok: true,
+      created: true,
+      assembly: {
+        id: assembly.id,
+        full_name: assembly.fullName,
+        abbreviation: assembly.abbreviation,
+      },
+    };
+  }
+
+  if (name === "update_assembly") {
+    const assembly = resolveAgentAssembly(args);
+    if (!assembly) {
+      addTableJournal("update_assembly", "Ошибка: сборка не найдена");
+      return { ok: false, error: "assembly not found" };
+    }
+
+    const changed = [];
+    if (args?.full_name !== undefined) {
+      assembly.fullName = String(args.full_name || "").trim();
+      if (!assembly.abbrManual) assembly.abbreviation = deriveAbbr(assembly.fullName);
+      changed.push("full_name");
+    }
+    if (args?.abbreviation !== undefined) {
+      assembly.abbreviation = keepAbbr(args.abbreviation);
+      changed.push("abbreviation");
+    }
+    if (args?.abbr_manual !== undefined) {
+      assembly.abbrManual = Boolean(args.abbr_manual);
+      if (!assembly.abbrManual) assembly.abbreviation = deriveAbbr(assembly.fullName);
+      changed.push("abbr_manual");
+    }
+    if (args?.separate_consumables !== undefined) {
+      assembly.separateConsumables = Boolean(args.separate_consumables);
+      if (assembly.separateConsumables && !assembly.consumable.length) assembly.consumable = [makePosition()];
+      changed.push("separate_consumables");
+    }
+    if (args?.manual_cons_no_disc !== undefined) {
+      assembly.manualConsNoDisc = num(args.manual_cons_no_disc, assembly.manualConsNoDisc);
+      changed.push("manual_cons_no_disc");
+    }
+    if (args?.manual_cons_disc !== undefined) {
+      assembly.manualConsDisc = num(args.manual_cons_disc, assembly.manualConsDisc);
+      changed.push("manual_cons_disc");
+    }
+    if (args?.labor && typeof args.labor === "object") {
+      for (const key of ["devCoeff", "devHours", "devRate", "assmCoeff", "assmHours", "assmRate", "profitCoeff"]) {
+        if (args.labor[key] === undefined) continue;
+        assembly.labor[key] = num(args.labor[key], assembly.labor[key]);
+        changed.push(`labor.${key}`);
+      }
+    }
+
+    if (!changed.length) {
+      addTableJournal("update_assembly", "Ошибка: нет полей для изменения");
+      return { ok: false, error: "no fields to update" };
+    }
+
+    renderAll();
+    addTableJournal("update_assembly", `${assembly.fullName}: ${changed.join(", ")}`);
+    addChangesJournal("assembly.update", `${assembly.id}: ${changed.join(", ")}`);
+    return { ok: true, assembly: { id: assembly.id, full_name: assembly.fullName }, changed };
+  }
+
+  if (name === "duplicate_assembly") {
+    const source = resolveAgentAssembly(args);
+    if (!source) {
+      addTableJournal("duplicate_assembly", "Ошибка: сборка не найдена");
+      return { ok: false, error: "assembly not found" };
+    }
+
+    const copy = {
+      ...source,
+      id: uid(),
+      fullName: nextCopyAssemblyName(source.fullName || "Сборка"),
+      main: Array.isArray(source.main) && source.main.length ? source.main.map((p) => ({ ...p, id: uid() })) : [makePosition()],
+      consumable: Array.isArray(source.consumable) && source.consumable.length ? source.consumable.map((p) => ({ ...p, id: uid() })) : [makePosition()],
+      labor: { ...source.labor },
+      manualConsNoDisc: num(source.manualConsNoDisc, 0),
+      manualConsDisc: num(source.manualConsDisc, 0),
+    };
+    const srcIdx = app.state.assemblies.findIndex((a) => a.id === source.id);
+    if (srcIdx >= 0) app.state.assemblies.splice(srcIdx + 1, 0, copy);
+    else app.state.assemblies.push(copy);
+
+    app.ui.treeSel = { type: "assembly", id: copy.id };
+    app.ui.activeSheetId = `assembly:${copy.id}:main`;
+    renderAll();
+    addTableJournal("duplicate_assembly", `${source.fullName} -> ${copy.fullName}`);
+    addChangesJournal("assembly.duplicate", `${source.id} -> ${copy.id}`);
+    return {
+      ok: true,
+      source: { id: source.id, full_name: source.fullName },
+      copy: { id: copy.id, full_name: copy.fullName },
+    };
+  }
+
+  if (name === "delete_assembly") {
+    const assembly = resolveAgentAssembly(args);
+    if (!assembly) {
+      addTableJournal("delete_assembly", "Ошибка: сборка не найдена");
+      return { ok: false, error: "assembly not found" };
+    }
+
+    app.state.assemblies = app.state.assemblies.filter((x) => x.id !== assembly.id);
+    app.ui.treeSel = { type: "settings" };
+    app.ui.activeSheetId = "summary";
+    renderAll();
+    addTableJournal("delete_assembly", `Удалена сборка ${assembly.fullName}`);
+    addChangesJournal("assembly.delete", assembly.fullName || assembly.id);
+    return { ok: true, deleted: { id: assembly.id, full_name: assembly.fullName } };
+  }
+
+  if (name === "list_positions") {
+    const assembly = resolveAgentAssembly(args);
+    if (!assembly) {
+      addTableJournal("list_positions", "Ошибка: сборка не найдена");
+      return { ok: false, error: "assembly not found" };
+    }
+    const listKey = normalizeAgentPositionList(args?.list);
+    const arr = listKey === "consumable" ? assembly.consumable : assembly.main;
+    const includeDetails = Boolean(args?.include_details);
+    const positions = arr.map((p) => (includeDetails ? compactForTool(p) : {
+      id: p.id,
+      name: p.name,
+      qty: p.qty,
+      unit: p.unit,
+      manufacturer: p.manufacturer,
+      article: p.article,
+    }));
+    addTableJournal("list_positions", `${assembly.fullName}.${listKey}: ${positions.length}`);
+    return {
+      ok: true,
+      assembly: { id: assembly.id, full_name: assembly.fullName },
+      list: listKey,
+      positions,
+    };
+  }
+
+  if (name === "add_position") {
+    const assembly = resolveAgentAssembly(args);
+    if (!assembly) {
+      addTableJournal("add_position", "Ошибка: сборка не найдена");
+      return { ok: false, error: "assembly not found" };
+    }
+
+    const listKey = normalizeAgentPositionList(args?.list);
+    const target = listKey === "consumable" ? assembly.consumable : assembly.main;
+    if (!Array.isArray(target)) {
+      addTableJournal("add_position", "Ошибка: список позиций недоступен");
+      return { ok: false, error: "target list unavailable" };
+    }
+
+    const baseName = String(args?.name || "").trim();
+    if (!baseName) {
+      addTableJournal("add_position", "Ошибка: name required");
+      return { ok: false, error: "name required" };
+    }
+
+    const verified = ensureMarketVerification(turnCtx, args?.verification, "add_position");
+    if (!verified.ok) return { ok: false, error: verified.error };
+
+    const position = makePosition();
+    applyAgentPositionPatch(position, args);
+    position.name = baseName;
+    appendVerificationToPosition(position, verified.verification);
+
+    target.push(position);
+    app.ui.treeSel = { type: "pos", id: assembly.id, list: listKey === "consumable" ? "cons" : "main", pos: position.id };
+    app.ui.activeSheetId = listKey === "consumable" ? `assembly:${assembly.id}:cons` : `assembly:${assembly.id}:main`;
+    renderAll();
+    addTableJournal("add_position", `${assembly.fullName}.${listKey}: ${position.name}, qty=${position.qty} ${position.unit}`);
+    addChangesJournal("position.add", `${assembly.id}.${listKey}.${position.id}`);
+    return {
+      ok: true,
+      assembly: {
+        id: assembly.id,
+        full_name: assembly.fullName,
+      },
+      list: listKey,
+      position: {
+        id: position.id,
+        name: position.name,
+        qty: position.qty,
+        unit: position.unit,
+      },
+    };
+  }
+
+  if (name === "update_position") {
+    const assembly = resolveAgentAssembly(args);
+    if (!assembly) {
+      addTableJournal("update_position", "Ошибка: сборка не найдена");
+      return { ok: false, error: "assembly not found" };
+    }
+    const listKey = normalizeAgentPositionList(args?.list);
+    const arr = listKey === "consumable" ? assembly.consumable : assembly.main;
+    const pos = arr.find((p) => p.id === String(args?.position_id || "")) || null;
+    if (!pos) {
+      addTableJournal("update_position", "Ошибка: позиция не найдена");
+      return { ok: false, error: "position not found" };
+    }
+
+    if (isMarketFieldTouched(args)) {
+      const verified = ensureMarketVerification(turnCtx, args?.verification, "update_position");
+      if (!verified.ok) return { ok: false, error: verified.error };
+      appendVerificationToPosition(pos, verified.verification);
+    }
+
+    const changed = applyAgentPositionPatch(pos, args);
+    if (!changed.length) {
+      addTableJournal("update_position", "Ошибка: нет полей для изменения");
+      return { ok: false, error: "no fields to update" };
+    }
+
+    app.ui.treeSel = { type: "pos", id: assembly.id, list: listKey === "consumable" ? "cons" : "main", pos: pos.id };
+    app.ui.activeSheetId = listKey === "consumable" ? `assembly:${assembly.id}:cons` : `assembly:${assembly.id}:main`;
+    renderAll();
+    addTableJournal("update_position", `${assembly.fullName}.${listKey}.${pos.id}: ${changed.join(", ")}`);
+    addChangesJournal("position.update", `${assembly.id}.${listKey}.${pos.id}`);
+    return { ok: true, changed, position: { id: pos.id, name: pos.name } };
+  }
+
+  if (name === "delete_position") {
+    const assembly = resolveAgentAssembly(args);
+    if (!assembly) {
+      addTableJournal("delete_position", "Ошибка: сборка не найдена");
+      return { ok: false, error: "assembly not found" };
+    }
+    const listKey = normalizeAgentPositionList(args?.list);
+    const listForDelete = listKey === "consumable" ? "cons" : "main";
+    const arr = listForDelete === "main" ? assembly.main : assembly.consumable;
+    const posId = String(args?.position_id || "");
+    const exists = arr.some((p) => p.id === posId);
+    if (!exists) {
+      addTableJournal("delete_position", "Ошибка: позиция не найдена");
+      return { ok: false, error: "position not found" };
+    }
+    deletePosition(assembly.id, listForDelete, posId);
+    addTableJournal("delete_position", `${assembly.fullName}.${listKey}: удалена ${posId}`);
+    return { ok: true, deleted: { assembly_id: assembly.id, list: listKey, position_id: posId } };
+  }
+
+  if (name === "add_project_position") {
+    const baseName = String(args?.name || "").trim();
+    if (!baseName) {
+      addTableJournal("add_project_position", "Ошибка: name required");
+      return { ok: false, error: "name required" };
+    }
+
+    const verified = ensureMarketVerification(turnCtx, args?.verification, "add_project_position");
+    if (!verified.ok) return { ok: false, error: verified.error };
+
+    if (!app.state.hasProjectConsumables) app.state.hasProjectConsumables = true;
+    const pos = makePosition();
+    applyAgentPositionPatch(pos, args);
+    pos.name = baseName;
+    appendVerificationToPosition(pos, verified.verification);
+    app.state.projectConsumables.push(pos);
+    app.ui.treeSel = { type: "projpos", pos: pos.id };
+    app.ui.activeSheetId = "project-consumables";
+    renderAll();
+    addTableJournal("add_project_position", `project: ${pos.name}, qty=${pos.qty} ${pos.unit}`);
+    addChangesJournal("project.position.add", pos.id);
+    return { ok: true, position: { id: pos.id, name: pos.name, qty: pos.qty, unit: pos.unit } };
+  }
+
+  if (name === "update_project_position") {
+    const posId = String(args?.position_id || "");
+    const pos = app.state.projectConsumables.find((p) => p.id === posId) || null;
+    if (!pos) {
+      addTableJournal("update_project_position", "Ошибка: позиция не найдена");
+      return { ok: false, error: "position not found" };
+    }
+
+    if (isMarketFieldTouched(args)) {
+      const verified = ensureMarketVerification(turnCtx, args?.verification, "update_project_position");
+      if (!verified.ok) return { ok: false, error: verified.error };
+      appendVerificationToPosition(pos, verified.verification);
+    }
+
+    const changed = applyAgentPositionPatch(pos, args);
+    if (!changed.length) {
+      addTableJournal("update_project_position", "Ошибка: нет полей для изменения");
+      return { ok: false, error: "no fields to update" };
+    }
+    app.ui.treeSel = { type: "projpos", pos: pos.id };
+    app.ui.activeSheetId = "project-consumables";
+    renderAll();
+    addTableJournal("update_project_position", `${pos.id}: ${changed.join(", ")}`);
+    addChangesJournal("project.position.update", pos.id);
+    return { ok: true, changed, position: { id: pos.id, name: pos.name } };
+  }
+
+  if (name === "delete_project_position") {
+    const posId = String(args?.position_id || "");
+    const exists = app.state.projectConsumables.some((p) => p.id === posId);
+    if (!exists) {
+      addTableJournal("delete_project_position", "Ошибка: позиция не найдена");
+      return { ok: false, error: "position not found" };
+    }
+    deletePosition("project", "project", posId);
+    addTableJournal("delete_project_position", `Удалена позиция ${posId}`);
+    return { ok: true, deleted: { position_id: posId } };
+  }
+
+  if (name === "toggle_project_consumables") {
+    app.state.hasProjectConsumables = Boolean(args?.enabled);
+    if (app.state.hasProjectConsumables && !app.state.projectConsumables.length) {
+      app.state.projectConsumables = [makePosition()];
+    }
+    app.ui.treeSel = { type: "projlist" };
+    if (app.state.hasProjectConsumables) app.ui.activeSheetId = "project-consumables";
+    renderAll();
+    addTableJournal("toggle_project_consumables", app.state.hasProjectConsumables ? "Включено" : "Выключено");
+    addChangesJournal("project.consumables", app.state.hasProjectConsumables ? "включены" : "выключены");
+    return { ok: true, enabled: app.state.hasProjectConsumables };
   }
 
   if (name === "read_range") {
@@ -2272,18 +3475,98 @@ async function executeAgentTool(name, args) {
       return { ok: false, error: "updates required" };
     }
 
-    let applied = 0;
+    const parsedUpdates = [];
+    const marketCols = new Set([3, 4, 5, 18, 19]);
+    const marketSheet = isMarketSheetId(sheet.id);
+    let marketTouches = 0;
+    let skipped = 0;
     for (const u of updates) {
       const p = parseA1Address(u?.address);
-      if (!p) continue;
-      setAgentSheetCell(sheet.id, p.row, p.col, u?.value ?? null, u?.formula || "");
+      if (!p) {
+        skipped += 1;
+        continue;
+      }
+      if (marketSheet && marketCols.has(p.col)) {
+        const hasFormula = String(u?.formula || "").trim().length > 0;
+        const hasValue = u?.value !== undefined && String(u?.value ?? "").trim().length > 0;
+        if (hasFormula || hasValue) marketTouches += 1;
+      }
+      parsedUpdates.push({ row: p.row, col: p.col, value: u?.value ?? null, formula: u?.formula || "" });
+    }
+
+    if (marketTouches > 0) {
+      const verified = ensureMarketVerification(turnCtx, args?.verification, "write_cells");
+      if (!verified.ok) return { ok: false, error: verified.error };
+    }
+
+    let applied = 0;
+    for (const item of parsedUpdates) {
+      setAgentSheetCell(sheet.id, item.row, item.col, item.value, item.formula);
       applied += 1;
     }
 
+    if (applied <= 0) {
+      const reason = skipped > 0 ? `нет корректных A1-адресов (пропущено: ${skipped})` : "нечего применять";
+      addTableJournal("write_cells", `Ошибка: ${reason}`);
+      return { ok: false, error: reason, applied: 0, skipped, sheet: { id: sheet.id, name: sheet.name } };
+    }
+
     renderAll();
-    addTableJournal("write_cells", `${sheet.name}: изменено ячеек ${applied}`);
+    addTableJournal("write_cells", `${sheet.name}: изменено ячеек ${applied}${skipped ? `, пропущено ${skipped}` : ""}`);
     addChangesJournal("ai.write_cells", `${sheet.name}: ${applied}`);
-    return { ok: true, applied, sheet: { id: sheet.id, name: sheet.name } };
+    return { ok: true, applied, skipped, sheet: { id: sheet.id, name: sheet.name } };
+  }
+
+  if (name === "clear_range") {
+    const sheet = resolveAgentSheet(args);
+    if (!sheet) {
+      addTableJournal("clear_range", "Ошибка: лист не найден");
+      return { ok: false, error: "sheet not found" };
+    }
+    const parsed = parseA1Range(args?.range || "");
+    if (!parsed) {
+      addTableJournal("clear_range", "Ошибка: некорректный диапазон");
+      return { ok: false, error: "bad range" };
+    }
+
+    let cleared = 0;
+    for (let r = parsed.r1; r <= parsed.r2; r += 1) {
+      for (let c = parsed.c1; c <= parsed.c2; c += 1) {
+        setAgentSheetCell(sheet.id, r, c, null, "");
+        cleared += 1;
+      }
+    }
+    renderAll();
+    const rangeTxt = `${toA1(parsed.r1, parsed.c1)}:${toA1(parsed.r2, parsed.c2)}`;
+    addTableJournal("clear_range", `${sheet.name}: ${rangeTxt}, ячеек ${cleared}`);
+    addChangesJournal("ai.clear_range", `${sheet.id}:${rangeTxt}`);
+    return { ok: true, sheet: { id: sheet.id, name: sheet.name }, range: rangeTxt, cleared };
+  }
+
+  if (name === "clear_sheet_overrides") {
+    const clearAll = Boolean(args?.all);
+    const sheetId = String(args?.sheet_id || "").trim();
+
+    if (clearAll || !sheetId) {
+      const count = Object.keys(app.ai.sheetOverrides || {}).length;
+      app.ai.sheetOverrides = {};
+      renderAll();
+      addTableJournal("clear_sheet_overrides", `Очищены override-карты: ${count}`);
+      addChangesJournal("ai.sheet_overrides.clear", "all");
+      return { ok: true, cleared_maps: count, all: true };
+    }
+
+    if (!app.ai.sheetOverrides[sheetId]) {
+      addTableJournal("clear_sheet_overrides", `Ошибка: для листа ${sheetId} override нет`);
+      return { ok: false, error: "sheet override not found" };
+    }
+
+    const count = Object.keys(app.ai.sheetOverrides[sheetId] || {}).length;
+    delete app.ai.sheetOverrides[sheetId];
+    renderAll();
+    addTableJournal("clear_sheet_overrides", `Лист ${sheetId}: очищено ${count} ячеек`);
+    addChangesJournal("ai.sheet_overrides.clear", sheetId);
+    return { ok: true, sheet_id: sheetId, cleared_cells: count, all: false };
   }
 
   if (name === "get_selection") {
@@ -2321,13 +3604,22 @@ async function executeAgentTool(name, args) {
       addTableJournal("set_state_value", "Ошибка: path required");
       return { ok: false, error: "path required" };
     }
+    if (!statePathExists(args.path)) {
+      addTableJournal("set_state_value", `Ошибка: path not found (${args.path})`);
+      return { ok: false, error: "path not found" };
+    }
+    if (statePathRequiresMarketVerification(args.path)) {
+      const verified = ensureMarketVerification(turnCtx, args?.verification, "set_state_value");
+      if (!verified.ok) return { ok: false, error: verified.error };
+    }
     const nextValue = args?.value_json !== undefined ? parseJsonValue(args.value_json) : args?.value;
     try {
+      const prevValue = getStatePath(args.path);
       setStatePath(args.path, nextValue);
       renderAll();
       addTableJournal("set_state_value", `Изменен путь ${args.path}`);
       addChangesJournal("ai.set_state", args.path);
-      return { ok: true };
+      return { ok: true, changed: !Object.is(prevValue, nextValue) };
     } catch (err) {
       addTableJournal("set_state_value", `Ошибка: ${String(err?.message || err)}`);
       return { ok: false, error: String(err?.message || err) };
@@ -2340,14 +3632,62 @@ async function executeAgentTool(name, args) {
 function resolveAgentSheet(args) {
   const id = String(args?.sheet_id || "").trim();
   if (id && app.workbook.byId[id]) return app.workbook.byId[id];
+  if (id) return null;
 
   const name = String(args?.sheet_name || "").trim().toLowerCase();
   if (name) {
     const match = app.workbook.sheets.find((s) => String(s.name || "").trim().toLowerCase() === name);
     if (match) return match;
+    return null;
   }
 
   return activeSheet();
+}
+
+function resolveAgentAssembly(args) {
+  const id = String(args?.assembly_id || "").trim();
+  if (id) return assemblyById(id);
+
+  const nameRaw = String(args?.assembly_name || "").trim();
+  if (nameRaw) {
+    const name = nameRaw.toLowerCase();
+    const exact = app.state.assemblies.find((a) => {
+      const full = String(a.fullName || "").trim().toLowerCase();
+      const abbr = String(a.abbreviation || "").trim().toLowerCase();
+      return full === name || abbr === name;
+    });
+    if (exact) return exact;
+
+    const partial = app.state.assemblies.find((a) => {
+      const full = String(a.fullName || "").trim().toLowerCase();
+      const abbr = String(a.abbreviation || "").trim().toLowerCase();
+      return full.includes(name) || name.includes(full) || abbr.includes(name) || name.includes(abbr);
+    });
+    if (partial) return partial;
+    return null;
+  }
+
+  const selId = String(app.ui?.treeSel?.id || "").trim();
+  if (selId) {
+    const selected = assemblyById(selId);
+    if (selected) return selected;
+  }
+
+  if (app.state.assemblies.length === 1) return app.state.assemblies[0];
+  return null;
+}
+
+function normalizeAgentPositionList(raw) {
+  const txt = String(raw || "").trim().toLowerCase();
+  if (!txt) return "main";
+  if (txt === "cons" || txt === "consumable" || txt === "consumables" || txt === "расходники" || txt === "расходные") return "consumable";
+  return "main";
+}
+
+function normalizeAgentRatio(raw, fallback = 0) {
+  const n = num(raw, fallback);
+  if (n > 1 && n <= 100) return n / 100;
+  return n;
 }
 
 function parseA1Address(addr) {
@@ -2425,6 +3765,26 @@ function getStatePath(path) {
     ref = ref[token];
   }
   return ref;
+}
+
+function statePathExists(path) {
+  const tokens = parseStatePath(path);
+  if (!tokens.length) return false;
+
+  let ref = app.state;
+  for (let i = 0; i < tokens.length - 1; i += 1) {
+    const token = tokens[i];
+    if (ref === null || ref === undefined || typeof ref !== "object") return false;
+    if (!(token in ref)) return false;
+    ref = ref[token];
+  }
+
+  if (ref === null || ref === undefined || typeof ref !== "object") return false;
+  const last = tokens[tokens.length - 1];
+  if (Array.isArray(ref) && typeof last === "number") {
+    return Number.isInteger(last) && last >= 0 && last < ref.length;
+  }
+  return Object.prototype.hasOwnProperty.call(ref, last);
 }
 
 function setStatePath(path, value) {
