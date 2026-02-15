@@ -776,9 +776,61 @@ button {
   border-top: 1px solid #ececec;
 }
 
+.tree .tree-item.tree-item-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tree .tree-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree .tree-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
 .tree .tree-item.small {
   font-size: 11px;
   color: #333;
+}
+
+.tree .tree-mini-btn.has-indicator {
+  position: relative;
+}
+
+.tree .tree-mini-indicator {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  background: var(--danger);
+}
+
+.tree .tree-mini-indicator.is-on {
+  background: var(--ok);
+}
+
+.tree .tree-mini-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #f0f0f0;
+  color: #777;
+}
+
+.tree .tree-mini-btn[disabled]:hover {
+  background: #f0f0f0;
+  color: #777;
 }
 
 .tree .is-selected {

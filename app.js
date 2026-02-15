@@ -1092,17 +1092,17 @@ function changeLabel() {
 function mainTitle(a) {
   const s = app.state.settings;
   const tag = a.separateConsumables ? "СП основной материал" : "СП";
-  return `${s.orderNumber} ${a.fullName || "<Полное название cборки>"} (${s.requestNumber}) ${tag} ${changeLabel()} | ${DEV_LABEL}`;
+  return `${s.orderNumber} ${a.fullName || "<Полное название cборки>"} (${s.requestNumber}) ${tag} ${changeLabel()}`;
 }
 
 function consumableTitle(a) {
   const s = app.state.settings;
-  return `${s.orderNumber} ${a.fullName || "<Полное название cборки>"} (${s.requestNumber}) СП расходный материал ${changeLabel()} | ${DEV_LABEL}`;
+  return `${s.orderNumber} ${a.fullName || "<Полное название cборки>"} (${s.requestNumber}) СП расходный материал ${changeLabel()}`;
 }
 
 function projectConsumableTitle() {
   const s = app.state.settings;
-  return `${s.orderNumber} Расходники (${s.requestNumber}) СП расходный материал ${changeLabel()} | ${DEV_LABEL}`;
+  return `${s.orderNumber} Расходники (${s.requestNumber}) СП расходный материал ${changeLabel()}`;
 }
 function buildSummarySheet(entries, t) {
   const rows = [];
@@ -1490,25 +1490,116 @@ function renderTree() {
   const sel = app.ui.treeSel;
   const p = [];
 
-  p.push(`<div class="tree-item ${selected(sel, { type: "settings" }) ? "is-selected" : ""}" data-node="settings">Общие настройки</div>`);
+  p.push(`
+    <div class="tree-item tree-item-with-actions ${selected(sel, { type: "settings" }) ? "is-selected" : ""}" data-node="settings">
+      <span class="tree-item-label">Общие настройки</span>
+      <span class="tree-item-actions">
+        <button type="button" class="tree-mini-btn" data-tree-action="open-settings" title="Открыть окно настроек" aria-label="Открыть окно настроек">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8 4-.9-.4a7.7 7.7 0 0 0-.3-1.2l.7-.7-1.4-2.4-1 .3c-.3-.3-.7-.6-1.1-.8L15.7 5h-3.4l-.3 1.1c-.4.2-.8.5-1.1.8l-1-.3L8.5 9l.7.7c-.1.4-.2.8-.3 1.2L8 12l.9.4c.1.4.2.8.3 1.2l-.7.7 1.4 2.4 1-.3c.3.3.7.6 1.1.8l.3 1.1h3.4l.3-1.1c.4-.2.8-.5 1.1-.8l1 .3 1.4-2.4-.7-.7c.1-.4.2-.8.3-1.2z" /></svg>
+        </button>
+      </span>
+    </div>
+  `);
 
   for (const a of app.state.assemblies) {
     p.push(`<details open><summary><span class="tree-summary-label">${esc(a.fullName || "Сборка")} [${esc(a.abbreviation)}]</span><button type="button" class="tree-mini-btn" data-tree-action="dup-assembly" data-id="${a.id}" title="Дублировать сборку" aria-label="Дублировать сборку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 5h10v10" /></svg></button></summary>`);
-    p.push(`<div class="tree-item ${selected(sel, { type: "assembly", id: a.id }) ? "is-selected" : ""}" data-node="assembly" data-id="${a.id}">Параметры</div>`);
-    p.push(`<div class="tree-item ${selected(sel, { type: "list", id: a.id, list: "main" }) ? "is-selected" : ""}" data-node="list" data-id="${a.id}" data-list="main">Осн. материалы (${a.main.length})</div>`);
-    for (const pos of a.main) p.push(`<div class="tree-item small ${selected(sel, { type: "pos", id: a.id, list: "main", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="pos" data-id="${a.id}" data-list="main" data-pos="${pos.id}">• ${esc(pos.name || "Позиция")}</div>`);
+    p.push(`
+      <div class="tree-item tree-item-with-actions ${selected(sel, { type: "assembly", id: a.id }) ? "is-selected" : ""}" data-node="assembly" data-id="${a.id}">
+        <span class="tree-item-label">Параметры</span>
+        <span class="tree-item-actions">
+          <button type="button" class="tree-mini-btn" data-tree-action="del-assembly" data-id="${a.id}" title="Удалить сборку" aria-label="Удалить сборку">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12" /></svg>
+          </button>
+        </span>
+      </div>
+    `);
+    p.push(`
+      <div class="tree-item tree-item-with-actions ${selected(sel, { type: "list", id: a.id, list: "main" }) ? "is-selected" : ""}" data-node="list" data-id="${a.id}" data-list="main">
+        <span class="tree-item-label">Осн. материалы (${a.main.length})</span>
+        <span class="tree-item-actions">
+          <button type="button" class="tree-mini-btn" data-tree-action="add-pos" data-id="${a.id}" data-list="main" title="Добавить позицию" aria-label="Добавить позицию">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10M17 15v6M14 18h6" /></svg>
+          </button>
+        </span>
+      </div>
+    `);
+    for (const pos of a.main) {
+      p.push(`
+        <div class="tree-item tree-item-with-actions small ${selected(sel, { type: "pos", id: a.id, list: "main", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="pos" data-id="${a.id}" data-list="main" data-pos="${pos.id}">
+          <span class="tree-item-label">• ${esc(pos.name || "Позиция")}</span>
+          <span class="tree-item-actions">
+            <button type="button" class="tree-mini-btn" data-tree-action="dup-pos" data-id="${a.id}" data-list="main" data-pos="${pos.id}" title="Дублировать позицию" aria-label="Дублировать позицию">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 5h10v10" /></svg>
+            </button>
+            <button type="button" class="tree-mini-btn" data-tree-action="del-pos" data-id="${a.id}" data-list="main" data-pos="${pos.id}" title="Удалить позицию" aria-label="Удалить позицию">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12" /></svg>
+            </button>
+          </span>
+        </div>
+      `);
+    }
 
     if (a.separateConsumables) {
-      p.push(`<div class="tree-item ${selected(sel, { type: "list", id: a.id, list: "cons" }) ? "is-selected" : ""}" data-node="list" data-id="${a.id}" data-list="cons">Расх. материалы (${a.consumable.length})</div>`);
-      for (const pos of a.consumable) p.push(`<div class="tree-item small ${selected(sel, { type: "pos", id: a.id, list: "cons", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="pos" data-id="${a.id}" data-list="cons" data-pos="${pos.id}">• ${esc(pos.name || "Позиция")}</div>`);
+      p.push(`
+        <div class="tree-item tree-item-with-actions ${selected(sel, { type: "list", id: a.id, list: "cons" }) ? "is-selected" : ""}" data-node="list" data-id="${a.id}" data-list="cons">
+          <span class="tree-item-label">Расх. материалы (${a.consumable.length})</span>
+          <span class="tree-item-actions">
+            <button type="button" class="tree-mini-btn" data-tree-action="add-pos" data-id="${a.id}" data-list="cons" title="Добавить позицию" aria-label="Добавить позицию">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10M17 15v6M14 18h6" /></svg>
+            </button>
+          </span>
+        </div>
+      `);
+      for (const pos of a.consumable) {
+        p.push(`
+          <div class="tree-item tree-item-with-actions small ${selected(sel, { type: "pos", id: a.id, list: "cons", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="pos" data-id="${a.id}" data-list="cons" data-pos="${pos.id}">
+            <span class="tree-item-label">• ${esc(pos.name || "Позиция")}</span>
+            <span class="tree-item-actions">
+              <button type="button" class="tree-mini-btn" data-tree-action="dup-pos" data-id="${a.id}" data-list="cons" data-pos="${pos.id}" title="Дублировать позицию" aria-label="Дублировать позицию">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 5h10v10" /></svg>
+              </button>
+              <button type="button" class="tree-mini-btn" data-tree-action="del-pos" data-id="${a.id}" data-list="cons" data-pos="${pos.id}" title="Удалить позицию" aria-label="Удалить позицию">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12" /></svg>
+              </button>
+            </span>
+          </div>
+        `);
+      }
     }
 
     p.push(`</details>`);
   }
 
-  p.push(`<div class="tree-item ${selected(sel, { type: "projlist" }) ? "is-selected" : ""}" data-node="projlist">Расходники ${app.state.hasProjectConsumables ? "(вкл.)" : "(выкл.)"}</div>`);
+  p.push(`
+    <div class="tree-item tree-item-with-actions ${selected(sel, { type: "projlist" }) ? "is-selected" : ""}" data-node="projlist">
+      <span class="tree-item-label">Расходники</span>
+      <span class="tree-item-actions">
+        <button type="button" class="tree-mini-btn has-indicator" data-tree-action="toggle-proj" title="${app.state.hasProjectConsumables ? "Выключить лист расходников" : "Включить лист расходников"}" aria-label="${app.state.hasProjectConsumables ? "Выключить лист расходников" : "Включить лист расходников"}">
+          <span class="tree-mini-indicator ${app.state.hasProjectConsumables ? "is-on" : "is-off"}" aria-hidden="true"></span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v7m5-5a7 7 0 1 1-10 0" /></svg>
+        </button>
+        <button type="button" class="tree-mini-btn" data-tree-action="add-proj-pos" title="Добавить позицию" aria-label="Добавить позицию" ${app.state.hasProjectConsumables ? "" : "disabled"}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10M17 15v6M14 18h6" /></svg>
+        </button>
+      </span>
+    </div>
+  `);
   if (app.state.hasProjectConsumables) {
-    for (const pos of app.state.projectConsumables) p.push(`<div class="tree-item small ${selected(sel, { type: "projpos", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="projpos" data-pos="${pos.id}">• ${esc(pos.name || "Позиция")}</div>`);
+    for (const pos of app.state.projectConsumables) {
+      p.push(`
+        <div class="tree-item tree-item-with-actions small ${selected(sel, { type: "projpos", pos: pos.id }) ? "is-selected" : ""}" style="padding-left:18px" data-node="projpos" data-pos="${pos.id}">
+          <span class="tree-item-label">• ${esc(pos.name || "Позиция")}</span>
+          <span class="tree-item-actions">
+            <button type="button" class="tree-mini-btn" data-tree-action="dup-pos" data-id="project" data-list="project" data-pos="${pos.id}" title="Дублировать позицию" aria-label="Дублировать позицию">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 5h10v10" /></svg>
+            </button>
+            <button type="button" class="tree-mini-btn" data-tree-action="del-pos" data-id="project" data-list="project" data-pos="${pos.id}" title="Удалить позицию" aria-label="Удалить позицию">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12" /></svg>
+            </button>
+          </span>
+        </div>
+      `);
+    }
   }
 
   dom.tree.innerHTML = p.join("");
@@ -1535,7 +1626,7 @@ function renderInspector() {
   }
 
   if (s.type === "list") {
-    dom.inspector.innerHTML = `<h3>${s.list === "main" ? "Основные материалы" : "Расходные материалы"}</h3><div class="inline-actions"><button class="btn-flat" data-action="add-pos" data-id="${s.id}" data-list="${s.list}">Добавить позицию</button></div>`;
+    dom.inspector.innerHTML = `<h3>${s.list === "main" ? "Основные материалы" : "Расходные материалы"}</h3>`;
     return;
   }
 
@@ -1550,7 +1641,7 @@ function renderInspector() {
   }
 
   if (s.type === "projlist") {
-    dom.inspector.innerHTML = `<h3>Расходники</h3><div class="inline-actions"><button class="btn-flat" data-action="toggle-proj">${app.state.hasProjectConsumables ? "Выключить лист" : "Включить лист"}</button><button class="btn-flat" data-action="add-proj-pos" ${app.state.hasProjectConsumables ? "" : "disabled"}>Добавить позицию</button></div>`;
+    dom.inspector.innerHTML = `<h3>Расходники</h3>`;
     return;
   }
 
@@ -1574,7 +1665,6 @@ function renderSettingsInspector() {
       <label>Версия<input data-role="setting" data-field="version" value="${esc(s.version)}" placeholder="1234" /></label>
       <label>НДС, %<input data-role="setting" data-field="vatRate" type="number" step="0.01" value="${decToPct(s.vatRate)}" /></label>
       <label>Итоговая цена<select data-role="setting" data-field="totalMode"><option value="withoutDiscount" ${s.totalMode === "withoutDiscount" ? "selected" : ""}>Без скидки</option><option value="withDiscount" ${s.totalMode === "withDiscount" ? "selected" : ""}>Со скидкой</option></select></label>
-      <div class="inline-actions"><button class="btn-flat" data-action="open-settings">Окно настроек</button></div>
     </div>`;
 }
 
@@ -1596,7 +1686,6 @@ function renderAssemblyInspector(a) {
       <label>Ставка<input data-role="labor" data-id="${a.id}" data-field="assmRate" type="number" step="0.01" value="${a.labor.assmRate}" /></label>
       <label>Прибыль (0.3 = 30%)<input data-role="labor" data-id="${a.id}" data-field="profitCoeff" type="number" step="0.01" value="${a.labor.profitCoeff}" /></label>
       <div class="meta">Итог без скидки: <strong>${money(m.totalNoDisc)}</strong><br/>Итог со скидкой: <strong>${money(m.totalDisc)}</strong></div>
-      <div class="inline-actions"><button class="btn-flat danger" data-action="del-assembly" data-id="${a.id}">Удалить сборку</button></div>
     </div>`;
 }
 
@@ -1614,7 +1703,6 @@ function renderPositionInspector(p, id, list) {
       <div class="row"><label>Наценка, %<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="markup" type="number" step="0.01" value="${decToPct(p.markup)}" /></label><label>Скидка, %<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="discount" type="number" step="0.01" value="${decToPct(p.discount)}" /></label></div>
       <label>Поставщик<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="supplier" value="${esc(p.supplier)}" /></label>
       <label>Примечание<textarea data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="note">${esc(p.note)}</textarea></label>
-      <div class="inline-actions"><button class="btn-flat danger" data-action="del-pos" data-id="${id}" data-list="${list}" data-pos="${p.id}">Удалить позицию</button></div>
     </div>`;
 }
 
@@ -3993,9 +4081,15 @@ function onTreeClick(e) {
   if (actionBtn) {
     e.preventDefault();
     e.stopPropagation();
-    if (actionBtn.dataset.treeAction === "dup-assembly") {
-      duplicateAssembly(actionBtn.dataset.id);
-    }
+    const action = String(actionBtn.dataset.treeAction || "");
+    if (action === "open-settings") openSettingsDialog();
+    else if (action === "dup-assembly") duplicateAssembly(actionBtn.dataset.id);
+    else if (action === "del-assembly") deleteAssembly(actionBtn.dataset.id);
+    else if (action === "add-pos") addPosition(actionBtn.dataset.id, actionBtn.dataset.list);
+    else if (action === "del-pos") deletePosition(actionBtn.dataset.id, actionBtn.dataset.list, actionBtn.dataset.pos);
+    else if (action === "dup-pos") duplicatePosition(actionBtn.dataset.id, actionBtn.dataset.list, actionBtn.dataset.pos);
+    else if (action === "toggle-proj") toggleProjectConsumables();
+    else if (action === "add-proj-pos") addProjectPosition();
     return;
   }
 
@@ -4041,13 +4135,7 @@ function onInspectorClick(e) {
   }
 
   if (action === "del-assembly") {
-    const deleted = assemblyById(a.dataset.id);
-    app.state.assemblies = app.state.assemblies.filter((x) => x.id !== a.dataset.id);
-    app.ui.treeSel = { type: "settings" };
-    app.ui.activeSheetId = "summary";
-    renderAll();
-    addChangesJournal("assembly.delete", deleted?.fullName || a.dataset.id || "");
-    toast("Сборка удалена");
+    deleteAssembly(a.dataset.id);
     return;
   }
 
@@ -4062,21 +4150,12 @@ function onInspectorClick(e) {
   }
 
   if (action === "toggle-proj") {
-    app.state.hasProjectConsumables = !app.state.hasProjectConsumables;
-    if (app.state.hasProjectConsumables && !app.state.projectConsumables.length) app.state.projectConsumables = [makePosition()];
-    app.ui.treeSel = { type: "projlist" };
-    renderAll();
-    addChangesJournal("project.consumables", app.state.hasProjectConsumables ? "включены" : "выключены");
+    toggleProjectConsumables();
     return;
   }
 
   if (action === "add-proj-pos") {
-    if (!app.state.hasProjectConsumables) return;
-    const p = makePosition();
-    app.state.projectConsumables.push(p);
-    app.ui.treeSel = { type: "projpos", pos: p.id };
-    renderAll();
-    addChangesJournal("project.position.add", p.id);
+    addProjectPosition();
   }
 }
 
@@ -4177,6 +4256,35 @@ function addPosition(assemblyId, list) {
   toast("Позиция добавлена");
 }
 
+function addProjectPosition() {
+  if (!app.state.hasProjectConsumables) return;
+  const p = makePosition();
+  app.state.projectConsumables.push(p);
+  app.ui.treeSel = { type: "projpos", pos: p.id };
+  renderAll();
+  addChangesJournal("project.position.add", p.id);
+  toast("Позиция добавлена");
+}
+
+function toggleProjectConsumables() {
+  app.state.hasProjectConsumables = !app.state.hasProjectConsumables;
+  if (app.state.hasProjectConsumables && !app.state.projectConsumables.length) app.state.projectConsumables = [makePosition()];
+  app.ui.treeSel = { type: "projlist" };
+  renderAll();
+  addChangesJournal("project.consumables", app.state.hasProjectConsumables ? "включены" : "выключены");
+}
+
+function deleteAssembly(assemblyId) {
+  const deleted = assemblyById(assemblyId);
+  if (!deleted) return;
+  app.state.assemblies = app.state.assemblies.filter((x) => x.id !== assemblyId);
+  app.ui.treeSel = { type: "settings" };
+  app.ui.activeSheetId = "summary";
+  renderAll();
+  addChangesJournal("assembly.delete", deleted.fullName || assemblyId || "");
+  toast("Сборка удалена");
+}
+
 function duplicateAssembly(assemblyId) {
   const src = assemblyById(assemblyId);
   if (!src) return;
@@ -4201,6 +4309,35 @@ function duplicateAssembly(assemblyId) {
   renderAll();
   addChangesJournal("assembly.duplicate", `${src.id} -> ${copy.id}`);
   toast("Сборка продублирована");
+}
+
+function duplicatePosition(assemblyId, list, posId) {
+  if (list === "project") {
+    const arr = app.state.projectConsumables;
+    const idx = arr.findIndex((p) => p.id === posId);
+    if (idx < 0) return;
+    const src = arr[idx];
+    const copy = { ...src, id: uid() };
+    arr.splice(idx + 1, 0, copy);
+    app.ui.treeSel = { type: "projpos", pos: copy.id };
+    renderAll();
+    addChangesJournal("project.position.duplicate", `${src.id} -> ${copy.id}`);
+    toast("Позиция продублирована");
+    return;
+  }
+
+  const a = assemblyById(assemblyId);
+  if (!a) return;
+  const arr = list === "main" ? a.main : a.consumable;
+  const idx = arr.findIndex((p) => p.id === posId);
+  if (idx < 0) return;
+  const src = arr[idx];
+  const copy = { ...src, id: uid() };
+  arr.splice(idx + 1, 0, copy);
+  app.ui.treeSel = { type: "pos", id: assemblyId, list, pos: copy.id };
+  renderAll();
+  addChangesJournal("position.duplicate", `${assemblyId}.${list}.${src.id} -> ${copy.id}`);
+  toast("Позиция продублирована");
 }
 
 function nextCopyAssemblyName(base) {
