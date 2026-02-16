@@ -68,6 +68,36 @@ function createAgentRuntimeStateToolSchemaInternal(ctx) {
     ];
   }
 
+  function buildAttachmentTools() {
+    return [
+      {
+        type: "function",
+        name: "list_attachments",
+        description: "Return metadata for user-attached files available to the AI",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+      {
+        type: "function",
+        name: "read_attachment",
+        description: "Read text content from an attached file by id or name",
+        parameters: {
+          type: "object",
+          properties: {
+            attachment_id: { type: "string" },
+            attachment_name: { type: "string" },
+            offset: { type: "number", description: "Character offset for paginated reading" },
+            max_chars: { type: "number", description: "Max characters to return (200..60000)" },
+          },
+          additionalProperties: false,
+        },
+      },
+    ];
+  }
+
   function buildStatePathTools(verificationParam) {
     return [
       {
@@ -103,6 +133,7 @@ function createAgentRuntimeStateToolSchemaInternal(ctx) {
   return {
     buildInteractionTools,
     buildSettingsTools,
+    buildAttachmentTools,
     buildStatePathTools,
   };
 }

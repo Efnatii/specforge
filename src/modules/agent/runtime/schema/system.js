@@ -9,6 +9,8 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
 
   function agentSystemPrompt() {
     const allowQuestions = app?.ai?.options?.allowQuestions !== false;
+    const selectedRangeInstruction = "If the user asks about selected cells or a highlighted range, call get_selection first and use its result.";
+    const attachmentInstruction = "If the user asks to use attached files, call list_attachments and read_attachment before answering.";
     return [
       "Ты AI-агент внутри SpecForge.",
       "Ты можешь читать и изменять таблицы и состояние проекта через tools.",
@@ -39,6 +41,8 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
       "Перед изменениями проверяй целевые листы/диапазоны.",
       "При изменениях кратко подтверждай, что именно поменял.",
       "Если задачу можно доделать автоматически, доделывай до конца в текущем ходе.",
+      selectedRangeInstruction,
+      attachmentInstruction,
     ].join(" ");
   }
 

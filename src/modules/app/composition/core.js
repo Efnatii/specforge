@@ -59,9 +59,6 @@ export class AppCoreCompositionModule {
         sending: false,
         collapsed: false,
         options: {
-          currentSheet: true,
-          allSheets: false,
-          selection: false,
           webSearch: true,
           allowQuestions: true,
         },

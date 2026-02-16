@@ -24,9 +24,6 @@ function createAgentRuntimePromptInternal(ctx) {
 
   const {
     addChangesJournal,
-    activeSheet,
-    selectionText,
-    toA1,
     colToName,
     agentCellValueText,
     summarizeChatChunk,
@@ -52,9 +49,6 @@ function createAgentRuntimePromptInternal(ctx) {
   if (!Array.isArray(AI_TOOL_NAME_HINTS)) throw new Error("AgentRuntimePromptModule requires config.AI_TOOL_NAME_HINTS");
 
   if (typeof addChangesJournal !== "function") throw new Error("AgentRuntimePromptModule requires deps.addChangesJournal()");
-  if (typeof activeSheet !== "function") throw new Error("AgentRuntimePromptModule requires deps.activeSheet()");
-  if (typeof selectionText !== "function") throw new Error("AgentRuntimePromptModule requires deps.selectionText()");
-  if (typeof toA1 !== "function") throw new Error("AgentRuntimePromptModule requires deps.toA1()");
   if (typeof colToName !== "function") throw new Error("AgentRuntimePromptModule requires deps.colToName()");
   if (typeof agentCellValueText !== "function") throw new Error("AgentRuntimePromptModule requires deps.agentCellValueText()");
   if (typeof summarizeChatChunk !== "function") throw new Error("AgentRuntimePromptModule requires deps.summarizeChatChunk()");
@@ -75,9 +69,9 @@ function createAgentRuntimePromptInternal(ctx) {
     const lastTask = String(app.ai.pendingTask || app.ai.lastActionablePrompt || app.ai.lastTaskPrompt || "").trim();
     const wantsContinue = AI_CONTINUE_PROMPT_RE.test(text) || AI_SHORT_ACK_PROMPT_RE.test(text);
     if (wantsContinue && lastTask) {
-      addChangesJournal("ai.prompt.continue", "Использована последняя задача", { meta: { task: lastTask.slice(0, 220) } });
+      addChangesJournal("ai.prompt.continue", "Used previous task", { meta: { task: lastTask.slice(0, 220) } });
       return {
-        text: `Продолжи и заверши предыдущую задачу пользователя без уточнений и без вопросов: ${lastTask}`,
+        text: `Continue and finish the previous user task without clarifications and questions: ${lastTask}`,
         basePrompt: lastTask,
         actionable: true,
         mode: "continue-last-task",
@@ -150,52 +144,36 @@ function createAgentRuntimePromptInternal(ctx) {
 
   function buildAgentContextText() {
     const out = [];
-    const s = activeSheet();
-
-    if (app.ai.options.currentSheet && s) {
-      out.push(`Текущий лист (${s.name}, id=${s.id}):\n${serializeSheetPreview(s, 40, 12, 10000)}`);
-    }
-
-    if (app.ai.options.allSheets) {
-      const blocks = app.workbook.sheets.map((sh) => {
-        const preview = serializeSheetPreview(sh, 18, 10, 2200);
-        return `Лист ${sh.name} (id=${sh.id}, строк=${sh.rows.length}, колонок=${sh.cols.length}):\n${preview}`;
-      });
-      out.push(`Все листы:\n${blocks.join("\n\n")}`);
-    }
-
-    const sel = app.ui.selection;
-    if (app.ai.options.selection && sel && s && sel.sheet === s.id) {
-      const r1 = Math.min(sel.sr, sel.er);
-      const r2 = Math.max(sel.sr, sel.er);
-      const c1 = Math.min(sel.sc, sel.ec);
-      const c2 = Math.max(sel.sc, sel.ec);
-      out.push(`Выделение ${toA1(r1, c1)}:${toA1(r2, c2)} на листе ${s.name}:\n${selectionText(s, sel)}`);
-    }
 
     if (app.ai.attachments.length) {
       const files = app.ai.attachments.map((f) => {
-        if (f.text) {
-          const tail = f.truncated ? "\n[обрезано]" : "";
-          return `Файл: ${f.name} (${f.size} байт)\n${f.text}${tail}`;
-        }
-        return `Файл: ${f.name} (${f.size} байт), тип: ${f.type}`;
+        const parser = String(f?.parser || "");
+        const parseError = String(f?.parse_error || "").trim();
+        const textChars = String(f?.text || "").length;
+        const details = [];
+        details.push(`id=${String(f?.id || "")}`);
+        details.push(`size=${String(f?.size || 0)} bytes`);
+        details.push(`type=${String(f?.type || "application/octet-stream")}`);
+        details.push(`text=${textChars > 0 ? `${textChars} chars` : "unavailable"}`);
+        if (parser) details.push(`parser=${parser}`);
+        if (f?.truncated) details.push("truncated");
+        if (parseError) details.push(`parse_error=${parseError.slice(0, 120)}`);
+        return `- ${String(f?.name || "file")} (${details.join(", ")})`;
       });
-      out.push(`Прикрепленные файлы:\n${files.join("\n\n")}`);
+      out.push(`Attached files:\n${files.join("\n")}\nUse list_attachments/read_attachment tools to inspect contents.`);
     }
-
     return out.join("\n\n").slice(0, 120000);
   }
 
   function buildAgentInput(userText) {
     const parts = [];
     const chatCtx = buildChatHistoryContext();
-    if (chatCtx) parts.push(`История диалога:\n${chatCtx}`);
+    if (chatCtx) parts.push(`Conversation history:\n${chatCtx}`);
 
-    parts.push(`Текущий запрос пользователя:\n${userText}`);
+    parts.push(`Current user request:\n${userText}`);
 
     const ctx = buildAgentContextText();
-    if (ctx) parts.push(`Контекст проекта:\n${ctx}`);
+    if (ctx) parts.push(`Project context:\n${ctx}`);
 
     return parts.join("\n\n");
   }

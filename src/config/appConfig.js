@@ -50,6 +50,8 @@ const AI_TOOL_NAME_HINTS = [
   "get_state",
   "set_state_value",
   "get_selection",
+  "list_attachments",
+  "read_attachment",
   "read_range",
   "write_cells",
   "clear_range",

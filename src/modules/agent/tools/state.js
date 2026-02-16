@@ -9,6 +9,10 @@ export class AgentStateToolsModule {
   }
 }
 
+const ATTACHMENT_READ_MIN_CHARS = 200;
+const ATTACHMENT_READ_MAX_CHARS = 60000;
+const ATTACHMENT_READ_DEFAULT_CHARS = 16000;
+
 function createAgentStateToolsInternal(ctx) {
   const { app, deps } = ctx || {};
   if (!app) throw new Error("AgentStateToolsModule requires app");
@@ -101,6 +105,41 @@ function createAgentStateToolsInternal(ctx) {
     return { question, options, allow_custom: allowCustom };
   }
 
+  function listAttachmentsSafe() {
+    return Array.isArray(app.ai.attachments) ? app.ai.attachments : [];
+  }
+
+  function attachmentMeta(file) {
+    const text = String(file?.text || "");
+    return {
+      id: String(file?.id || ""),
+      name: String(file?.name || ""),
+      size: num(file?.size, 0),
+      type: String(file?.type || ""),
+      parser: String(file?.parser || ""),
+      text_available: text.length > 0,
+      text_chars: text.length,
+      truncated: Boolean(file?.truncated),
+      parse_error: String(file?.parse_error || ""),
+    };
+  }
+
+  function resolveAttachment(args) {
+    const files = listAttachmentsSafe();
+    const id = String(args?.attachment_id || args?.id || "").trim();
+    if (id) {
+      const hit = files.find((file) => String(file?.id || "") === id);
+      if (hit) return hit;
+    }
+
+    const name = String(args?.attachment_name || args?.name || "").trim().toLowerCase();
+    if (name) {
+      const hit = files.find((file) => String(file?.name || "").trim().toLowerCase() === name);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
   async function tryExecute(name, args, turnCtx = null) {
     if (name === "ask_user_question") {
       const allowQuestions = app?.ai?.options?.allowQuestions !== false;
@@ -143,6 +182,54 @@ function createAgentStateToolsInternal(ctx) {
         awaiting_user_input: true,
         question: app.ai.pendingQuestion,
         message: "Нужно уточнение от пользователя. Ответьте в блоке вопроса.",
+      };
+    }
+
+    if (name === "list_attachments") {
+      const attachments = listAttachmentsSafe().map((file) => attachmentMeta(file));
+      addTableJournal("list_attachments", `Вложений: ${attachments.length}`);
+      return { ok: true, attachments };
+    }
+
+    if (name === "read_attachment") {
+      const attachment = resolveAttachment(args);
+      if (!attachment) {
+        addTableJournal("read_attachment", "Ошибка: файл не найден");
+        return { ok: false, error: "attachment not found" };
+      }
+
+      const text = String(attachment?.text || "");
+      const meta = attachmentMeta(attachment);
+      if (!text) {
+        const reason = meta.parse_error || "text is unavailable for this attachment type";
+        addTableJournal("read_attachment", `Ошибка: ${attachment.name} (${reason})`);
+        return { ok: false, error: reason, attachment: meta };
+      }
+
+      const offsetRaw = Math.floor(num(args?.offset, 0));
+      const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
+      const maxCharsRaw = Math.floor(num(args?.max_chars, ATTACHMENT_READ_DEFAULT_CHARS));
+      const maxChars = Math.max(
+        ATTACHMENT_READ_MIN_CHARS,
+        Math.min(ATTACHMENT_READ_MAX_CHARS, Number.isFinite(maxCharsRaw) ? maxCharsRaw : ATTACHMENT_READ_DEFAULT_CHARS),
+      );
+      const safeOffset = Math.min(offset, text.length);
+      const chunk = text.slice(safeOffset, safeOffset + maxChars);
+      const nextOffset = safeOffset + chunk.length;
+      const hasMore = nextOffset < text.length;
+
+      addTableJournal(
+        "read_attachment",
+        `${attachment.name}: chars ${safeOffset}-${nextOffset}${hasMore ? "+" : ""}`,
+      );
+      return {
+        ok: true,
+        attachment: meta,
+        offset: safeOffset,
+        next_offset: nextOffset,
+        total_chars: text.length,
+        has_more: hasMore,
+        text: chunk,
       };
     }
 

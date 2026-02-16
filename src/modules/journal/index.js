@@ -74,7 +74,7 @@ function loadAiSettings() {
     const raw = storage.getItem(STORAGE_KEYS.agentOptions);
     if (raw) {
       const parsed = JSON.parse(raw);
-      for (const k of ["currentSheet", "allSheets", "selection", "webSearch", "allowQuestions"]) {
+      for (const k of ["webSearch", "allowQuestions"]) {
         if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
       }
     }
@@ -157,9 +157,6 @@ function renderAgentChips() {
   const parts = [];
 
   for (const [key, title] of Object.entries({
-    currentSheet: "Текущий лист",
-    allSheets: "Все листы",
-    selection: "Выделение",
     webSearch: "Веб-поиск",
     allowQuestions: "Вопросы ИИ",
   })) {
