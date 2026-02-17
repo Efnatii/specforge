@@ -217,15 +217,23 @@ export class AppBindingsModule {
       void this._agentAttachmentApi.onAgentAttachmentsPicked(e);
     };
 
-    this._dom.btnSettings.onclick = () => this._projectWorkspaceApi.openSettingsDialog();
+    if (this._dom.btnSettings) {
+      this._dom.btnSettings.onclick = () => this._projectWorkspaceApi.openSettingsDialog();
+    }
 
-    this._dom.btnAddAssembly.onclick = () => this._projectUiActionApi.addAssembly();
+    if (this._dom.btnAddAssembly) {
+      this._dom.btnAddAssembly.onclick = () => this._projectUiActionApi.addAssembly();
+    }
 
-    this._dom.btnAddPosition.onclick = () => {
-      if (!this._projectUiActionApi.addPositionBySelection()) this._toast("Выберите раздел позиций");
-    };
+    if (this._dom.btnAddPosition) {
+      this._dom.btnAddPosition.onclick = () => {
+        if (!this._projectUiActionApi.addPositionBySelection()) this._toast("Выберите раздел позиций");
+      };
+    }
 
-    this._dom.btnToggleProjCons.onclick = () => this._projectUiActionApi.toggleProjectConsumables();
+    if (this._dom.btnToggleProjCons) {
+      this._dom.btnToggleProjCons.onclick = () => this._projectUiActionApi.toggleProjectConsumables();
+    }
 
     this._dom.btnImportExcel.onclick = () => {
       this._dom.importFile.accept = ".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12";
@@ -254,6 +262,11 @@ export class AppBindingsModule {
     };
 
     this._dom.tree.onclick = (e) => this._projectUiActionApi.onTreeClick(e);
+    this._dom.tree.onpointerdown = (e) => this._projectUiActionApi.onTreePointerDown(e);
+    this._dom.tree.onpointermove = (e) => this._projectUiActionApi.onTreePointerMove(e);
+    this._dom.tree.onpointerup = (e) => this._projectUiActionApi.onTreePointerUp(e);
+    this._dom.tree.onpointercancel = () => this._projectUiActionApi.onTreePointerCancel();
+    this._dom.tree.oncontextmenu = (e) => this._projectUiActionApi.onTreeContextMenu(e);
     this._dom.inspector.onclick = (e) => this._projectUiActionApi.onInspectorClick(e);
     this._dom.inspector.onchange = (e) => this._projectUiActionApi.onInspectorChange(e);
 

@@ -257,6 +257,62 @@ export class ProjectMutationModule {
     };
   }
 
+  movePosition(
+    state,
+    {
+      sourceAssemblyId,
+      sourceList,
+      sourcePosId,
+      targetAssemblyId,
+      targetList,
+      targetPosId,
+    },
+  ) {
+    const srcList = String(sourceList || "");
+    const dstList = String(targetList || "");
+    const srcPosId = String(sourcePosId || "");
+    const dstPosId = String(targetPosId || "");
+    if (!srcPosId || !dstPosId || srcPosId === dstPosId) return { ok: false };
+
+    if (srcList === "project" || dstList === "project") {
+      if (srcList !== "project" || dstList !== "project") return { ok: false };
+      if (!Array.isArray(state.projectConsumables)) state.projectConsumables = [];
+      const arr = state.projectConsumables;
+      const srcIdx = arr.findIndex((position) => position.id === srcPosId);
+      const dstIdx = arr.findIndex((position) => position.id === dstPosId);
+      if (srcIdx < 0 || dstIdx < 0 || srcIdx === dstIdx) return { ok: false };
+      const [moving] = arr.splice(srcIdx, 1);
+      const insertIdx = dstIdx;
+      arr.splice(insertIdx, 0, moving);
+      return {
+        ok: true,
+        treeSel: { type: "projpos", pos: srcPosId },
+        changeKind: "project.position.move",
+        changeValue: `${srcPosId} -> ${dstPosId}`,
+      };
+    }
+
+    if (srcList !== dstList || sourceAssemblyId !== targetAssemblyId) return { ok: false };
+    const assembly = this.findAssemblyById(state, sourceAssemblyId);
+    if (!assembly) return { ok: false };
+    const arr = srcList === "main" ? assembly.main : assembly.consumable;
+    if (!Array.isArray(arr)) return { ok: false };
+
+    const srcIdx = arr.findIndex((position) => position.id === srcPosId);
+    const dstIdx = arr.findIndex((position) => position.id === dstPosId);
+    if (srcIdx < 0 || dstIdx < 0 || srcIdx === dstIdx) return { ok: false };
+    const [moving] = arr.splice(srcIdx, 1);
+    const insertIdx = dstIdx;
+    arr.splice(insertIdx, 0, moving);
+
+    return {
+      ok: true,
+      treeSel: { type: "pos", id: sourceAssemblyId, list: srcList, pos: srcPosId },
+      changeKind: "position.move",
+      changeValue: `${sourceAssemblyId}.${srcList}.${srcPosId} -> ${targetPosId}`,
+    };
+  }
+
   nextCopyAssemblyName(state, base) {
     const src = String(base || "").trim() || "Сборка";
     const used = new Set((state?.assemblies || []).map((assembly) => String(assembly.fullName || "").trim()));

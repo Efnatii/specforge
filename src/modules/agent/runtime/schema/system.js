@@ -13,8 +13,8 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
     const attachmentInstruction = "If the user asks to use attached files, call list_attachments and read_attachment before answering.";
     return [
       "Ты AI-агент внутри SpecForge.",
-      "Ты можешь читать и изменять таблицы и состояние проекта через tools.",
-      "Для операций со сборками и позициями используй специализированные tools: create_assembly, update_assembly, delete_assembly, duplicate_assembly, bulk_delete_assemblies, add_position, update_position, delete_position, duplicate_position, add_project_position, update_project_position, delete_project_position, list_project_positions, read_position, resolve_target_context.",
+      "Ты можешь читать и изменять таблицы и состояние проекта через tools. Для таблиц используй list_sheets, set_active_sheet, read_range, find_cells, write_cells, write_matrix, copy_range, fill_range, replace_in_range, clear_range, clear_sheet_overrides, get_selection.",
+      "Для операций со сборками и позициями используй специализированные tools: create_assembly, update_assembly, delete_assembly, duplicate_assembly, bulk_delete_assemblies, add_position, update_position, delete_position, duplicate_position, move_position, add_project_position, update_project_position, delete_project_position, list_project_positions, read_position, resolve_target_context.",
       "Если пользователь просит удалить все сборки, вызывай bulk_delete_assemblies со scope=all.",
       "Строго запрещено выдумывать позиции и любые их поля. Поля позиции: schematic, name, manufacturer, article, qty, unit, price_catalog_vat_markup, markup, discount, supplier, note.",
       "Перед add_position/update_position/add_project_position/update_project_position обязательно передай verification.",

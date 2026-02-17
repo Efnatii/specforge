@@ -131,12 +131,18 @@ export class WorkbookSheetBuilderModule {
   }
 
   _changeLabel(state) {
-    if (String(state.settings.version || "").trim()) return `вер. ${String(state.settings.version).trim()}`;
+    const parts = [];
     const date = new Date(state.settings.changeDate);
-    if (Number.isNaN(date.getTime())) return "изм.";
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    return `изм. ${day}.${month}.${date.getFullYear()}`;
+    if (Number.isNaN(date.getTime())) {
+      parts.push("изм.");
+    } else {
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      parts.push(`изм. ${day}.${month}.${date.getFullYear()}`);
+    }
+    const version = String(state.settings.version || "").trim();
+    if (version) parts.push(`вер. ${version}`);
+    return parts.join(" ");
   }
 
   _mainTitle(state, assembly) {

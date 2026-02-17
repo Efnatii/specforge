@@ -161,7 +161,7 @@ function createAgentPositionToolsInternal(ctx) {
   });
 
   async function tryExecute(name, args, turnCtx = null) {
-    if (name === "read_position" || name === "duplicate_position") {
+    if (name === "read_position" || name === "duplicate_position" || name === "move_position") {
       const listRaw = String(args?.list || "").trim().toLowerCase();
       if (listRaw === "project") {
         return projectPositionTools.tryExecute(name, args, turnCtx);

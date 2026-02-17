@@ -93,18 +93,6 @@
         <button id="btnToggleSidebar" class="icon-btn" title="Свернуть/развернуть панель" aria-label="Свернуть/развернуть панель">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM10 5v14" /></svg>
         </button>
-        <button id="btnOpenSettings" class="icon-btn" title="Общие настройки" aria-label="Общие настройки">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8 4-.9-.4a7.7 7.7 0 0 0-.3-1.2l.7-.7-1.4-2.4-1 .3c-.3-.3-.7-.6-1.1-.8L15.7 5h-3.4l-.3 1.1c-.4.2-.8.5-1.1.8l-1-.3L8.5 9l.7.7c-.1.4-.2.8-.3 1.2L8 12l.9.4c.1.4.2.8.3 1.2l-.7.7 1.4 2.4 1-.3c.3.3.7.6 1.1.8l.3 1.1h3.4l.3-1.1c.4-.2.8-.5 1.1-.8l1 .3 1.4-2.4-.7-.7c.1-.4.2-.8.3-1.2z" /></svg>
-        </button>
-        <button id="btnAddAssembly" class="icon-btn" title="Добавить сборку" aria-label="Добавить сборку">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM12 8v8M8 12h8" /></svg>
-        </button>
-        <button id="btnAddPosition" class="icon-btn" title="Добавить позицию в выбранный раздел" aria-label="Добавить позицию">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10M17 15v6M14 18h6" /></svg>
-        </button>
-        <button id="btnToggleConsumablesSheet" class="icon-btn" title="Вкл/выкл лист Расходники" aria-label="Вкл/выкл лист Расходники">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3zM7 9h10M7 13h10M7 17h6" /></svg>
-        </button>
         <button id="btnOpenAiAuth" class="icon-btn auth-btn" title="Подключить OpenAI" aria-label="Подключить OpenAI">
           <span id="openAiAuthIndicator" class="auth-indicator" aria-hidden="true"></span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v4m0 10v4M5.6 6.1l2.8 2.8m7.2 7.2 2.8 2.8M3 12h4m10 0h4M5.6 17.9l2.8-2.8m7.2-7.2 2.8-2.8M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" /></svg>
@@ -189,8 +177,8 @@
         <label>Дата изменения
           <input id="settingChangeDate" type="date" />
         </label>
-        <label>Версия (если вместо даты)
-          <input id="settingVersion" type="text" placeholder="1234" />
+        <label>Версия
+          <input id="settingVersion" type="text" />
         </label>
         <label>НДС, %
           <input id="settingVatRate" type="number" step="0.01" min="0" max="100" />

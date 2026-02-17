@@ -129,6 +129,25 @@ function createAgentRuntimePositionToolSchemaInternal(ctx) {
       },
       {
         type: "function",
+        name: "move_position",
+        description: "Переместить позицию в пределах списка (аналог перетаскивания)",
+        parameters: {
+          type: "object",
+          properties: {
+            assembly_id: { type: "string" },
+            assembly_name: { type: "string" },
+            list: { type: "string", enum: ["main", "consumable", "project"] },
+            position_id: { type: "string", description: "ID перемещаемой позиции" },
+            target_position_id: { type: "string", description: "ID целевой позиции, относительно которой выполняется перенос" },
+            target_index: { type: "number", description: "Итоговая позиция в списке (1-based), если target_position_id не задан" },
+            place: { type: "string", enum: ["before", "after"], description: "Куда вставлять относительно target_position_id (по умолчанию after)" },
+          },
+          required: ["position_id"],
+          additionalProperties: false,
+        },
+      },
+      {
+        type: "function",
         name: "add_project_position",
         description: "Добавить позицию в проектные расходники",
         parameters: {

@@ -32,6 +32,16 @@ export class ProjectUiActionModule {
     this._addChangesJournal = addChangesJournal;
     this._toast = toast;
     this._openSettingsDialog = openSettingsDialog;
+    this._suppressTreeClick = false;
+    this._treeSwap = {
+      root: null,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      source: null,
+      target: null,
+      dragging: false,
+    };
   }
 
   assemblyById(id) {
@@ -43,12 +53,20 @@ export class ProjectUiActionModule {
   }
 
   onTreeClick(e) {
+    if (this._suppressTreeClick) {
+      this._suppressTreeClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
     const actionBtn = e.target.closest("[data-tree-action]");
     if (actionBtn) {
       e.preventDefault();
       e.stopPropagation();
       const action = String(actionBtn.dataset.treeAction || "");
       if (action === "open-settings") this._openSettingsDialog();
+      else if (action === "add-assembly") this.addAssembly();
       else if (action === "dup-assembly") this.duplicateAssembly(actionBtn.dataset.id);
       else if (action === "del-assembly") this.deleteAssembly(actionBtn.dataset.id);
       else if (action === "add-pos") this.addPosition(actionBtn.dataset.id, actionBtn.dataset.list);
@@ -88,6 +106,100 @@ export class ProjectUiActionModule {
     this._renderInspector();
     this._renderTabs();
     this._renderSheet();
+  }
+
+  onTreePointerDown(e) {
+    if (e.button !== 0) return;
+    if (e.target.closest("[data-tree-action]")) return;
+
+    const sourceNode = this._findTreePositionNode(e.target);
+    if (!sourceNode) return;
+    const source = this._makeTreePositionRef(sourceNode);
+    if (!source) return;
+
+    this._treeSwap.root = e.currentTarget || null;
+    this._treeSwap.pointerId = e.pointerId;
+    this._treeSwap.startX = e.clientX;
+    this._treeSwap.startY = e.clientY;
+    this._treeSwap.source = source;
+    this._treeSwap.target = null;
+    this._treeSwap.dragging = false;
+    this._paintTreeSwapMarkers();
+  }
+
+  onTreePointerMove(e) {
+    if (!this._treeSwap.source) return;
+    if (this._treeSwap.pointerId !== null && e.pointerId !== this._treeSwap.pointerId) return;
+
+    if (!this._treeSwap.dragging) {
+      const dx = Math.abs(e.clientX - this._treeSwap.startX);
+      const dy = Math.abs(e.clientY - this._treeSwap.startY);
+      if (dx + dy < 10) return;
+      this._treeSwap.dragging = true;
+      if (this._treeSwap.root?.setPointerCapture) this._treeSwap.root.setPointerCapture(e.pointerId);
+      if (this._treeSwap.root) this._treeSwap.root.classList.add("tree-swapping");
+    }
+
+    const ownerDoc = this._treeSwap.root?.ownerDocument || globalThis.document;
+    const hit = ownerDoc?.elementFromPoint?.(e.clientX, e.clientY) || null;
+    const node = this._findTreePositionNode(hit);
+    const candidate = node ? this._makeTreePositionRef(node) : null;
+    this._treeSwap.target = this._canMoveTreePositions(this._treeSwap.source, candidate) ? candidate : null;
+    this._paintTreeSwapMarkers();
+    e.preventDefault();
+  }
+
+  onTreePointerUp(e) {
+    if (!this._treeSwap.source) return;
+    if (this._treeSwap.pointerId !== null && e.pointerId !== this._treeSwap.pointerId) return;
+
+    const shouldSwap = Boolean(
+      this._treeSwap.dragging
+      && this._treeSwap.target
+      && this._canMoveTreePositions(this._treeSwap.source, this._treeSwap.target),
+    );
+    const source = this._treeSwap.source;
+    const target = this._treeSwap.target;
+    this._suppressTreeClick = shouldSwap;
+
+    if (
+      this._treeSwap.dragging
+      && this._treeSwap.root?.hasPointerCapture?.(e.pointerId)
+      && this._treeSwap.root?.releasePointerCapture
+    ) {
+      this._treeSwap.root.releasePointerCapture(e.pointerId);
+    }
+    this._resetTreeSwapState();
+
+    if (!shouldSwap) {
+      return;
+    }
+
+    const result = this._mutationApi.movePosition(this._app.state, {
+      sourceAssemblyId: source.assemblyId,
+      sourceList: source.list,
+      sourcePosId: source.posId,
+      targetAssemblyId: target.assemblyId,
+      targetList: target.list,
+      targetPosId: target.posId,
+    });
+    if (!result.ok) return;
+
+    this._app.ui.treeSel = result.treeSel;
+    this._renderAll();
+    this._addChangesJournal(result.changeKind, result.changeValue);
+    this._toast("Позиция перемещена");
+    e.preventDefault();
+  }
+
+  onTreePointerCancel() {
+    if (!this._treeSwap.source) return;
+    this._resetTreeSwapState();
+  }
+
+  onTreeContextMenu(e) {
+    if (!this._treeSwap.dragging) return;
+    e.preventDefault();
   }
 
   onInspectorClick(e) {
@@ -277,5 +389,71 @@ export class ProjectUiActionModule {
     this._app.ui.treeSel = result.treeSel;
     this._renderAll();
     this._addChangesJournal(result.changeKind, result.changeValue);
+  }
+
+  _findTreePositionNode(target) {
+    const node = target?.closest?.("[data-node='pos'], [data-node='projpos']");
+    return node || null;
+  }
+
+  _makeTreePositionRef(node) {
+    const type = String(node?.dataset?.node || "");
+    if (type === "pos") {
+      const assemblyId = String(node?.dataset?.id || "");
+      const list = String(node?.dataset?.list || "");
+      const posId = String(node?.dataset?.pos || "");
+      if (!assemblyId || !list || !posId) return null;
+      return {
+        node,
+        assemblyId,
+        list,
+        posId,
+      };
+    }
+    if (type === "projpos") {
+      const posId = String(node?.dataset?.pos || "");
+      if (!posId) return null;
+      return {
+        node,
+        assemblyId: "project",
+        list: "project",
+        posId,
+      };
+    }
+    return null;
+  }
+
+  _canMoveTreePositions(a, b) {
+    if (!a || !b) return false;
+    if (a.posId === b.posId) return false;
+    if (a.list === "project" || b.list === "project") return a.list === "project" && b.list === "project";
+    return a.assemblyId === b.assemblyId && a.list === b.list;
+  }
+
+  _paintTreeSwapMarkers() {
+    const root = this._treeSwap.root;
+    if (!root) return;
+    root.querySelectorAll(".is-swap-source, .is-swap-target").forEach((el) => {
+      el.classList.remove("is-swap-source", "is-swap-target");
+    });
+    if (this._treeSwap.source?.node?.isConnected) this._treeSwap.source.node.classList.add("is-swap-source");
+    if (this._treeSwap.target?.node?.isConnected) this._treeSwap.target.node.classList.add("is-swap-target");
+  }
+
+  _resetTreeSwapState() {
+    const root = this._treeSwap.root;
+    if (root) {
+      root.classList.remove("tree-swapping");
+      root.querySelectorAll(".is-swap-source, .is-swap-target").forEach((el) => {
+        el.classList.remove("is-swap-source", "is-swap-target");
+      });
+    }
+    this._treeSwap.root = null;
+    this._treeSwap.pointerId = null;
+    this._treeSwap.startX = 0;
+    this._treeSwap.startY = 0;
+    this._treeSwap.source = null;
+    this._treeSwap.target = null;
+    this._treeSwap.dragging = false;
   }
 }

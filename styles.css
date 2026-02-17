@@ -1076,6 +1076,10 @@ body.sidebar-resizing * {
   color: #333;
 }
 
+.tree .tree-item.small.is-selected {
+  color: #fff;
+}
+
 .tree .tree-mini-btn.has-indicator {
   position: relative;
 }
@@ -1110,6 +1114,33 @@ body.sidebar-resizing * {
 .tree .is-selected {
   background: #000;
   color: #fff;
+}
+
+.tree.tree-swapping .tree-item[data-node="pos"],
+.tree.tree-swapping .tree-item[data-node="projpos"] {
+  cursor: grabbing;
+}
+
+.tree .tree-item.is-swap-source {
+  background: #efefef;
+  color: #111;
+  outline: 1px dashed #000;
+  outline-offset: -1px;
+}
+
+.tree .tree-item.is-swap-source.is-selected,
+.tree .tree-item.small.is-swap-source,
+.tree .tree-item.small.is-swap-source.is-selected {
+  background: #efefef;
+  color: #111;
+}
+
+.tree .tree-item.is-swap-target {
+  background: #111;
+  color: #fff;
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 1px #000;
 }
 
 .inspector h3 {

@@ -1,10 +1,9 @@
 const DEFAULT_SETTINGS = Object.freeze({
-  orderNumber: "0091-0821",
-  requestNumber: "0254",
-  changeDate: "2026-02-15",
+  orderNumber: "",
+  requestNumber: "",
   version: "",
   vatRate: 0.22,
-  totalMode: "withoutDiscount",
+  totalMode: "withDiscount",
 });
 
 export class ProjectStateModule {
@@ -28,6 +27,14 @@ export class ProjectStateModule {
 
   ceil1(value) {
     return Math.ceil(this.num(value));
+  }
+
+  todayIsoDate() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
 
   normalizeCellValue(value) {
@@ -122,11 +129,12 @@ export class ProjectStateModule {
   }
 
   createDefaultState() {
+    const today = this.todayIsoDate();
     return {
       settings: {
         orderNumber: DEFAULT_SETTINGS.orderNumber,
         requestNumber: DEFAULT_SETTINGS.requestNumber,
-        changeDate: DEFAULT_SETTINGS.changeDate,
+        changeDate: today,
         version: DEFAULT_SETTINGS.version,
         vatRate: DEFAULT_SETTINGS.vatRate,
         totalMode: DEFAULT_SETTINGS.totalMode,
@@ -148,7 +156,7 @@ export class ProjectStateModule {
         changeDate: String(settingsRaw.changeDate || base.settings.changeDate),
         version: String(settingsRaw.version || ""),
         vatRate: this._normVat(settingsRaw.vatRate, base.settings.vatRate),
-        totalMode: settingsRaw.totalMode === "withDiscount" ? "withDiscount" : "withoutDiscount",
+        totalMode: settingsRaw.totalMode === "withoutDiscount" ? "withoutDiscount" : "withDiscount",
       },
       assemblies: Array.isArray(raw?.assemblies)
         ? raw.assemblies.map((assembly, idx) => this._normAssembly(assembly, idx + 1))

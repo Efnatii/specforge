@@ -38,6 +38,36 @@ function createAgentProjectPositionToolsInternal(ctx) {
   if (typeof applyAgentPositionPatch !== "function") throw new Error("AgentProjectPositionToolsModule requires applyAgentPositionPatch()");
   if (typeof appendVerificationToPosition !== "function") throw new Error("AgentProjectPositionToolsModule requires appendVerificationToPosition()");
 
+  function moveInArrayByTarget(arr, sourceId, targetId, place = "after") {
+    const sourceIdx = arr.findIndex((p) => p.id === sourceId);
+    const targetIdx = arr.findIndex((p) => p.id === targetId);
+    if (sourceIdx < 0 || targetIdx < 0 || sourceIdx === targetIdx) return { ok: false, changed: false };
+    const source = arr[sourceIdx];
+    arr.splice(sourceIdx, 1);
+    const targetIdxAfterRemoval = arr.findIndex((p) => p.id === targetId);
+    if (targetIdxAfterRemoval < 0) {
+      arr.splice(sourceIdx, 0, source);
+      return { ok: false, changed: false };
+    }
+    const insertIdx = place === "before" ? targetIdxAfterRemoval : targetIdxAfterRemoval + 1;
+    arr.splice(insertIdx, 0, source);
+    return { ok: true, changed: true, fromIndex: sourceIdx + 1, toIndex: insertIdx + 1 };
+  }
+
+  function moveInArrayByIndex(arr, sourceId, targetIndexRaw) {
+    const sourceIdx = arr.findIndex((p) => p.id === sourceId);
+    if (sourceIdx < 0) return { ok: false, changed: false };
+    const maxPos = arr.length;
+    const targetPos = Math.max(1, Math.min(maxPos, Math.floor(Number(targetIndexRaw) || 1)));
+    const targetIdx = targetPos - 1;
+    if (sourceIdx === targetIdx) return { ok: true, changed: false, fromIndex: sourceIdx + 1, toIndex: targetIdx + 1 };
+    const source = arr[sourceIdx];
+    arr.splice(sourceIdx, 1);
+    const insertIdx = Math.max(0, Math.min(arr.length, targetPos - 1));
+    arr.splice(insertIdx, 0, source);
+    return { ok: true, changed: true, fromIndex: sourceIdx + 1, toIndex: insertIdx + 1 };
+  }
+
   async function tryExecute(name, args, turnCtx = null) {
     if (name === "read_position") {
       const listRaw = String(args?.list || "").trim().toLowerCase();
@@ -99,6 +129,76 @@ function createAgentProjectPositionToolsInternal(ctx) {
         list: "project",
         source: { id: src.id, name: src.name },
         copy: { id: copy.id, name: copy.name },
+      };
+    }
+
+    if (name === "move_position") {
+      const listRaw = String(args?.list || "").trim().toLowerCase();
+      if (listRaw !== "project") return undefined;
+      if (!Array.isArray(app.state.projectConsumables)) app.state.projectConsumables = [];
+
+      const posId = String(args?.position_id || "").trim();
+      if (!posId) {
+        addTableJournal("move_position", "Ошибка: position_id required");
+        return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "position_id required" };
+      }
+
+      const arr = app.state.projectConsumables;
+      const exists = arr.some((p) => p.id === posId);
+      if (!exists) {
+        addTableJournal("move_position", "Ошибка: позиция не найдена");
+        return { ok: false, applied: 0, entity: { type: "position" }, warnings: [], error: "position not found" };
+      }
+
+      const targetPosId = String(args?.target_position_id || "").trim();
+      const hasTargetIndex = Number.isFinite(Number(args?.target_index));
+      if (!targetPosId && !hasTargetIndex) {
+        addTableJournal("move_position", "Ошибка: target_position_id или target_index required");
+        return { ok: false, applied: 0, entity: { type: "position", id: posId }, warnings: [], error: "target required" };
+      }
+
+      let moved;
+      if (targetPosId) {
+        const place = String(args?.place || "after").trim().toLowerCase() === "before" ? "before" : "after";
+        moved = moveInArrayByTarget(arr, posId, targetPosId, place);
+      } else {
+        moved = moveInArrayByIndex(arr, posId, args?.target_index);
+      }
+
+      if (!moved.ok) {
+        addTableJournal("move_position", "Ошибка: целевая позиция не найдена или перенос невозможен");
+        return { ok: false, applied: 0, entity: { type: "position", id: posId }, warnings: [], error: "move failed" };
+      }
+      if (!moved.changed) {
+        addTableJournal("move_position", `project: позиция ${posId} уже на месте`);
+        return {
+          ok: true,
+          applied: 0,
+          entity: { type: "position", id: posId },
+          warnings: [],
+          list: "project",
+          position_id: posId,
+          from_index: moved.fromIndex,
+          to_index: moved.toIndex,
+          moved: false,
+        };
+      }
+
+      app.ui.treeSel = { type: "projpos", pos: posId };
+      app.ui.activeSheetId = "project-consumables";
+      renderAll();
+      addTableJournal("move_position", `project: ${posId} -> #${moved.toIndex}`);
+      addChangesJournal("project.position.move", `${posId} -> ${moved.toIndex}`);
+      return {
+        ok: true,
+        applied: 1,
+        entity: { type: "position", id: posId },
+        warnings: [],
+        list: "project",
+        position_id: posId,
+        from_index: moved.fromIndex,
+        to_index: moved.toIndex,
+        moved: true,
       };
     }
 

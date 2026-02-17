@@ -33,6 +33,9 @@ export class ProjectSidebarModule {
     <div class="tree-item tree-item-with-actions ${this._selected(sel, { type: "settings" }) ? "is-selected" : ""}" data-node="settings">
       <span class="tree-item-label">Общие настройки</span>
       <span class="tree-item-actions">
+        <button type="button" class="tree-mini-btn" data-tree-action="add-assembly" title="Добавить сборку" aria-label="Добавить сборку">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM12 8v8M8 12h8" /></svg>
+        </button>
         <button type="button" class="tree-mini-btn" data-tree-action="open-settings" title="Открыть окно настроек" aria-label="Открыть окно настроек">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8 4-.9-.4a7.7 7.7 0 0 0-.3-1.2l.7-.7-1.4-2.4-1 .3c-.3-.3-.7-.6-1.1-.8L15.7 5h-3.4l-.3 1.1c-.4.2-.8.5-1.1.8l-1-.3L8.5 9l.7.7c-.1.4-.2.8-.3 1.2L8 12l.9.4c.1.4.2.8.3 1.2l-.7.7 1.4 2.4 1-.3c.3.3.7.6 1.1.8l.3 1.1h3.4l.3-1.1c.4-.2.8-.5 1.1-.8l1 .3 1.4-2.4-.7-.7c.1-.4.2-.8.3-1.2z" /></svg>
         </button>
@@ -210,7 +213,7 @@ export class ProjectSidebarModule {
       <label>Номер заказа<input data-role="setting" data-field="orderNumber" value="${this._esc(s.orderNumber)}" /></label>
       <label>Номер запроса<input data-role="setting" data-field="requestNumber" value="${this._esc(s.requestNumber)}" /></label>
       <label>Дата изменения<input data-role="setting" data-field="changeDate" type="date" value="${this._esc(s.changeDate)}" /></label>
-      <label>Версия<input data-role="setting" data-field="version" value="${this._esc(s.version)}" placeholder="1234" /></label>
+      <label>Версия<input data-role="setting" data-field="version" value="${this._esc(s.version)}" /></label>
       <label>НДС, %<input data-role="setting" data-field="vatRate" type="number" step="0.01" value="${this._projectStateApi.decToPct(s.vatRate)}" /></label>
       <label>Итоговая цена<select data-role="setting" data-field="totalMode"><option value="withoutDiscount" ${s.totalMode === "withoutDiscount" ? "selected" : ""}>Без скидки</option><option value="withDiscount" ${s.totalMode === "withDiscount" ? "selected" : ""}>Со скидкой</option></select></label>
     </div>`;

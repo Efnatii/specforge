@@ -143,6 +143,10 @@ function createAgentRuntimePolicyInternal(ctx) {
   function isMutationToolName(name) {
     const n = String(name || "").trim();
     return n === "write_cells"
+      || n === "write_matrix"
+      || n === "copy_range"
+      || n === "fill_range"
+      || n === "replace_in_range"
       || n === "set_state_value"
       || n === "update_settings"
       || n === "create_assembly"
@@ -154,6 +158,7 @@ function createAgentRuntimePolicyInternal(ctx) {
       || n === "update_position"
       || n === "delete_position"
       || n === "duplicate_position"
+      || n === "move_position"
       || n === "add_project_position"
       || n === "update_project_position"
       || n === "delete_project_position"
@@ -168,7 +173,15 @@ function createAgentRuntimePolicyInternal(ctx) {
     if (!Array.isArray(src.warnings)) src.warnings = [];
     if (src.applied === undefined) {
       if (!isMutationToolName(name)) src.applied = 0;
-      else if (name === "write_cells") src.applied = Math.max(0, num(src.applied, 0));
+      else if (
+        name === "write_cells"
+        || name === "write_matrix"
+        || name === "copy_range"
+        || name === "fill_range"
+        || name === "replace_in_range"
+      ) {
+        src.applied = Math.max(0, num(src.applied, 0));
+      }
       else src.applied = src.ok ? 1 : 0;
     }
     if (!src.entity) {
