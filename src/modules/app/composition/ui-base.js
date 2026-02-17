@@ -58,6 +58,7 @@ export class AppUiBaseCompositionModule {
       renderOpenAiModelPrice,
       saveOpenAiApiKey,
       saveOpenAiModel,
+      saveAiOptions,
       addExternalJournal,
       renderAiUi,
     } = journal;
@@ -127,6 +128,7 @@ export class AppUiBaseCompositionModule {
       renderOpenAiModelPrice,
       saveOpenAiApiKey,
       saveOpenAiModel,
+      saveAiOptions,
       addChangesJournal,
       addExternalJournal,
       renderAiUi,

@@ -77,6 +77,8 @@ export class AppBindingsModule {
     this._renderAll = renderAll;
     this._copyText = copyText;
     this._toast = toast;
+    this._floatingTooltipEl = null;
+    this._floatingTooltipTarget = null;
   }
 
   bindEvents() {
@@ -338,5 +340,104 @@ export class AppBindingsModule {
         this._toast("Скопировано");
       }
     });
+
+    this._document.addEventListener("pointerover", (e) => this._onTooltipPointerOver(e), true);
+    this._document.addEventListener("pointermove", (e) => this._onTooltipPointerMove(e), true);
+    this._document.addEventListener("pointerout", (e) => this._onTooltipPointerOut(e), true);
+    this._document.addEventListener("scroll", () => this._hideFloatingTooltip(), true);
+    this._window.addEventListener("resize", () => this._hideFloatingTooltip());
+    this._window.addEventListener("blur", () => this._hideFloatingTooltip());
+  }
+
+  _resolveTooltipTarget(node) {
+    if (!node || typeof node.closest !== "function") return null;
+    const target = node.closest("[data-tooltip]");
+    if (!target) return null;
+    const text = String(target.dataset?.tooltip || "").trim();
+    return text ? target : null;
+  }
+
+  _ensureFloatingTooltip() {
+    if (this._floatingTooltipEl && this._floatingTooltipEl.isConnected) return this._floatingTooltipEl;
+    const el = this._document.createElement("div");
+    el.className = "agent-floating-tooltip";
+    el.hidden = true;
+    el.setAttribute("role", "tooltip");
+    this._document.body.appendChild(el);
+    this._floatingTooltipEl = el;
+    return el;
+  }
+
+  _showFloatingTooltip(target, clientX, clientY) {
+    if (!target) return;
+    const text = String(target.dataset?.tooltip || "").trim();
+    if (!text) {
+      this._hideFloatingTooltip();
+      return;
+    }
+    const el = this._ensureFloatingTooltip();
+    this._floatingTooltipTarget = target;
+    el.textContent = text;
+    el.hidden = false;
+    this._placeFloatingTooltip(el, target, clientX, clientY);
+  }
+
+  _hideFloatingTooltip() {
+    this._floatingTooltipTarget = null;
+    if (!this._floatingTooltipEl) return;
+    this._floatingTooltipEl.hidden = true;
+  }
+
+  _placeFloatingTooltip(el, target, clientX, clientY) {
+    if (!el || el.hidden) return;
+    const margin = 8;
+    const offset = 14;
+    const viewportW = Math.max(0, this._window.innerWidth || 0);
+    const viewportH = Math.max(0, this._window.innerHeight || 0);
+    const anchorRect = target?.getBoundingClientRect ? target.getBoundingClientRect() : null;
+
+    let x = Number.isFinite(clientX) ? clientX : (anchorRect ? anchorRect.left + anchorRect.width / 2 : margin);
+    let y = Number.isFinite(clientY) ? clientY : (anchorRect ? anchorRect.bottom : margin);
+
+    x += offset;
+    y += offset;
+
+    const rect = el.getBoundingClientRect();
+    if (x + rect.width > viewportW - margin) x -= rect.width + offset * 2;
+    if (y + rect.height > viewportH - margin) y -= rect.height + offset * 2;
+    x = Math.max(margin, Math.min(x, Math.max(margin, viewportW - rect.width - margin)));
+    y = Math.max(margin, Math.min(y, Math.max(margin, viewportH - rect.height - margin)));
+
+    el.style.left = `${Math.round(x)}px`;
+    el.style.top = `${Math.round(y)}px`;
+  }
+
+  _onTooltipPointerOver(e) {
+    const target = this._resolveTooltipTarget(e?.target || null);
+    if (!target) return;
+    this._showFloatingTooltip(target, e?.clientX, e?.clientY);
+  }
+
+  _onTooltipPointerMove(e) {
+    if (!this._floatingTooltipTarget || !this._floatingTooltipEl || this._floatingTooltipEl.hidden) return;
+    const current = this._resolveTooltipTarget(e?.target || null);
+    if (current && current !== this._floatingTooltipTarget) {
+      this._showFloatingTooltip(current, e?.clientX, e?.clientY);
+      return;
+    }
+    if (!current) {
+      this._hideFloatingTooltip();
+      return;
+    }
+    this._placeFloatingTooltip(this._floatingTooltipEl, this._floatingTooltipTarget, e?.clientX, e?.clientY);
+  }
+
+  _onTooltipPointerOut(e) {
+    if (!this._floatingTooltipTarget) return;
+    const from = this._resolveTooltipTarget(e?.target || null);
+    if (from !== this._floatingTooltipTarget) return;
+    const to = this._resolveTooltipTarget(e?.relatedTarget || null);
+    if (to === this._floatingTooltipTarget) return;
+    this._hideFloatingTooltip();
   }
 }

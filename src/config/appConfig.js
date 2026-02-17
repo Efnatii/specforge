@@ -6,23 +6,116 @@ const SHEET_NAMES = {
 };
 const DEV_LABEL = "Гороховицкий Егор Русланович";
 const DEFAULT_AI_MODEL = "gpt-5-mini";
+function model(id, label, pricing = {}, tiers = ["standard"]) {
+  const standard = pricing.standard || { inputUsdPer1M: 0, outputUsdPer1M: 0 };
+  return {
+    id,
+    label,
+    tiers: Array.isArray(tiers) && tiers.length ? tiers : ["standard"],
+    pricing,
+    inputUsdPer1M: standard.inputUsdPer1M,
+    outputUsdPer1M: standard.outputUsdPer1M,
+  };
+}
 const AI_MODELS = [
-  { id: "gpt-5.2", label: "GPT-5.2", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
-  { id: "gpt-5.2-codex", label: "GPT-5.2 Codex", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
-  { id: "gpt-5-mini", label: "GPT-5 mini", inputUsdPer1M: 0.25, outputUsdPer1M: 2 },
-  { id: "gpt-5", label: "GPT-5", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
-  { id: "gpt-5.1", label: "GPT-5.1", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
-  { id: "gpt-5-nano", label: "GPT-5 nano", inputUsdPer1M: 0.05, outputUsdPer1M: 0.4 },
-  { id: "gpt-4.1", label: "GPT-4.1", inputUsdPer1M: 2, outputUsdPer1M: 8 },
-  { id: "gpt-4.1-mini", label: "GPT-4.1 mini", inputUsdPer1M: 0.4, outputUsdPer1M: 1.6 },
-  { id: "gpt-4.1-nano", label: "GPT-4.1 nano", inputUsdPer1M: 0.1, outputUsdPer1M: 0.4 },
-  { id: "gpt-4o", label: "GPT-4o", inputUsdPer1M: 2.5, outputUsdPer1M: 10 },
-  { id: "gpt-4o-mini", label: "GPT-4o mini", inputUsdPer1M: 0.15, outputUsdPer1M: 0.6 },
-  { id: "o3", label: "o3", inputUsdPer1M: 2, outputUsdPer1M: 8 },
-  { id: "o4-mini", label: "o4-mini", inputUsdPer1M: 1.1, outputUsdPer1M: 4.4 },
-  { id: "o1", label: "o1", inputUsdPer1M: 15, outputUsdPer1M: 60 },
-  { id: "o3-pro", label: "o3-pro", inputUsdPer1M: 20, outputUsdPer1M: 80 },
-  { id: "computer-use-preview", label: "Computer Use Preview", inputUsdPer1M: 3, outputUsdPer1M: 12 },
+  model("gpt-5.2", "GPT-5.2", {
+    standard: { inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+    flex: { inputUsdPer1M: 0.625, outputUsdPer1M: 5 },
+    priority: { inputUsdPer1M: 2.5, outputUsdPer1M: 20 },
+  }, ["flex", "standard", "priority"]),
+  model("gpt-5.1", "GPT-5.1", {
+    standard: { inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+    flex: { inputUsdPer1M: 0.625, outputUsdPer1M: 5 },
+    priority: { inputUsdPer1M: 2.5, outputUsdPer1M: 20 },
+  }, ["flex", "standard", "priority"]),
+  model("gpt-5", "GPT-5", {
+    standard: { inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+    flex: { inputUsdPer1M: 0.625, outputUsdPer1M: 5 },
+    priority: { inputUsdPer1M: 2.5, outputUsdPer1M: 20 },
+  }, ["flex", "standard", "priority"]),
+  model("gpt-5-mini", "GPT-5 mini", {
+    standard: { inputUsdPer1M: 0.25, outputUsdPer1M: 2 },
+    flex: { inputUsdPer1M: 0.125, outputUsdPer1M: 1 },
+    priority: { inputUsdPer1M: 0.5, outputUsdPer1M: 4 },
+  }, ["flex", "standard", "priority"]),
+  model("gpt-5-nano", "GPT-5 nano", {
+    standard: { inputUsdPer1M: 0.05, outputUsdPer1M: 0.4 },
+    flex: { inputUsdPer1M: 0.025, outputUsdPer1M: 0.2 },
+    priority: { inputUsdPer1M: 0.1, outputUsdPer1M: 0.8 },
+  }, ["flex", "standard", "priority"]),
+  model("gpt-5.2-chat-latest", "GPT-5.2 chat latest", {
+    standard: { inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+    priority: { inputUsdPer1M: 2.5, outputUsdPer1M: 20 },
+  }, ["standard", "priority"]),
+  model("gpt-5.1-chat-latest", "GPT-5.1 chat latest", {
+    standard: { inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+    priority: { inputUsdPer1M: 2.5, outputUsdPer1M: 20 },
+  }, ["standard", "priority"]),
+  model("gpt-5-chat-latest", "GPT-5 chat latest", {
+    standard: { inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+    priority: { inputUsdPer1M: 2.5, outputUsdPer1M: 20 },
+  }, ["standard", "priority"]),
+  model("gpt-5.2-codex", "GPT-5.2 Codex (код)", {
+    standard: { inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+    priority: { inputUsdPer1M: 2.5, outputUsdPer1M: 20 },
+  }, ["standard", "priority"]),
+  model("gpt-5.1-codex-max", "GPT-5.1 Codex Max (код)", {
+    standard: { inputUsdPer1M: 1.5, outputUsdPer1M: 12 },
+    priority: { inputUsdPer1M: 3, outputUsdPer1M: 24 },
+  }, ["standard", "priority"]),
+  model("gpt-5.1-codex", "GPT-5.1 Codex (код)", {
+    standard: { inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+    priority: { inputUsdPer1M: 2.5, outputUsdPer1M: 20 },
+  }, ["standard", "priority"]),
+  model("gpt-5-codex", "GPT-5 Codex (код)", {
+    standard: { inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+    priority: { inputUsdPer1M: 2.5, outputUsdPer1M: 20 },
+  }, ["standard", "priority"]),
+  model("gpt-5.2-pro", "GPT-5.2 Pro", {
+    standard: { inputUsdPer1M: 15, outputUsdPer1M: 120 },
+    priority: { inputUsdPer1M: 30, outputUsdPer1M: 240 },
+  }, ["standard", "priority"]),
+  model("gpt-5-pro", "GPT-5 Pro", {
+    standard: { inputUsdPer1M: 15, outputUsdPer1M: 120 },
+    priority: { inputUsdPer1M: 30, outputUsdPer1M: 240 },
+  }, ["standard", "priority"]),
+  model("gpt-4.1", "GPT-4.1", {
+    standard: { inputUsdPer1M: 2, outputUsdPer1M: 8 },
+  }, ["standard"]),
+  model("gpt-4.1-mini", "GPT-4.1 mini", {
+    standard: { inputUsdPer1M: 0.4, outputUsdPer1M: 1.6 },
+  }, ["standard"]),
+  model("gpt-4.1-nano", "GPT-4.1 nano", {
+    standard: { inputUsdPer1M: 0.1, outputUsdPer1M: 0.4 },
+  }, ["standard"]),
+  model("gpt-4o", "GPT-4o", {
+    standard: { inputUsdPer1M: 2.5, outputUsdPer1M: 10 },
+  }, ["standard"]),
+  model("gpt-4o-2024-05-13", "GPT-4o (2024-05-13)", {
+    standard: { inputUsdPer1M: 5, outputUsdPer1M: 15 },
+  }, ["standard"]),
+  model("gpt-4o-mini", "GPT-4o mini", {
+    standard: { inputUsdPer1M: 0.15, outputUsdPer1M: 0.6 },
+  }, ["standard"]),
+  model("o3", "o3", {
+    standard: { inputUsdPer1M: 2, outputUsdPer1M: 8 },
+    flex: { inputUsdPer1M: 1, outputUsdPer1M: 4 },
+    priority: { inputUsdPer1M: 4, outputUsdPer1M: 16 },
+  }, ["flex", "standard", "priority"]),
+  model("o4-mini", "o4-mini", {
+    standard: { inputUsdPer1M: 1.1, outputUsdPer1M: 4.4 },
+    flex: { inputUsdPer1M: 0.55, outputUsdPer1M: 2.2 },
+    priority: { inputUsdPer1M: 2.2, outputUsdPer1M: 8.8 },
+  }, ["flex", "standard", "priority"]),
+  model("o1", "o1", {
+    standard: { inputUsdPer1M: 15, outputUsdPer1M: 60 },
+  }, ["standard"]),
+  model("o3-pro", "o3-pro", {
+    standard: { inputUsdPer1M: 20, outputUsdPer1M: 80 },
+  }, ["standard"]),
+  model("computer-use-preview", "Computer Use Preview", {
+    standard: { inputUsdPer1M: 3, outputUsdPer1M: 12 },
+  }, ["standard"]),
 ];
 const WEB_SEARCH_PRICE_NOTE = "Веб-поиск (reasoning models): $10 за 1K tool calls + стоимость входных/выходных токенов.";
 const STORAGE_KEYS = {

@@ -390,19 +390,24 @@ body.sidebar-resizing * {
   padding: 6px;
   display: none;
   z-index: 12;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .agent-reasoning-popover {
   position: absolute;
   left: 0;
   bottom: calc(100% + 6px);
-  width: 220px;
+  width: 270px;
   border: 1px solid #2f2f2f;
   background: #fff;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
   padding: 6px;
   display: none;
   z-index: 12;
+  max-height: 420px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .agent-web-search-wrap.is-open .agent-web-search-popover {
@@ -456,6 +461,46 @@ body.sidebar-resizing * {
   margin-bottom: 4px;
 }
 
+.agent-web-search-row span[data-tooltip] {
+  position: relative;
+  cursor: help;
+  border-bottom: 1px dotted #7a7a7a;
+  padding-bottom: 1px;
+}
+
+.agent-web-search-row span[data-tooltip]::after {
+  content: none;
+  display: none;
+}
+
+.agent-web-search-row span[data-tooltip]:hover::after {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.agent-floating-tooltip {
+  position: fixed;
+  left: 8px;
+  top: 8px;
+  z-index: 1500;
+  max-width: min(420px, calc(100vw - 16px));
+  border: 1px solid #111;
+  background: #111;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  padding: 7px 8px;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.agent-floating-tooltip[hidden] {
+  display: none !important;
+}
+
 .agent-web-search-row select {
   accent-color: #111;
 }
@@ -466,6 +511,15 @@ body.sidebar-resizing * {
   border: 1px solid #3a3a3a;
   background: #fff;
   font-size: 10px;
+}
+
+.agent-web-search-row input {
+  width: 118px;
+  height: 22px;
+  border: 1px solid #3a3a3a;
+  background: #fff;
+  font-size: 10px;
+  padding: 0 4px;
 }
 
 .agent-web-search-summary {
@@ -567,6 +621,10 @@ body.sidebar-resizing * {
 
 .agent-icon-btn[data-ai-option="reasoning"][data-effort="high"] .agent-effort-badge {
   border-color: #ad1457;
+}
+
+.agent-icon-btn[data-ai-option="reasoning"][data-effort="xhigh"] .agent-effort-badge {
+  border-color: #6a1b9a;
 }
 
 .agent-icon-btn svg {

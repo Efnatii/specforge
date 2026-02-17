@@ -52,12 +52,36 @@ function createAiJournalInternal(ctx) {
     timer: 0,
     kinds: new Set(),
   };
-  const REASONING_EFFORT_ORDER = ["low", "medium", "high"];
+  const REASONING_EFFORT_ORDER = ["low", "medium", "high", "xhigh"];
   const WEB_SEARCH_CONTEXT_SIZE_ORDER = ["low", "medium", "high"];
+  const REASONING_DEPTH_ORDER = ["fast", "balanced", "deep"];
+  const REASONING_VERIFY_ORDER = ["off", "basic", "strict"];
+  const REASONING_SUMMARY_ORDER = ["off", "auto", "concise", "detailed"];
+  const REASONING_CLARIFY_ORDER = ["never", "minimal", "normal"];
+  const TOOLS_MODE_ORDER = ["none", "auto", "prefer", "require"];
+  const BREVITY_MODE_ORDER = ["short", "normal", "detailed"];
+  const OUTPUT_MODE_ORDER = ["plain", "bullets", "json"];
+  const RISKY_ACTIONS_MODE_ORDER = ["confirm", "allow_if_asked", "never"];
+  const STYLE_MODE_ORDER = ["clean", "verbose"];
+  const CITATIONS_MODE_ORDER = ["off", "on"];
+  const SERVICE_TIER_ORDER = ["flex", "standard", "priority"];
+  const SERVICE_TIER_LABELS = {
+    flex: "FLEX",
+    standard: "STANDARD",
+    priority: "PRIORITY",
+  };
+  const WEB_SEARCH_COUNTRY_LABELS = {
+    RU: "Россия",
+    US: "США",
+    DE: "Германия",
+    GB: "Великобритания",
+    FR: "Франция",
+  };
   const REASONING_EFFORT_LABELS = {
     low: "Низкий",
     medium: "Средний",
     high: "Высокий",
+    xhigh: "Максимальный",
   };
   ensureJournalUiState();
 
@@ -75,9 +99,10 @@ function reasoningEffortLabel(value) {
 
 function reasoningEffortBadge(value) {
   const effort = normalizeReasoningEffort(value, "medium");
-  if (effort === "low") return "L";
-  if (effort === "high") return "H";
-  return "M";
+  if (effort === "xhigh") return "М";
+  if (effort === "low") return "Н";
+  if (effort === "high") return "В";
+  return "С";
 }
 
 function normalizeWebSearchCountry(value, fallback = "RU") {
@@ -96,9 +121,112 @@ function normalizeWebSearchContextSize(value, fallback = "high") {
 
 function webSearchContextSizeLabel(value) {
   const size = normalizeWebSearchContextSize(value, "high");
-  if (size === "low") return "low";
-  if (size === "medium") return "medium";
-  return "max";
+  if (size === "low") return "минимальный";
+  if (size === "medium") return "средний";
+  return "максимальный";
+}
+
+function webSearchCountryLabel(value) {
+  const country = normalizeWebSearchCountry(value, "RU");
+  return WEB_SEARCH_COUNTRY_LABELS[country] || country;
+}
+
+function reasoningDepthLabel(value) {
+  const mode = normalizeReasoningDepth(value, "balanced");
+  if (mode === "fast") return "Быстрая";
+  if (mode === "deep") return "Глубокая";
+  return "Сбалансированная";
+}
+
+function reasoningVerifyLabel(value) {
+  const mode = normalizeReasoningVerify(value, "basic");
+  if (mode === "off") return "Выключена";
+  if (mode === "strict") return "Строгая";
+  return "Базовая";
+}
+
+function reasoningSummaryLabel(value) {
+  const mode = normalizeReasoningSummary(value, "auto");
+  if (mode === "off") return "Выключена";
+  if (mode === "concise") return "Краткая";
+  if (mode === "detailed") return "Подробная";
+  return "Автоматическая";
+}
+
+function reasoningClarifyLabel(value) {
+  const mode = normalizeReasoningClarify(value, "minimal");
+  if (mode === "never") return "Никогда";
+  if (mode === "normal") return "Обычный";
+  return "Минимальный";
+}
+
+function reasoningToolsModeLabel(value) {
+  const mode = normalizeToolsMode(value, "auto");
+  if (mode === "none") return "Не использовать";
+  if (mode === "prefer") return "Предпочитать";
+  if (mode === "require") return "Обязательно";
+  return "Авто";
+}
+
+function normalizeServiceTier(value, fallback = "standard") {
+  return normalizeEnum(value, SERVICE_TIER_ORDER, fallback);
+}
+
+function serviceTierLabel(value) {
+  const tier = normalizeServiceTier(value, "standard");
+  return SERVICE_TIER_LABELS[tier] || tier.toUpperCase();
+}
+function normalizeEnum(value, allowed, fallback) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (allowed.includes(raw)) return raw;
+  const fb = String(fallback || "").trim().toLowerCase();
+  return allowed.includes(fb) ? fb : allowed[0];
+}
+
+function normalizeReasoningDepth(value, fallback = "balanced") {
+  return normalizeEnum(value, REASONING_DEPTH_ORDER, fallback);
+}
+
+function normalizeReasoningVerify(value, fallback = "basic") {
+  return normalizeEnum(value, REASONING_VERIFY_ORDER, fallback);
+}
+
+function normalizeReasoningSummary(value, fallback = "auto") {
+  return normalizeEnum(value, REASONING_SUMMARY_ORDER, fallback);
+}
+
+function normalizeReasoningClarify(value, fallback = "minimal") {
+  return normalizeEnum(value, REASONING_CLARIFY_ORDER, fallback);
+}
+
+function normalizeToolsMode(value, fallback = "auto") {
+  return normalizeEnum(value, TOOLS_MODE_ORDER, fallback);
+}
+
+function normalizeBrevityMode(value, fallback = "normal") {
+  return normalizeEnum(value, BREVITY_MODE_ORDER, fallback);
+}
+
+function normalizeOutputMode(value, fallback = "bullets") {
+  return normalizeEnum(value, OUTPUT_MODE_ORDER, fallback);
+}
+
+function normalizeRiskyActionsMode(value, fallback = "confirm") {
+  return normalizeEnum(value, RISKY_ACTIONS_MODE_ORDER, fallback);
+}
+
+function normalizeStyleMode(value, fallback = "clean") {
+  return normalizeEnum(value, STYLE_MODE_ORDER, fallback);
+}
+
+function normalizeCitationsMode(value, fallback = "off") {
+  return normalizeEnum(value, CITATIONS_MODE_ORDER, fallback);
+}
+
+function normalizeReasoningMaxTokens(value, fallback = 0) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return Math.max(0, Number(fallback) || 0);
+  return Math.max(0, Math.round(raw));
 }
 
 function loadAiSettings() {
@@ -121,10 +249,22 @@ function loadAiSettings() {
     const raw = storage.getItem(STORAGE_KEYS.agentOptions);
     if (raw) {
       const parsed = JSON.parse(raw);
-      for (const k of ["webSearch", "reasoning", "allowQuestions"]) {
+      for (const k of ["webSearch", "reasoning"]) {
         if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
       }
+      app.ai.options.serviceTier = normalizeServiceTier(parsed.serviceTier, app.ai.options.serviceTier || "standard");
       app.ai.options.reasoningEffort = normalizeReasoningEffort(parsed.reasoningEffort, app.ai.options.reasoningEffort || "medium");
+      app.ai.options.reasoningDepth = normalizeReasoningDepth(parsed.reasoningDepth, app.ai.options.reasoningDepth || "balanced");
+      app.ai.options.reasoningVerify = normalizeReasoningVerify(parsed.reasoningVerify, app.ai.options.reasoningVerify || "basic");
+      app.ai.options.reasoningSummary = normalizeReasoningSummary(parsed.reasoningSummary, app.ai.options.reasoningSummary || "auto");
+      app.ai.options.reasoningClarify = normalizeReasoningClarify(parsed.reasoningClarify, app.ai.options.reasoningClarify || "minimal");
+      app.ai.options.toolsMode = normalizeToolsMode(parsed.toolsMode, app.ai.options.toolsMode || "auto");
+      app.ai.options.brevityMode = normalizeBrevityMode(parsed.brevityMode, app.ai.options.brevityMode || "normal");
+      app.ai.options.outputMode = normalizeOutputMode(parsed.outputMode, app.ai.options.outputMode || "bullets");
+      app.ai.options.riskyActionsMode = normalizeRiskyActionsMode(parsed.riskyActionsMode, app.ai.options.riskyActionsMode || "confirm");
+      app.ai.options.styleMode = normalizeStyleMode(parsed.styleMode, app.ai.options.styleMode || "clean");
+      app.ai.options.citationsMode = normalizeCitationsMode(parsed.citationsMode, app.ai.options.citationsMode || "off");
+      app.ai.options.reasoningMaxTokens = normalizeReasoningMaxTokens(parsed.reasoningMaxTokens, app.ai.options.reasoningMaxTokens || 0);
       app.ai.options.webSearchCountry = normalizeWebSearchCountry(parsed.webSearchCountry, app.ai.options.webSearchCountry || "RU");
       app.ai.options.webSearchContextSize = normalizeWebSearchContextSize(parsed.webSearchContextSize, app.ai.options.webSearchContextSize || "high");
     }
@@ -215,6 +355,7 @@ function renderAgentChips() {
     const country = normalizeWebSearchCountry(app.ai.options.webSearchCountry, "RU");
     const contextSize = normalizeWebSearchContextSize(app.ai.options.webSearchContextSize, "high");
     const contextSizeLabel = webSearchContextSizeLabel(contextSize);
+    const countryLabel = webSearchCountryLabel(country);
     const wrapCls = app.ai.webSearchPopoverOpen
       ? "agent-tool-chip-wrap agent-web-search-wrap is-open"
       : "agent-tool-chip-wrap agent-web-search-wrap";
@@ -222,78 +363,179 @@ function renderAgentChips() {
       ? "agent-chip agent-tool-chip is-selected"
       : "agent-chip agent-tool-chip";
     parts.push(`<div class="${wrapCls}" data-web-search-wrap>
-      <button type="button" class="${chipCls}" data-ai-chip-option="webSearchSettings" title="Web search settings" aria-label="Web search settings">
-        <b>webSearch</b>
-        <span>Web search</span>
+      <button type="button" class="${chipCls}" data-ai-chip-option="webSearchSettings" title="Настройки веб-поиска" aria-label="Настройки веб-поиска">
+        <b>Веб-поиск</b>
+        <span>Поиск в интернете</span>
         ${gearIcon}
       </button>
-      <div class="agent-web-search-popover" data-web-search-popover role="dialog" aria-label="Web search settings">
+      <div class="agent-web-search-popover" data-web-search-popover role="dialog" aria-label="Настройки веб-поиска">
         <div class="agent-web-search-head">
-          <strong>Web Search</strong>
-          <button type="button" class="agent-web-search-close" data-web-search-action="close" aria-label="Close settings">x</button>
+          <strong>Веб-поиск</strong>
+          <button type="button" class="agent-web-search-close" data-web-search-action="close" aria-label="Закрыть настройки">x</button>
         </div>
         <label class="agent-web-search-row">
-          <span>Country</span>
+          <span data-tooltip="Страна влияет на локализацию результатов и источники выдачи.">Страна</span>
           <select data-web-search-config="country">
-            <option value="RU"${selectedAttr(country, "RU")}>Russia (RU)</option>
-            <option value="US"${selectedAttr(country, "US")}>United States (US)</option>
-            <option value="DE"${selectedAttr(country, "DE")}>Germany (DE)</option>
-            <option value="GB"${selectedAttr(country, "GB")}>United Kingdom (GB)</option>
-            <option value="FR"${selectedAttr(country, "FR")}>France (FR)</option>
+            <option value="RU"${selectedAttr(country, "RU")}>Россия (RU)</option>
+            <option value="US"${selectedAttr(country, "US")}>США (US)</option>
+            <option value="DE"${selectedAttr(country, "DE")}>Германия (DE)</option>
+            <option value="GB"${selectedAttr(country, "GB")}>Великобритания (GB)</option>
+            <option value="FR"${selectedAttr(country, "FR")}>Франция (FR)</option>
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span>Context</span>
+          <span data-tooltip="Объём контекста веб-поиска: больше контекста повышает полноту, но может быть медленнее и дороже.">Контекст</span>
           <select data-web-search-config="contextSize">
-            <option value="high"${selectedAttr(contextSize, "high")}>max</option>
-            <option value="medium"${selectedAttr(contextSize, "medium")}>medium</option>
-            <option value="low"${selectedAttr(contextSize, "low")}>low</option>
+            <option value="high"${selectedAttr(contextSize, "high")}>Максимальный</option>
+            <option value="medium"${selectedAttr(contextSize, "medium")}>Средний</option>
+            <option value="low"${selectedAttr(contextSize, "low")}>Минимальный</option>
           </select>
         </label>
-        <div class="agent-web-search-summary" data-web-search-config="summary">enabled=on, country=${esc(country)}, search_context_size=${esc(contextSizeLabel)}</div>
+        <div class="agent-web-search-summary" data-web-search-config="summary">включено, страна=${esc(countryLabel)}, контекст=${esc(contextSizeLabel)}</div>
       </div>
     </div>`);
   }
 
-  if (app.ai.options.allowQuestions) {
-    parts.push('<span class="agent-chip"><b>allowQuestions</b><span>AI questions</span></span>');
-  }
-
   if (app.ai.options.reasoning !== false) {
     const effort = normalizeReasoningEffort(app.ai.options.reasoningEffort, "medium");
+    const depth = normalizeReasoningDepth(app.ai.options.reasoningDepth, "balanced");
+    const verify = normalizeReasoningVerify(app.ai.options.reasoningVerify, "basic");
+    const summaryMode = normalizeReasoningSummary(app.ai.options.reasoningSummary, "auto");
+    const clarify = normalizeReasoningClarify(app.ai.options.reasoningClarify, "minimal");
+    const toolsMode = normalizeToolsMode(app.ai.options.toolsMode, "auto");
+    const brevityMode = normalizeBrevityMode(app.ai.options.brevityMode, "normal");
+    const outputMode = normalizeOutputMode(app.ai.options.outputMode, "bullets");
+    const riskyActionsMode = normalizeRiskyActionsMode(app.ai.options.riskyActionsMode, "confirm");
+    const styleMode = normalizeStyleMode(app.ai.options.styleMode, "clean");
+    const citationsMode = normalizeCitationsMode(app.ai.options.citationsMode, "off");
+    const reasoningMaxTokens = normalizeReasoningMaxTokens(app.ai.options.reasoningMaxTokens, 0);
+
+    const effortLabel = reasoningEffortLabel(effort);
+    const depthLabel = reasoningDepthLabel(depth);
+    const verifyLabel = reasoningVerifyLabel(verify);
+    const summaryLabel = reasoningSummaryLabel(summaryMode);
+    const clarifyLabel = reasoningClarifyLabel(clarify);
+    const toolsLabel = reasoningToolsModeLabel(toolsMode);
+
     const wrapCls = app.ai.reasoningPopoverOpen
       ? "agent-tool-chip-wrap agent-reasoning-wrap is-open"
       : "agent-tool-chip-wrap agent-reasoning-wrap";
     const chipCls = app.ai.reasoningPopoverOpen
       ? "agent-chip agent-tool-chip is-selected"
       : "agent-chip agent-tool-chip";
+
     parts.push(`<div class="${wrapCls}" data-reasoning-wrap>
-      <button type="button" class="${chipCls}" data-ai-chip-option="reasoningSettings" title="Reasoning settings" aria-label="Reasoning settings">
-        <b>reasoning</b>
-        <span>${esc(reasoningEffortLabel(effort))}</span>
+      <button type="button" class="${chipCls}" data-ai-chip-option="reasoningSettings" title="Настройки размышлений" aria-label="Настройки размышлений">
+        <b>Размышления</b>
+        <span>${esc(effortLabel)}</span>
         ${gearIcon}
       </button>
-      <div class="agent-reasoning-popover" data-reasoning-popover role="dialog" aria-label="Reasoning settings">
+      <div class="agent-reasoning-popover" data-reasoning-popover role="dialog" aria-label="Настройки размышлений">
         <div class="agent-web-search-head">
-          <strong>Reasoning</strong>
-          <button type="button" class="agent-web-search-close" data-reasoning-action="close" aria-label="Close settings">x</button>
+          <strong>Размышления</strong>
+          <button type="button" class="agent-web-search-close" data-reasoning-action="close" aria-label="Закрыть настройки">x</button>
         </div>
         <label class="agent-web-search-row">
-          <span>Effort</span>
+          <span data-tooltip="Низкое: быстрый ответ, минимум анализа и проверок. Среднее: сбалансированный режим по умолчанию. Высокое: больше сравнений вариантов и самопроверок. Максимальное: максимально тщательная проработка, больше времени и затрат.">Усилие</span>
           <select data-reasoning-config="effort">
-            <option value="low"${selectedAttr(effort, "low")}>low</option>
-            <option value="medium"${selectedAttr(effort, "medium")}>medium</option>
-            <option value="high"${selectedAttr(effort, "high")}>high</option>
+            <option value="low"${selectedAttr(effort, "low")}>Низкое</option>
+            <option value="medium"${selectedAttr(effort, "medium")}>Среднее</option>
+            <option value="high"${selectedAttr(effort, "high")}>Высокое</option>
+            <option value="xhigh"${selectedAttr(effort, "xhigh")}>Максимальное</option>
           </select>
         </label>
-        <div class="agent-web-search-summary" data-reasoning-config="summary">enabled=on, effort=${esc(effort)}</div>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Быстро: короткая цепочка рассуждений, фокус на скорости. Сбалансировано: стандартная глубина, обычно один внутренний цикл проверки. Глубоко: несколько подходов, больше сравнений и аккуратная финальная проверка.">Глубина</span>
+          <select data-reasoning-config="depth">
+            <option value="fast"${selectedAttr(depth, "fast")}>Быстро</option>
+            <option value="balanced"${selectedAttr(depth, "balanced")}>Сбалансировано</option>
+            <option value="deep"${selectedAttr(depth, "deep")}>Глубоко</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Выключена: без явной самопроверки. Базовая: короткий sanity-check логики и очевидных ошибок. Строгая: подробный чеклист, поиск противоречий и проверка краевых случаев с исправлением.">Проверка</span>
+          <select data-reasoning-config="verify">
+            <option value="off"${selectedAttr(verify, "off")}>Выключена</option>
+            <option value="basic"${selectedAttr(verify, "basic")}>Базовая</option>
+            <option value="strict"${selectedAttr(verify, "strict")}>Строгая</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Выключена: без сводки рассуждений. Авто: уровень сводки выбирается автоматически. Краткая: только ключевые выводы. Подробная: расширенная сводка шагов и выводов.">Сводка</span>
+          <select data-reasoning-config="summaryMode">
+            <option value="off"${selectedAttr(summaryMode, "off")}>Выключена</option>
+            <option value="auto"${selectedAttr(summaryMode, "auto")}>Авто</option>
+            <option value="concise"${selectedAttr(summaryMode, "concise")}>Краткая</option>
+            <option value="detailed"${selectedAttr(summaryMode, "detailed")}>Подробная</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Никогда: не задавать уточнения, действовать с явными допущениями. Минимально: спрашивать только при высоком риске ошибки. Обычно: спрашивать при существенной неопределенности. Если в Риски выбран режим Никогда, вопросы запрещаются независимо от этого поля.">Уточнения</span>
+          <select data-reasoning-config="clarify">
+            <option value="never"${selectedAttr(clarify, "never")}>Никогда</option>
+            <option value="minimal"${selectedAttr(clarify, "minimal")}>Минимально</option>
+            <option value="normal"${selectedAttr(clarify, "normal")}>Обычно</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Не использовать: отвечать без инструментов. Авто: использовать инструменты по необходимости. Предпочитать: чаще обращаться к инструментам для проверки фактов. Обязательно: по возможности решать через инструменты, а не предположения.">Инструменты</span>
+          <select data-reasoning-config="toolsMode">
+            <option value="none"${selectedAttr(toolsMode, "none")}>Не использовать</option>
+            <option value="auto"${selectedAttr(toolsMode, "auto")}>Авто</option>
+            <option value="prefer"${selectedAttr(toolsMode, "prefer")}>Предпочитать</option>
+            <option value="require"${selectedAttr(toolsMode, "require")}>Обязательно</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Кратко: только итог и минимум деталей. Нормально: баланс краткости и пояснений. Подробно: развернутые шаги, контекст и пояснения.">Краткость</span>
+          <select data-reasoning-config="brevityMode">
+            <option value="short"${selectedAttr(brevityMode, "short")}>Кратко</option>
+            <option value="normal"${selectedAttr(brevityMode, "normal")}>Нормально</option>
+            <option value="detailed"${selectedAttr(brevityMode, "detailed")}>Подробно</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Обычный текст: свободная форма. Пункты: структурированный ответ списком. JSON: строгий JSON для машинной обработки без лишнего текста.">Формат</span>
+          <select data-reasoning-config="outputMode">
+            <option value="plain"${selectedAttr(outputMode, "plain")}>Обычный текст</option>
+            <option value="bullets"${selectedAttr(outputMode, "bullets")}>Пункты</option>
+            <option value="json"${selectedAttr(outputMode, "json")}>JSON</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Подтверждать: перед рискованными/необратимыми действиями просить явное подтверждение; вопросы разрешены. Только по явной просьбе: не запрашивать отдельное подтверждение, выполнять рискованные шаги только когда пользователь прямо попросил; вопросы разрешены, их частота задаётся опцией Уточнения. Никогда: полностью запретить вопросы пользователю и вызов ask_user_question.">Риски</span>
+          <select data-reasoning-config="riskyActionsMode">
+            <option value="confirm"${selectedAttr(riskyActionsMode, "confirm")}>Подтверждать</option>
+            <option value="allow_if_asked"${selectedAttr(riskyActionsMode, "allow_if_asked")}>Только по явной просьбе</option>
+            <option value="never"${selectedAttr(riskyActionsMode, "never")}>Никогда</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Сухой: максимально по делу, без лишней воды. Развернутый: больше контекста, обоснований и пояснений.">Стиль</span>
+          <select data-reasoning-config="styleMode">
+            <option value="clean"${selectedAttr(styleMode, "clean")}>Сухой</option>
+            <option value="verbose"${selectedAttr(styleMode, "verbose")}>Развёрнутый</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Выключены: ссылки на источники не добавляются автоматически. Включены: если использован веб-поиск, в финале добавляются ссылки на ключевые источники.">Ссылки</span>
+          <select data-reasoning-config="citationsMode">
+            <option value="off"${selectedAttr(citationsMode, "off")}>Выключены</option>
+            <option value="on"${selectedAttr(citationsMode, "on")}>Включены</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="0: лимит выбирается автоматически моделью. Положительное число: жесткий верхний предел длины ответа в токенах. Больше лимит — потенциально длиннее и детальнее ответ, но выше стоимость и время.">Токены</span>
+          <input type="number" min="0" step="1" value="${reasoningMaxTokens}" data-reasoning-config="maxTokens" />
+        </label>
+        <div class="agent-web-search-summary" data-reasoning-config="summary">включено, усилие=${esc(effortLabel)}, глубина=${esc(depthLabel)}, проверка=${esc(verifyLabel)}, сводка=${esc(summaryLabel)}, уточнения=${esc(clarifyLabel)}, инструменты=${esc(toolsLabel)}, токены=${esc(reasoningMaxTokens || "авто")}</div>
       </div>
     </div>`);
   }
 
   for (const f of app.ai.attachments) {
     const kb = Math.max(1, Math.round(num(f.size) / 1024));
-    parts.push(`<span class="agent-chip" data-chip-type="file" data-chip-id="${esc(f.id)}"><b>file</b><span>${esc(f.name)} (${kb} KB)</span><button type="button" class="remove" title="Detach" aria-label="Detach">x</button></span>`);
+    parts.push(`<span class="agent-chip" data-chip-type="file" data-chip-id="${esc(f.id)}"><b>файл</b><span>${esc(f.name)} (${kb} КБ)</span><button type="button" class="remove" title="Открепить" aria-label="Открепить">x</button></span>`);
   }
 
   dom.agentChips.innerHTML = parts.join("");
@@ -310,11 +552,18 @@ function renderAgentContextIcons() {
     if (key === "reasoning") {
       const enabled = app.ai.options.reasoning !== false;
       const effort = normalizeReasoningEffort(app.ai.options.reasoningEffort, "medium");
+      const depth = normalizeReasoningDepth(app.ai.options.reasoningDepth, "balanced");
+      const verify = normalizeReasoningVerify(app.ai.options.reasoningVerify, "basic");
+      const summaryMode = normalizeReasoningSummary(app.ai.options.reasoningSummary, "auto");
+      const effortLabel = reasoningEffortLabel(effort);
+      const depthLabel = reasoningDepthLabel(depth);
+      const verifyLabel = reasoningVerifyLabel(verify);
+      const summaryLabel = reasoningSummaryLabel(summaryMode);
       btn.classList.toggle("is-selected", enabled);
       btn.dataset.effort = effort;
-      const title = `Reasoning: ${enabled ? "on" : "off"}, effort=${effort}`;
+      const title = `Размышления: ${enabled ? "включены" : "выключены"}, усилие — ${effortLabel}, глубина — ${depthLabel}, проверка — ${verifyLabel}, сводка — ${summaryLabel}`;
       btn.title = title;
-      btn.setAttribute("aria-label", `${title}. Click to toggle.`);
+      btn.setAttribute("aria-label", `${title}. Нажмите для переключения.`);
       const badge = btn.querySelector("[data-ai-effort-badge]");
       if (badge) {
         badge.textContent = reasoningEffortBadge(effort);
@@ -323,9 +572,9 @@ function renderAgentContextIcons() {
       return;
     }
     if (key === "webSearch") {
-      const title = `Web search: ${app.ai.options.webSearch ? "on" : "off"}`;
+      const title = `Веб-поиск: ${app.ai.options.webSearch ? "включён" : "выключен"}`;
       btn.title = title;
-      btn.setAttribute("aria-label", `${title}. Click to toggle.`);
+      btn.setAttribute("aria-label", `${title}. Нажмите для переключения.`);
       btn.classList.toggle("is-selected", Boolean(app.ai.options.webSearch));
       return;
     }
@@ -1387,22 +1636,100 @@ function currentAiModelMeta() {
   return AI_MODELS.find((m) => m.id === id) || AI_MODELS[0];
 }
 
+function modelSupportsServiceTier(model, tier) {
+  const tiers = Array.isArray(model?.tiers) ? model.tiers : ["standard"];
+  return tiers.includes(tier);
+}
+
+function preferredServiceTierForModel(model, preferred = "standard") {
+  const tier = normalizeServiceTier(preferred, "standard");
+  if (modelSupportsServiceTier(model, tier)) return tier;
+  if (modelSupportsServiceTier(model, "standard")) return "standard";
+  const tiers = Array.isArray(model?.tiers) ? model.tiers : [];
+  if (!tiers.length) return "standard";
+  return normalizeServiceTier(tiers[0], "standard");
+}
+
+function modelPriceByTier(model, tier) {
+  const t = normalizeServiceTier(tier, "standard");
+  const pricing = model?.pricing && typeof model.pricing === "object" ? model.pricing : {};
+  const exact = pricing[t];
+  if (exact && Number.isFinite(Number(exact.inputUsdPer1M)) && Number.isFinite(Number(exact.outputUsdPer1M))) {
+    return exact;
+  }
+  const standard = pricing.standard;
+  if (standard && Number.isFinite(Number(standard.inputUsdPer1M)) && Number.isFinite(Number(standard.outputUsdPer1M))) {
+    return standard;
+  }
+  return {
+    inputUsdPer1M: num(model?.inputUsdPer1M, 0),
+    outputUsdPer1M: num(model?.outputUsdPer1M, 0),
+  };
+}
+
+function modelSelectValue(modelId, tier) {
+  const id = String(modelId || "").trim();
+  const t = normalizeServiceTier(tier, "standard");
+  return `${id}::${t}`;
+}
+
+function parseModelSelectValue(raw) {
+  const src = String(raw || "").trim();
+  if (!src) return { modelId: "", tier: "standard" };
+  const idx = src.indexOf("::");
+  if (idx < 0) return { modelId: src, tier: "standard" };
+  return {
+    modelId: src.slice(0, idx),
+    tier: normalizeServiceTier(src.slice(idx + 2), "standard"),
+  };
+}
+
 function renderOpenAiModelOptions() {
   if (!dom.openAiModelSelect) return;
-  dom.openAiModelSelect.innerHTML = AI_MODELS
-    .map((m) => `<option value="${esc(m.id)}">${esc(m.label)} (${moneyUsd(m.inputUsdPer1M)} in / ${moneyUsd(m.outputUsdPer1M)} out за 1M)</option>`)
+  const selectedModelId = isKnownAiModel(app.ai.model) ? app.ai.model : DEFAULT_AI_MODEL;
+  const selectedTier = normalizeServiceTier(app?.ai?.options?.serviceTier, "standard");
+  const groups = [
+    { key: "flex", label: "FLEX" },
+    { key: "standard", label: "STANDARD" },
+    { key: "priority", label: "PRIORITY" },
+  ];
+  dom.openAiModelSelect.innerHTML = groups
+    .map((group) => {
+      const items = AI_MODELS.filter((m) => modelSupportsServiceTier(m, group.key));
+      if (!items.length) return "";
+      const options = items
+        .map((m) => {
+          const price = modelPriceByTier(m, group.key);
+          return `<option value="${esc(modelSelectValue(m.id, group.key))}" data-model-id="${esc(m.id)}" data-service-tier="${esc(group.key)}">${esc(m.label)} (${moneyUsd(price.inputUsdPer1M)} in / ${moneyUsd(price.outputUsdPer1M)} out за 1M)</option>`;
+        })
+        .join("");
+      return `<optgroup label="${esc(group.label)}">${options}</optgroup>`;
+    })
     .join("");
 
-  const selectedId = isKnownAiModel(app.ai.model) ? app.ai.model : DEFAULT_AI_MODEL;
-  dom.openAiModelSelect.value = selectedId;
+  const selectedModel = AI_MODELS.find((m) => m.id === selectedModelId) || AI_MODELS[0];
+  const finalTier = preferredServiceTierForModel(selectedModel, selectedTier);
+  let selectedValue = modelSelectValue(selectedModelId, finalTier);
+  if (!Array.from(dom.openAiModelSelect.options || []).some((o) => String(o.value || "") === selectedValue)) {
+    selectedValue = modelSelectValue(selectedModelId, "standard");
+  }
+  if (!Array.from(dom.openAiModelSelect.options || []).some((o) => String(o.value || "") === selectedValue)) {
+    const first = dom.openAiModelSelect.options[0];
+    selectedValue = String(first?.value || "");
+  }
+  dom.openAiModelSelect.value = selectedValue;
   renderOpenAiModelPrice();
 }
 
 function renderOpenAiModelPrice() {
   if (!dom.openAiModelPrice || !dom.openAiModelSelect) return;
-  const selectedId = String(dom.openAiModelSelect.value || "").trim();
-  const model = AI_MODELS.find((m) => m.id === selectedId) || currentAiModelMeta();
-  dom.openAiModelPrice.textContent = `${model.label}: вход ${moneyUsd(model.inputUsdPer1M)} / выход ${moneyUsd(model.outputUsdPer1M)} за 1M токенов. ${WEB_SEARCH_PRICE_NOTE}`;
+  const parsed = parseModelSelectValue(dom.openAiModelSelect.value);
+  const selectedOption = dom.openAiModelSelect.selectedOptions?.[0] || null;
+  const modelId = String(selectedOption?.dataset?.modelId || parsed.modelId || "").trim();
+  const tier = normalizeServiceTier(selectedOption?.dataset?.serviceTier || parsed.tier || app?.ai?.options?.serviceTier, "standard");
+  const model = AI_MODELS.find((m) => m.id === modelId) || currentAiModelMeta();
+  const price = modelPriceByTier(model, tier);
+  dom.openAiModelPrice.textContent = `${model.label} [${serviceTierLabel(tier)}]: вход ${moneyUsd(price.inputUsdPer1M)} / выход ${moneyUsd(price.outputUsdPer1M)} за 1M токенов. ${WEB_SEARCH_PRICE_NOTE}`;
 }
 
 function moneyUsd(v) {
@@ -1470,5 +1797,6 @@ function moneyUsd(v) {
     moneyUsd,
   };
 }
+
 
 

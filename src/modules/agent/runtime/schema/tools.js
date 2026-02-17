@@ -70,9 +70,37 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
     return "high";
   }
 
+  function normalizeToolsMode(value, fallback = "auto") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "none" || raw === "auto" || raw === "prefer" || raw === "require") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "none" || fb === "auto" || fb === "prefer" || fb === "require") return fb;
+    return "auto";
+  }
+
+  function normalizeClarifyMode(value, fallback = "minimal") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "never" || raw === "minimal" || raw === "normal") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "never" || fb === "minimal" || fb === "normal") return fb;
+    return "minimal";
+  }
+
+  function normalizeRiskyActionsMode(value, fallback = "confirm") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "confirm" || raw === "allow_if_asked" || raw === "never") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "confirm" || fb === "allow_if_asked" || fb === "never") return fb;
+    return "confirm";
+  }
+
   function agentToolsSpec() {
     const verifySchema = verificationParam();
-    const allowQuestions = app?.ai?.options?.allowQuestions !== false;
+    const toolsMode = normalizeToolsMode(app?.ai?.options?.toolsMode, "auto");
+    if (toolsMode === "none") return [];
+    const clarifyMode = normalizeClarifyMode(app?.ai?.options?.reasoningClarify, "minimal");
+    const riskyMode = normalizeRiskyActionsMode(app?.ai?.options?.riskyActionsMode, "confirm");
+    const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
     const tools = [
       ...sheetSchemaFacade.buildSheetNavigationTools(),
       ...(allowQuestions ? stateSchemaFacade.buildInteractionTools() : []),

@@ -43,7 +43,15 @@ function createAgentRuntimePolicyInternal(ctx) {
     const src = String(text || "").trim();
     if (!src) return true;
     if (looksLikePseudoToolText(src)) return true;
-    const allowQuestions = app?.ai?.options?.allowQuestions !== false;
+    const clarifyModeRaw = String(app?.ai?.options?.reasoningClarify || "minimal").trim().toLowerCase();
+    const clarifyMode = clarifyModeRaw === "never" || clarifyModeRaw === "minimal" || clarifyModeRaw === "normal"
+      ? clarifyModeRaw
+      : "minimal";
+    const riskyModeRaw = String(app?.ai?.options?.riskyActionsMode || "confirm").trim().toLowerCase();
+    const riskyMode = riskyModeRaw === "confirm" || riskyModeRaw === "allow_if_asked" || riskyModeRaw === "never"
+      ? riskyModeRaw
+      : "confirm";
+    const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
     if (!allowQuestions && AI_INCOMPLETE_RESPONSE_RE.test(src)) return true;
     if (/^(выполняю|приступаю|подождите|начинаю|calling|running|i'?ll run)/i.test(src)) return true;
     return false;

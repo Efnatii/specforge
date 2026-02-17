@@ -6,6 +6,126 @@ import { AgentRuntimeTurnModule } from "./turn.js";
 
 const FILE_SEARCH_MAX_AGE_MS = 60 * 60 * 1000;
 
+function normalizeModelId(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isGpt5Family(modelId) {
+  return /^gpt-5(?:[.-]|$)/.test(modelId);
+}
+
+function parseGpt5Minor(modelId) {
+  const m = modelId.match(/^gpt-5(?:\.(\d+))?(?:[.-]|$)/);
+  if (!m) return null;
+  if (!m[1]) return 0;
+  const n = Number.parseInt(m[1], 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function isOReasoningFamily(modelId) {
+  return /^o(?:1|3|4)(?:[.-]|$)/.test(modelId);
+}
+
+function isComputerUsePreviewModel(modelId) {
+  return /^computer-use-preview(?:[.-]|$)/.test(modelId);
+}
+
+function modelReasoningCapabilities(modelIdRaw) {
+  const modelId = normalizeModelId(modelIdRaw);
+  const gpt5 = isGpt5Family(modelId);
+  const oFamily = isOReasoningFamily(modelId);
+  const computerUse = isComputerUsePreviewModel(modelId);
+  const supportsReasoning = gpt5 || oFamily || computerUse;
+  if (!supportsReasoning) {
+    return {
+      supportsReasoning: false,
+      effortValues: [],
+      summaryValues: [],
+    };
+  }
+
+  const gpt5Minor = parseGpt5Minor(modelId);
+  const isGpt5Pro = /^gpt-5(?:\.\d+)?-pro(?:[.-]|$)/.test(modelId) || /^gpt-5-pro(?:[.-]|$)/.test(modelId);
+  const supportsNoneEffort = gpt5 && gpt5Minor !== null && gpt5Minor >= 1;
+  const supportsMinimalEffort = gpt5 && gpt5Minor !== null && gpt5Minor >= 2;
+  const supportsXhighEffort = /^gpt-5\.2(?:[.-]|$)/.test(modelId) || /^gpt-5\.1-codex-max(?:[.-]|$)/.test(modelId);
+
+  const effortValues = isGpt5Pro
+    ? ["high"]
+    : [
+      ...(supportsNoneEffort ? ["none"] : []),
+      ...(supportsMinimalEffort ? ["minimal"] : []),
+      "low",
+      "medium",
+      "high",
+      ...(supportsXhighEffort ? ["xhigh"] : []),
+    ];
+
+  const supportsConciseSummary = computerUse
+    || (gpt5 && gpt5Minor !== null && gpt5Minor >= 2)
+    || oFamily;
+
+  const summaryValues = [
+    "auto",
+    ...(supportsConciseSummary ? ["concise"] : []),
+    "detailed",
+  ];
+
+  return {
+    supportsReasoning: true,
+    effortValues,
+    summaryValues,
+  };
+}
+
+function normalizeReasoningEffortForModel(value, capabilities) {
+  const effort = String(value || "").trim().toLowerCase();
+  const allowed = Array.isArray(capabilities?.effortValues) ? capabilities.effortValues : [];
+  if (!allowed.length) return "medium";
+  if (allowed.includes(effort)) return effort;
+  if ((effort === "none" || effort === "minimal") && allowed.includes("low")) return "low";
+  if (effort === "xhigh" && allowed.includes("high")) return "high";
+  if (allowed.includes("medium")) return "medium";
+  return allowed[0];
+}
+
+function normalizeReasoningSummaryForModel(value, capabilities) {
+  const mode = String(value || "").trim().toLowerCase();
+  if (mode === "off") return "off";
+  const allowed = Array.isArray(capabilities?.summaryValues) ? capabilities.summaryValues : [];
+  if (!allowed.length) return "off";
+  if (allowed.includes(mode)) return mode;
+  if (mode === "concise" && allowed.includes("detailed")) return "detailed";
+  if (allowed.includes("auto")) return "auto";
+  return allowed[0];
+}
+
+function supportsTextVerbosity(modelIdRaw) {
+  return isGpt5Family(normalizeModelId(modelIdRaw));
+}
+
+function normalizeTextVerbosity(value, modelIdRaw) {
+  if (!supportsTextVerbosity(modelIdRaw)) return "";
+  const brevity = String(value || "").trim().toLowerCase();
+  if (brevity === "short") return "low";
+  if (brevity === "detailed") return "high";
+  return "medium";
+}
+
+function normalizeServiceTierOption(value, fallback = "standard") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "flex" || raw === "standard" || raw === "priority") return raw;
+  const fb = String(fallback || "").trim().toLowerCase();
+  if (fb === "flex" || fb === "standard" || fb === "priority") return fb;
+  return "standard";
+}
+
+function toResponsesServiceTier(value) {
+  const tier = normalizeServiceTierOption(value, "standard");
+  if (tier === "flex" || tier === "priority") return tier;
+  return "default";
+}
+
 export class AgentRuntimeModule {
   constructor(ctx) {
     const {
@@ -469,26 +589,47 @@ export class AgentRuntimeModule {
   }
 
   buildAgentResponsesPayload(options = {}) {
-    const normalizeReasoningEffort = (value) => {
-      const effort = String(value || "").trim().toLowerCase();
-      if (effort === "low" || effort === "high" || effort === "medium") return effort;
-      return "medium";
+    const normalizeToolsMode = (value) => {
+      const mode = String(value || "").trim().toLowerCase();
+      if (mode === "none" || mode === "auto" || mode === "prefer" || mode === "require") return mode;
+      return "auto";
     };
-    const reasoningEnabled = this._app?.ai?.options?.reasoning !== false;
-    const reasoningEffort = normalizeReasoningEffort(this._app?.ai?.options?.reasoningEffort);
-    const tools = this._toolSpecModule.agentToolsSpec();
+    const normalizeReasoningMaxTokens = (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      return Math.max(1, Math.round(n));
+    };
+    const model = String(options?.model || this._app.ai.model || "");
+    const reasoningCapabilities = modelReasoningCapabilities(model);
+    const reasoningEnabled = this._app?.ai?.options?.reasoning !== false && reasoningCapabilities.supportsReasoning;
+    const reasoningEffort = normalizeReasoningEffortForModel(this._app?.ai?.options?.reasoningEffort, reasoningCapabilities);
+    const reasoningSummary = normalizeReasoningSummaryForModel(this._app?.ai?.options?.reasoningSummary, reasoningCapabilities);
+    const textVerbosity = normalizeTextVerbosity(this._app?.ai?.options?.brevityMode, model);
+    const serviceTier = toResponsesServiceTier(this._app?.ai?.options?.serviceTier);
+    const toolsMode = normalizeToolsMode(this._app?.ai?.options?.toolsMode);
+    const reasoningMaxTokens = normalizeReasoningMaxTokens(this._app?.ai?.options?.reasoningMaxTokens);
+    const tools = toolsMode === "none" ? [] : this._toolSpecModule.agentToolsSpec();
+    const toolChoice = toolsMode === "none"
+      ? "none"
+      : toolsMode === "require"
+        ? "required"
+        : "auto";
     const payload = {
-      model: String(options?.model || this._app.ai.model || ""),
+      model,
       tools,
-      tool_choice: "auto",
-      parallel_tool_calls: true,
     };
+    payload.tool_choice = toolChoice;
+    if (toolsMode !== "none") payload.parallel_tool_calls = true;
     if (reasoningEnabled) {
-      payload.reasoning = {
+      const reasoning = {
         effort: reasoningEffort,
-        summary: "auto",
       };
+      if (reasoningSummary !== "off") reasoning.summary = reasoningSummary;
+      payload.reasoning = reasoning;
     }
+    if (textVerbosity) payload.text = { verbosity: textVerbosity };
+    if (reasoningMaxTokens > 0) payload.max_output_tokens = reasoningMaxTokens;
+    if (serviceTier === "flex" || serviceTier === "priority") payload.service_tier = serviceTier;
     const hasComputerUse = Array.isArray(tools) && tools.some((tool) => String(tool?.type || "") === "computer_use_preview");
     if (hasComputerUse) payload.truncation = "auto";
     const previousResponseId = String(options?.previousResponseId || "").trim();

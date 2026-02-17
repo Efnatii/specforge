@@ -160,8 +160,13 @@ function createAgentRuntimeTurnInternal(ctx) {
     const input = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
     const userText = String(options?.rawUserText || rawUserText || "").trim();
     const turnId = String(options?.turnId || app.ai.turnId || "");
-    const intentToUseTools = isActionableAgentPrompt(userText);
-    const intentToMutate = AI_MUTATION_INTENT_RE.test(userText);
+    const toolsModeRaw = String(app?.ai?.options?.toolsMode || "auto").trim().toLowerCase();
+    const toolsMode = toolsModeRaw === "none" || toolsModeRaw === "auto" || toolsModeRaw === "prefer" || toolsModeRaw === "require"
+      ? toolsModeRaw
+      : "auto";
+    const toolsDisabled = toolsMode === "none";
+    const intentToUseTools = !toolsDisabled && isActionableAgentPrompt(userText);
+    const intentToMutate = !toolsDisabled && AI_MUTATION_INTENT_RE.test(userText);
     const expectedMutations = estimateExpectedMutationCount(userText, intentToMutate);
     const toolStats = {
       totalToolCalls: 0,
@@ -178,18 +183,20 @@ function createAgentRuntimeTurnInternal(ctx) {
     const startedAt = Date.now();
     let roundsUsed = 0;
 
-    try {
-      await prepareToolResources({ turnId });
-    } catch (err) {
-      if (err?.no_fallback) throw err;
-      const hasAttachments = Array.isArray(app?.ai?.attachments) && app.ai.attachments.length > 0;
-      addExternalJournal("file_search.sync.error", String(err?.message || err), {
-        turn_id: turnId,
-        level: "warning",
-        status: "error",
-        meta: { attachments: hasAttachments ? app.ai.attachments.length : 0 },
-      });
-      if (hasAttachments) throw err;
+    if (!toolsDisabled) {
+      try {
+        await prepareToolResources({ turnId });
+      } catch (err) {
+        if (err?.no_fallback) throw err;
+        const hasAttachments = Array.isArray(app?.ai?.attachments) && app.ai.attachments.length > 0;
+        addExternalJournal("file_search.sync.error", String(err?.message || err), {
+          turn_id: turnId,
+          level: "warning",
+          status: "error",
+          meta: { attachments: hasAttachments ? app.ai.attachments.length : 0 },
+        });
+        if (hasAttachments) throw err;
+      }
     }
 
     let response = await callOpenAiResponses(buildAgentResponsesPayload({
@@ -223,7 +230,7 @@ function createAgentRuntimeTurnInternal(ctx) {
           return "computer_use_preview недоступен в этом клиенте без browser executor. Используйте web_search.";
         }
 
-        if (shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text) && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
+        if (!toolsDisabled && shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text) && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
           const reason = buildAgentRetryReason(expectedMutations, toolStats, text);
           toolStats.forcedRetries += 1;
           addTableJournal("agent.retry", `Автоповтор: ${reason}`, {

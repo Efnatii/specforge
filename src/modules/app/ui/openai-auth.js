@@ -11,6 +11,7 @@ export class OpenAiAuthModule {
     renderOpenAiModelPrice,
     saveOpenAiApiKey,
     saveOpenAiModel,
+    saveAiOptions,
     addChangesJournal,
     addExternalJournal,
     renderAiUi,
@@ -27,6 +28,7 @@ export class OpenAiAuthModule {
     if (typeof renderOpenAiModelPrice !== "function") throw new Error("OpenAiAuthModule requires renderOpenAiModelPrice()");
     if (typeof saveOpenAiApiKey !== "function") throw new Error("OpenAiAuthModule requires saveOpenAiApiKey()");
     if (typeof saveOpenAiModel !== "function") throw new Error("OpenAiAuthModule requires saveOpenAiModel()");
+    if (typeof saveAiOptions !== "function") throw new Error("OpenAiAuthModule requires saveAiOptions()");
     if (typeof addChangesJournal !== "function") throw new Error("OpenAiAuthModule requires addChangesJournal()");
     if (typeof addExternalJournal !== "function") throw new Error("OpenAiAuthModule requires addExternalJournal()");
     if (typeof renderAiUi !== "function") throw new Error("OpenAiAuthModule requires renderAiUi()");
@@ -43,6 +45,7 @@ export class OpenAiAuthModule {
     this._renderOpenAiModelPrice = renderOpenAiModelPrice;
     this._saveOpenAiApiKey = saveOpenAiApiKey;
     this._saveOpenAiModel = saveOpenAiModel;
+    this._saveAiOptions = saveAiOptions;
     this._addChangesJournal = addChangesJournal;
     this._addExternalJournal = addExternalJournal;
     this._renderAiUi = renderAiUi;
@@ -61,13 +64,13 @@ export class OpenAiAuthModule {
     ) {
       const key = this._window.prompt("Введите OpenAI API key (формат sk-...)");
       if (key === null) return;
-      await this.connectOpenAiWithKey(key, this._app.ai.model);
+      await this.connectOpenAiWithKey(key, this._app.ai.model, this._app?.ai?.options?.serviceTier || "standard");
       return;
     }
 
     this._renderOpenAiModelOptions();
     if (this._dom.openAiModelSelect) {
-      this._dom.openAiModelSelect.value = this._isKnownAiModel(this._app.ai.model) ? this._app.ai.model : this._defaultModel;
+      this._selectModelOption(this._app.ai.model, this._app?.ai?.options?.serviceTier || "standard");
     }
     this._renderOpenAiModelPrice();
     this._dom.openAiApiKeyInput.value = "";
@@ -87,8 +90,8 @@ export class OpenAiAuthModule {
     }
     if (!this._dom.openAiApiKeyInput) return;
 
-    const selectedModel = String(this._dom.openAiModelSelect?.value || this._defaultModel).trim();
-    if (!this._isKnownAiModel(selectedModel)) {
+    const selected = this._readModelSelection();
+    if (!this._isKnownAiModel(selected.modelId)) {
       this._toast("Выберите корректную модель");
       return;
     }
@@ -96,9 +99,12 @@ export class OpenAiAuthModule {
     const token = String(this._dom.openAiApiKeyInput.value || "").trim();
     if (!token) {
       if (this._app.ai.connected) {
-        this._app.ai.model = selectedModel;
+        const tier = this._resolveServiceTierForModel(selected.modelId, selected.serviceTier);
+        this._app.ai.model = selected.modelId;
+        this._app.ai.options.serviceTier = tier;
         this._saveOpenAiModel();
-        this._addChangesJournal("auth.model", selectedModel);
+        this._saveAiOptions();
+        this._addChangesJournal("auth.model", `${selected.modelId} [${tier}]`);
         this._dom.openAiAuthDialog.close();
         this._toast("Настройки сохранены");
         return;
@@ -108,12 +114,12 @@ export class OpenAiAuthModule {
     }
 
     if (this._dom.btnOpenAiSave) this._dom.btnOpenAiSave.disabled = true;
-    const ok = await this.connectOpenAiWithKey(token, selectedModel);
+    const ok = await this.connectOpenAiWithKey(token, selected.modelId, selected.serviceTier);
     if (this._dom.btnOpenAiSave) this._dom.btnOpenAiSave.disabled = false;
     if (ok && this._dom.openAiAuthDialog?.open) this._dom.openAiAuthDialog.close();
   }
 
-  async connectOpenAiWithKey(token, modelId = this._defaultModel) {
+  async connectOpenAiWithKey(token, modelId = this._defaultModel, serviceTier = "standard") {
     const clean = String(token || "").trim();
     if (!clean) {
       this._toast("Ключ не введен");
@@ -121,6 +127,7 @@ export class OpenAiAuthModule {
     }
 
     const model = this._isKnownAiModel(modelId) ? modelId : this._defaultModel;
+    const tier = this._normalizeServiceTier(serviceTier, "standard");
     const verified = await this._verifyOpenAiApiKey(clean);
     if (!verified.ok) {
       this._toast(verified.error || "OpenAI: ключ не принят");
@@ -136,15 +143,73 @@ export class OpenAiAuthModule {
       }
     }
 
+    const finalTier = this._resolveServiceTierForModel(finalModel, tier);
+
     this._app.ai.apiKey = clean;
     this._app.ai.model = finalModel;
+    this._app.ai.options.serviceTier = finalTier;
     this._app.ai.connected = true;
     this._saveOpenAiApiKey();
     this._saveOpenAiModel();
-    this._addChangesJournal("auth.connect", finalModel);
+    this._saveAiOptions();
+    this._addChangesJournal("auth.connect", `${finalModel} [${finalTier}]`);
     this._renderAiUi();
     this._toast("Ключ API сохранен");
     return true;
+  }
+
+  _normalizeServiceTier(value, fallback = "standard") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "flex" || raw === "standard" || raw === "priority") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "flex" || fb === "standard" || fb === "priority") return fb;
+    return "standard";
+  }
+
+  _modelMetaById(modelId) {
+    const id = String(modelId || "").trim();
+    return this._aiModels.find((m) => String(m?.id || "") === id) || null;
+  }
+
+  _resolveServiceTierForModel(modelId, desired = "standard") {
+    const meta = this._modelMetaById(modelId);
+    const preferred = this._normalizeServiceTier(desired, "standard");
+    const tiers = Array.isArray(meta?.tiers) ? meta.tiers.map((x) => this._normalizeServiceTier(x, "standard")) : ["standard"];
+    if (tiers.includes(preferred)) return preferred;
+    if (tiers.includes("standard")) return "standard";
+    return tiers[0] || "standard";
+  }
+
+  _readModelSelection() {
+    const select = this._dom.openAiModelSelect;
+    const rawValue = String(select?.value || this._defaultModel).trim();
+    const selectedOption = select?.selectedOptions?.[0] || null;
+    const splitIdx = rawValue.indexOf("::");
+    const parsedModel = splitIdx >= 0 ? rawValue.slice(0, splitIdx) : rawValue;
+    const parsedTier = splitIdx >= 0 ? rawValue.slice(splitIdx + 2) : "standard";
+    const modelId = String(selectedOption?.dataset?.modelId || parsedModel || this._defaultModel).trim();
+    const serviceTier = this._resolveServiceTierForModel(modelId, selectedOption?.dataset?.serviceTier || parsedTier || "standard");
+    return { modelId, serviceTier };
+  }
+
+  _selectModelOption(modelId, serviceTier = "standard") {
+    const select = this._dom.openAiModelSelect;
+    if (!select) return;
+    const id = this._isKnownAiModel(modelId) ? String(modelId || "").trim() : this._defaultModel;
+    const tier = this._resolveServiceTierForModel(id, serviceTier);
+    const desired = `${id}::${tier}`;
+    if (Array.from(select.options || []).some((o) => String(o.value || "") === desired)) {
+      select.value = desired;
+      return;
+    }
+    const fallback = Array.from(select.options || []).find((o) => String(o?.dataset?.modelId || "") === id);
+    if (fallback) {
+      select.value = String(fallback.value || "");
+      return;
+    }
+    if (select.options && select.options.length) {
+      select.value = String(select.options[0].value || "");
+    }
   }
 
   disconnectOpenAi() {

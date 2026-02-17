@@ -142,10 +142,18 @@ function createAgentStateToolsInternal(ctx) {
 
   async function tryExecute(name, args, turnCtx = null) {
     if (name === "ask_user_question") {
-      const allowQuestions = app?.ai?.options?.allowQuestions !== false;
+      const clarifyModeRaw = String(app?.ai?.options?.reasoningClarify || "minimal").trim().toLowerCase();
+      const clarifyMode = clarifyModeRaw === "never" || clarifyModeRaw === "minimal" || clarifyModeRaw === "normal"
+        ? clarifyModeRaw
+        : "minimal";
+      const riskyModeRaw = String(app?.ai?.options?.riskyActionsMode || "confirm").trim().toLowerCase();
+      const riskyMode = riskyModeRaw === "confirm" || riskyModeRaw === "allow_if_asked" || riskyModeRaw === "never"
+        ? riskyModeRaw
+        : "confirm";
+      const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
       if (!allowQuestions) {
-        addTableJournal("ask_user_question", "Ошибка: вопросы пользователю запрещены настройкой");
-        return { ok: false, applied: 0, error: "questions are disabled (allowQuestions=off)" };
+        addTableJournal("ask_user_question", `Ошибка: вопросы пользователю запрещены настройкой (clarify=${clarifyMode}, risky=${riskyMode})`);
+        return { ok: false, applied: 0, error: `questions are disabled (clarify=${clarifyMode}, risky=${riskyMode})` };
       }
 
       const payload = normalizeQuestionPayload(args);

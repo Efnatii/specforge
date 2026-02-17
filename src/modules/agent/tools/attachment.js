@@ -7,8 +7,18 @@ const EXCEL_ATTACHMENT_MAX_SHEETS = 6;
 const EXCEL_ATTACHMENT_MAX_ROWS = 120;
 const EXCEL_ATTACHMENT_MAX_COLS = 20;
 const ATTACHMENT_CELL_MAX_CHARS = 240;
-const REASONING_EFFORT_ORDER = ["low", "medium", "high"];
+const REASONING_EFFORT_ORDER = ["low", "medium", "high", "xhigh"];
 const WEB_SEARCH_CONTEXT_SIZE_ORDER = ["low", "medium", "high"];
+const REASONING_DEPTH_ORDER = ["fast", "balanced", "deep"];
+const REASONING_VERIFY_ORDER = ["off", "basic", "strict"];
+const REASONING_SUMMARY_ORDER = ["off", "auto", "concise", "detailed"];
+const REASONING_CLARIFY_ORDER = ["never", "minimal", "normal"];
+const TOOLS_MODE_ORDER = ["none", "auto", "prefer", "require"];
+const BREVITY_MODE_ORDER = ["short", "normal", "detailed"];
+const OUTPUT_MODE_ORDER = ["plain", "bullets", "json"];
+const RISKY_ACTIONS_MODE_ORDER = ["confirm", "allow_if_asked", "never"];
+const STYLE_MODE_ORDER = ["clean", "verbose"];
+const CITATIONS_MODE_ORDER = ["off", "on"];
 
 export class AgentAttachmentModule {
   constructor({
@@ -141,9 +151,6 @@ export class AgentAttachmentModule {
     this._app.ai.reasoningPopoverOpen = false;
     if (!(option in this._app.ai.options)) return;
     this._app.ai.options[option] = !this._app.ai.options[option];
-    if (option === "allowQuestions" && !this._app.ai.options[option]) {
-      this._app.ai.pendingQuestion = null;
-    }
     this._saveAiOptions();
     this._addChangesJournal("ai.option", `${option}=${this._app.ai.options[option] ? "on" : "off"}`);
     this._renderAiUi();
@@ -153,6 +160,13 @@ export class AgentAttachmentModule {
     const target = e?.target || null;
     const webField = String(target?.dataset?.webSearchConfig || "");
     const reasoningField = String(target?.dataset?.reasoningConfig || "");
+    const updateReasoningOption = (key, value, journalKey = key) => {
+      if (this._app.ai.options[key] === value) return false;
+      this._app.ai.options[key] = value;
+      this._saveAiOptions();
+      this._addChangesJournal("ai.option", `${journalKey}=${value}`);
+      return true;
+    };
 
     if (webField === "country") {
       const next = this._normalizeWebSearchCountry(target.value, this._app.ai.options.webSearchCountry || "RU");
@@ -178,12 +192,77 @@ export class AgentAttachmentModule {
 
     if (reasoningField === "effort") {
       const next = this._normalizeReasoningEffort(target.value, this._app.ai.options.reasoningEffort || "medium");
-      if (this._app.ai.options.reasoningEffort !== next) {
-        this._app.ai.options.reasoningEffort = next;
-        this._saveAiOptions();
-        this._addChangesJournal("ai.option", `reasoningEffort=${next}`);
-      }
+      updateReasoningOption("reasoningEffort", next, "reasoningEffort");
       this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "depth") {
+      const next = this._normalizeReasoningDepth(target.value, this._app.ai.options.reasoningDepth || "balanced");
+      updateReasoningOption("reasoningDepth", next, "reasoningDepth");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "verify") {
+      const next = this._normalizeReasoningVerify(target.value, this._app.ai.options.reasoningVerify || "basic");
+      updateReasoningOption("reasoningVerify", next, "reasoningVerify");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "summaryMode") {
+      const next = this._normalizeReasoningSummary(target.value, this._app.ai.options.reasoningSummary || "auto");
+      updateReasoningOption("reasoningSummary", next, "reasoningSummary");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "clarify") {
+      const next = this._normalizeReasoningClarify(target.value, this._app.ai.options.reasoningClarify || "minimal");
+      updateReasoningOption("reasoningClarify", next, "reasoningClarify");
+      if (next === "never") this._app.ai.pendingQuestion = null;
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "toolsMode") {
+      const next = this._normalizeToolsMode(target.value, this._app.ai.options.toolsMode || "auto");
+      updateReasoningOption("toolsMode", next, "toolsMode");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "brevityMode") {
+      const next = this._normalizeBrevityMode(target.value, this._app.ai.options.brevityMode || "normal");
+      updateReasoningOption("brevityMode", next, "brevityMode");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "outputMode") {
+      const next = this._normalizeOutputMode(target.value, this._app.ai.options.outputMode || "bullets");
+      updateReasoningOption("outputMode", next, "outputMode");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "riskyActionsMode") {
+      const next = this._normalizeRiskyActionsMode(target.value, this._app.ai.options.riskyActionsMode || "confirm");
+      updateReasoningOption("riskyActionsMode", next, "riskyActionsMode");
+      if (next === "never") this._app.ai.pendingQuestion = null;
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "styleMode") {
+      const next = this._normalizeStyleMode(target.value, this._app.ai.options.styleMode || "clean");
+      updateReasoningOption("styleMode", next, "styleMode");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "citationsMode") {
+      const next = this._normalizeCitationsMode(target.value, this._app.ai.options.citationsMode || "off");
+      updateReasoningOption("citationsMode", next, "citationsMode");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "maxTokens") {
+      const next = this._normalizeReasoningMaxTokens(target.value, this._app.ai.options.reasoningMaxTokens || 0);
+      updateReasoningOption("reasoningMaxTokens", next, "reasoningMaxTokens");
+      this._renderAiUi();
+      return;
     }
   }
 
@@ -227,6 +306,62 @@ export class AgentAttachmentModule {
     if (REASONING_EFFORT_ORDER.includes(raw)) return raw;
     const fb = String(fallback || "").trim().toLowerCase();
     return REASONING_EFFORT_ORDER.includes(fb) ? fb : "medium";
+  }
+
+  _normalizeEnum(value, allowed, fallback) {
+    const raw = String(value || "").trim().toLowerCase();
+    if (allowed.includes(raw)) return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    return allowed.includes(fb) ? fb : allowed[0];
+  }
+
+  _normalizeReasoningDepth(value, fallback = "balanced") {
+    return this._normalizeEnum(value, REASONING_DEPTH_ORDER, fallback);
+  }
+
+  _normalizeReasoningVerify(value, fallback = "basic") {
+    return this._normalizeEnum(value, REASONING_VERIFY_ORDER, fallback);
+  }
+
+  _normalizeReasoningSummary(value, fallback = "auto") {
+    return this._normalizeEnum(value, REASONING_SUMMARY_ORDER, fallback);
+  }
+
+  _normalizeReasoningClarify(value, fallback = "minimal") {
+    return this._normalizeEnum(value, REASONING_CLARIFY_ORDER, fallback);
+  }
+
+  _normalizeToolsMode(value, fallback = "auto") {
+    return this._normalizeEnum(value, TOOLS_MODE_ORDER, fallback);
+  }
+
+  _normalizeBrevityMode(value, fallback = "normal") {
+    return this._normalizeEnum(value, BREVITY_MODE_ORDER, fallback);
+  }
+
+  _normalizeOutputMode(value, fallback = "bullets") {
+    return this._normalizeEnum(value, OUTPUT_MODE_ORDER, fallback);
+  }
+
+  _normalizeRiskyActionsMode(value, fallback = "confirm") {
+    return this._normalizeEnum(value, RISKY_ACTIONS_MODE_ORDER, fallback);
+  }
+
+  _normalizeStyleMode(value, fallback = "clean") {
+    return this._normalizeEnum(value, STYLE_MODE_ORDER, fallback);
+  }
+
+  _normalizeCitationsMode(value, fallback = "off") {
+    return this._normalizeEnum(value, CITATIONS_MODE_ORDER, fallback);
+  }
+
+  _normalizeReasoningMaxTokens(value, fallback = 0) {
+    const raw = Number(value);
+    if (!Number.isFinite(raw) || raw <= 0) {
+      const fb = Number(fallback);
+      return Number.isFinite(fb) && fb > 0 ? Math.max(1, Math.round(fb)) : 0;
+    }
+    return Math.max(1, Math.round(raw));
   }
 
   _invalidateFileSearchSync() {

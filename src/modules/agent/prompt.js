@@ -566,7 +566,15 @@ export class AgentPromptModule {
           reasoning_requests: reasoningHistory.length,
         },
       });
-      const allowQuestions = this._app.ai.options?.allowQuestions !== false;
+      const clarifyModeRaw = String(this._app?.ai?.options?.reasoningClarify || "minimal").trim().toLowerCase();
+      const clarifyMode = clarifyModeRaw === "never" || clarifyModeRaw === "minimal" || clarifyModeRaw === "normal"
+        ? clarifyModeRaw
+        : "minimal";
+      const riskyModeRaw = String(this._app?.ai?.options?.riskyActionsMode || "confirm").trim().toLowerCase();
+      const riskyMode = riskyModeRaw === "confirm" || riskyModeRaw === "allow_if_asked" || riskyModeRaw === "never"
+        ? riskyModeRaw
+        : "confirm";
+      const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
       const pending = this._app.ai.pendingQuestion;
       const hasStructuredQuestion = Boolean(
         pending
@@ -589,7 +597,7 @@ export class AgentPromptModule {
           this._addChangesJournal("ai.task.question.blocked", `turn=${this._app.ai.turnId}`, {
             turn_id: this._app.ai.turnId,
             status: "done",
-            meta: { reason: "allowQuestions=off" },
+            meta: { reason: `questions_disabled(clarify=${clarifyMode},risky=${riskyMode})` },
           });
         }
         this._setPendingQuestion(null);
