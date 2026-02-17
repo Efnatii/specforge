@@ -55,6 +55,21 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
     };
   }
 
+  function normalizeWebSearchCountry(value, fallback = "RU") {
+    const raw = String(value || "").trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(raw)) return raw;
+    const fb = String(fallback || "").trim().toUpperCase();
+    return /^[A-Z]{2}$/.test(fb) ? fb : "RU";
+  }
+
+  function normalizeWebSearchContextSize(value, fallback = "high") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "low" || raw === "medium" || raw === "high") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "low" || fb === "medium" || fb === "high") return fb;
+    return "high";
+  }
+
   function agentToolsSpec() {
     const verifySchema = verificationParam();
     const allowQuestions = app?.ai?.options?.allowQuestions !== false;
@@ -70,7 +85,32 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
       ...stateSchemaFacade.buildStatePathTools(verifySchema),
     ];
 
-    if (app.ai.options.webSearch) tools.push({ type: "web_search_preview" });
+    if (app.ai.options.webSearch) {
+      tools.push({
+        type: "web_search",
+        user_location: {
+          type: "approximate",
+          country: normalizeWebSearchCountry(app?.ai?.options?.webSearchCountry, "RU"),
+        },
+        search_context_size: normalizeWebSearchContextSize(app?.ai?.options?.webSearchContextSize, "high"),
+      });
+      tools.push({
+        type: "computer_use_preview",
+        display_width: 1366,
+        display_height: 768,
+        environment: "browser",
+      });
+    }
+
+    const hasAttachments = Array.isArray(app?.ai?.attachments) && app.ai.attachments.length > 0;
+    const vectorStoreId = String(app?.ai?.fileSearch?.vectorStoreId || "").trim();
+    if (hasAttachments && vectorStoreId) {
+      tools.push({
+        type: "file_search",
+        vector_store_ids: [vectorStoreId],
+        max_num_results: 8,
+      });
+    }
     return tools;
   }
 

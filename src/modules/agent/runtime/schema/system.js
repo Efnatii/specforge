@@ -10,7 +10,7 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
   function agentSystemPrompt() {
     const allowQuestions = app?.ai?.options?.allowQuestions !== false;
     const selectedRangeInstruction = "If the user asks about selected cells or a highlighted range, call get_selection first and use its result.";
-    const attachmentInstruction = "If the user asks to use attached files, call list_attachments and read_attachment before answering.";
+    const attachmentInstruction = "If attached files exist, use file_search first. For exact excerpts, call list_attachments and read_attachment.";
     return [
       "Ты AI-агент внутри SpecForge.",
       "Ты можешь читать и изменять таблицы и состояние проекта через tools. Для таблиц используй list_sheets, set_active_sheet, read_range, find_cells, write_cells, write_matrix, copy_range, fill_range, replace_in_range, clear_range, clear_sheet_overrides, get_selection.",

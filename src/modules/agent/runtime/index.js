@@ -4,6 +4,8 @@ import { AgentRuntimeToolSpecModule } from "./schema/spec.js";
 import { AgentRuntimeResponsesModule } from "./responses.js";
 import { AgentRuntimeTurnModule } from "./turn.js";
 
+const FILE_SEARCH_MAX_AGE_MS = 60 * 60 * 1000;
+
 export class AgentRuntimeModule {
   constructor(ctx) {
     const {
@@ -52,8 +54,13 @@ export class AgentRuntimeModule {
     } = deps;
 
     this._app = app;
+    this._fetch = fetchFn || ((...args) => globalThis.fetch(...args));
+    this._addExternalJournal = addExternalJournal;
+    this._disconnectOpenAi = disconnectOpenAi;
     this._toolSpecModule = new AgentRuntimeToolSpecModule({ app });
     this.buildAgentResponsesPayload = this.buildAgentResponsesPayload.bind(this);
+    this.ensureFileSearchReady = this.ensureFileSearchReady.bind(this);
+    this._fileSearchCleanupTimer = 0;
 
     const promptModule = new AgentRuntimePromptModule({
       app,
@@ -134,6 +141,7 @@ export class AgentRuntimeModule {
         normalizeToolResult: policyModule.normalizeToolResult,
         isMutationToolName: policyModule.isMutationToolName,
         updateAgentTurnWebEvidence: responsesModule.updateAgentTurnWebEvidence,
+        prepareToolResources: this.ensureFileSearchReady,
       },
     });
 
@@ -174,12 +182,315 @@ export class AgentRuntimeModule {
     this.pushUnique = responsesModule.pushUnique;
   }
 
+  _ensureFileSearchState() {
+    if (!this._app.ai.fileSearch || typeof this._app.ai.fileSearch !== "object") {
+      this._app.ai.fileSearch = {
+        vectorStoreId: "",
+        attachmentsSignature: "",
+        syncedAt: 0,
+      };
+    }
+    return this._app.ai.fileSearch;
+  }
+
+  _resetFileSearchState(state = this._ensureFileSearchState()) {
+    state.vectorStoreId = "";
+    state.attachmentsSignature = "";
+    state.syncedAt = 0;
+    return state;
+  }
+
+  _isFileSearchExpired(state = this._ensureFileSearchState(), nowTs = Date.now()) {
+    const syncedAt = Math.max(0, Number(state?.syncedAt || 0));
+    if (!syncedAt) return false;
+    return (nowTs - syncedAt) >= FILE_SEARCH_MAX_AGE_MS;
+  }
+
+  _clearFileSearchCleanupTimer() {
+    if (!this._fileSearchCleanupTimer) return;
+    if (typeof globalThis.clearTimeout === "function") {
+      globalThis.clearTimeout(this._fileSearchCleanupTimer);
+    }
+    this._fileSearchCleanupTimer = 0;
+  }
+
+  _scheduleFileSearchCleanup(vectorStoreId, syncedAt = Date.now(), turnId = "") {
+    this._clearFileSearchCleanupTimer();
+    const id = String(vectorStoreId || "").trim();
+    if (!id) return;
+    if (typeof globalThis.setTimeout !== "function") return;
+
+    const elapsed = Math.max(0, Date.now() - Math.max(0, Number(syncedAt || 0)));
+    const delayMs = Math.max(1000, FILE_SEARCH_MAX_AGE_MS - elapsed);
+    this._fileSearchCleanupTimer = globalThis.setTimeout(() => {
+      this._fileSearchCleanupTimer = 0;
+      void (async () => {
+        try {
+          await this._deleteVectorStore(id, {
+            turnId: String(turnId || this._app.ai.turnId || ""),
+            reason: "ttl_1h",
+          });
+          const state = this._ensureFileSearchState();
+          if (String(state.vectorStoreId || "").trim() === id) this._resetFileSearchState(state);
+        } catch (err) {
+          if (err?.no_fallback) return;
+        }
+      })();
+    }, delayMs);
+  }
+
+  _safeAttachmentFileName(rawName, idx = 0) {
+    const base = String(rawName || `attachment-${idx + 1}`)
+      .replace(/[\\/:*?"<>|]+/g, "_")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80);
+    if (!base) return `attachment-${idx + 1}.txt`;
+    return /\.(txt|md|csv|json|xml|yaml|yml)$/i.test(base) ? base : `${base}.txt`;
+  }
+
+  _buildFileSearchDocs() {
+    const attachments = Array.isArray(this._app?.ai?.attachments) ? this._app.ai.attachments : [];
+    const docs = [];
+    for (let i = 0; i < attachments.length; i += 1) {
+      const file = attachments[i] || {};
+      const name = String(file?.name || `attachment-${i + 1}`).trim() || `attachment-${i + 1}`;
+      const parser = String(file?.parser || "").trim();
+      const parseError = String(file?.parse_error || "").trim();
+      const textRaw = String(file?.text || "");
+      const text = textRaw.slice(0, 180000);
+      const meta = [
+        `name: ${name}`,
+        `id: ${String(file?.id || "").trim()}`,
+        `type: ${String(file?.type || "application/octet-stream").trim()}`,
+        `size: ${Math.max(0, Number(file?.size || 0))}`,
+        `parser: ${parser || "n/a"}`,
+        `truncated: ${Boolean(file?.truncated) ? "yes" : "no"}`,
+      ];
+      if (parseError) meta.push(`parse_error: ${parseError.slice(0, 240)}`);
+      const body = text.trim()
+        ? `Extracted content:\n${text}`
+        : "Extracted content: unavailable";
+      docs.push({
+        attachmentId: String(file?.id || "").trim() || `idx-${i}`,
+        name,
+        fileName: this._safeAttachmentFileName(name, i),
+        content: `${meta.join("\n")}\n\n${body}`.slice(0, 200000),
+      });
+    }
+    return docs;
+  }
+
+  _fileSearchSignature(docs) {
+    return docs
+      .map((doc) => {
+        const prefix = String(doc?.content || "").slice(0, 160).replace(/\s+/g, " ").trim();
+        return `${doc?.attachmentId || ""}:${doc?.fileName || ""}:${String(doc?.content || "").length}:${prefix}`;
+      })
+      .join("|")
+      .slice(0, 16000);
+  }
+
+  async _openAiJson(url, options = {}) {
+    const method = String(options?.method || "GET").toUpperCase();
+    const headers = { Authorization: `Bearer ${this._app.ai.apiKey}` };
+    const init = { method, headers };
+    if (options?.contentType) headers["Content-Type"] = options.contentType;
+    if (options?.body !== undefined) init.body = options.body;
+
+    const res = await this._fetch(url, init);
+    if (!res.ok) {
+      const bodyText = String(await res.text()).replace(/\s+/g, " ").trim().slice(0, 800);
+      if (res.status === 401 || res.status === 403) {
+        this._disconnectOpenAi();
+        const e = new Error("openai unauthorized");
+        e.no_fallback = true;
+        throw e;
+      }
+      throw new Error(`openai ${res.status}: ${bodyText || "unknown error"}`);
+    }
+    return res.json();
+  }
+
+  async _uploadOpenAiFile(fileName, content) {
+    if (typeof FormData !== "function" || typeof Blob !== "function") {
+      throw new Error("file upload is unavailable in this environment");
+    }
+    const form = new FormData();
+    form.append("purpose", "assistants");
+    form.append("file", new Blob([String(content || "")], { type: "text/plain" }), fileName);
+
+    const res = await this._fetch("https://api.openai.com/v1/files", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this._app.ai.apiKey}`,
+      },
+      body: form,
+    });
+    if (!res.ok) {
+      const bodyText = String(await res.text()).replace(/\s+/g, " ").trim().slice(0, 800);
+      if (res.status === 401 || res.status === 403) {
+        this._disconnectOpenAi();
+        const e = new Error("openai unauthorized");
+        e.no_fallback = true;
+        throw e;
+      }
+      throw new Error(`openai ${res.status}: ${bodyText || "file upload failed"}`);
+    }
+    return res.json();
+  }
+
+  async _deleteVectorStore(vectorStoreId, options = {}) {
+    const id = String(vectorStoreId || "").trim();
+    if (!id) return false;
+    const turnId = String(options?.turnId || this._app.ai.turnId || "");
+    const reason = String(options?.reason || "cleanup").trim() || "cleanup";
+
+    try {
+      const res = await this._fetch(`https://api.openai.com/v1/vector_stores/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${this._app.ai.apiKey}`,
+        },
+      });
+      if (res.status === 401 || res.status === 403) {
+        this._disconnectOpenAi();
+        const e = new Error("openai unauthorized");
+        e.no_fallback = true;
+        throw e;
+      }
+      if (!res.ok && res.status !== 404) {
+        const bodyText = String(await res.text()).replace(/\s+/g, " ").trim().slice(0, 800);
+        throw new Error(`vector_store delete failed ${res.status}: ${bodyText || "unknown error"}`);
+      }
+      this._addExternalJournal("file_search.cleanup", `deleted vector_store=${id}`, {
+        turn_id: turnId,
+        status: "completed",
+        meta: {
+          reason,
+          vector_store_id: id,
+          http_status: res.status,
+        },
+      });
+      return true;
+    } catch (err) {
+      if (err?.no_fallback) throw err;
+      this._addExternalJournal("file_search.cleanup.error", String(err?.message || err), {
+        turn_id: turnId,
+        level: "warning",
+        status: "error",
+        meta: {
+          reason,
+          vector_store_id: id,
+        },
+      });
+      return false;
+    }
+  }
+
+  async ensureFileSearchReady(options = {}) {
+    const docs = this._buildFileSearchDocs();
+    const turnId = String(options?.turnId || this._app.ai.turnId || "");
+    const state = this._ensureFileSearchState();
+    const currentVectorStoreId = String(state.vectorStoreId || "").trim();
+
+    if (!docs.length) {
+      this._clearFileSearchCleanupTimer();
+      if (currentVectorStoreId) {
+        await this._deleteVectorStore(currentVectorStoreId, {
+          turnId,
+          reason: "no_attachments",
+        });
+      }
+      this._resetFileSearchState(state);
+      return "";
+    }
+
+    const signature = this._fileSearchSignature(docs);
+    const ttlExpired = this._isFileSearchExpired(state);
+
+    if (currentVectorStoreId && state.attachmentsSignature === signature && !ttlExpired) {
+      this._scheduleFileSearchCleanup(currentVectorStoreId, state.syncedAt, turnId);
+      return currentVectorStoreId;
+    }
+
+    if (currentVectorStoreId) {
+      this._clearFileSearchCleanupTimer();
+      await this._deleteVectorStore(currentVectorStoreId, {
+        turnId,
+        reason: ttlExpired ? "ttl_1h" : "attachments_changed",
+      });
+      this._resetFileSearchState(state);
+    }
+
+    const startedAt = Date.now();
+    this._addExternalJournal("file_search.sync", `start files=${docs.length}`, {
+      turn_id: turnId,
+      status: "running",
+      meta: { files: docs.length },
+    });
+
+    const vectorStore = await this._openAiJson("https://api.openai.com/v1/vector_stores", {
+      method: "POST",
+      contentType: "application/json",
+      body: JSON.stringify({
+        name: `specforge-${Date.now()}`,
+        expires_after: { anchor: "last_active_at", days: 1 },
+      }),
+    });
+    const vectorStoreId = String(vectorStore?.id || "").trim();
+    if (!vectorStoreId) throw new Error("vector_store_id is missing");
+
+    for (let i = 0; i < docs.length; i += 1) {
+      const doc = docs[i];
+      const file = await this._uploadOpenAiFile(doc.fileName, doc.content);
+      const fileId = String(file?.id || "").trim();
+      if (!fileId) throw new Error(`file_id is missing for ${doc.fileName}`);
+      await this._openAiJson(`https://api.openai.com/v1/vector_stores/${vectorStoreId}/files`, {
+        method: "POST",
+        contentType: "application/json",
+        body: JSON.stringify({ file_id: fileId }),
+      });
+    }
+
+    state.vectorStoreId = vectorStoreId;
+    state.attachmentsSignature = signature;
+    state.syncedAt = Date.now();
+    this._scheduleFileSearchCleanup(vectorStoreId, state.syncedAt, turnId);
+
+    this._addExternalJournal("file_search.sync", `completed files=${docs.length}`, {
+      turn_id: turnId,
+      status: "completed",
+      duration_ms: Date.now() - startedAt,
+      meta: { files: docs.length, vector_store_id: vectorStoreId },
+    });
+
+    return vectorStoreId;
+  }
+
   buildAgentResponsesPayload(options = {}) {
+    const normalizeReasoningEffort = (value) => {
+      const effort = String(value || "").trim().toLowerCase();
+      if (effort === "low" || effort === "high" || effort === "medium") return effort;
+      return "medium";
+    };
+    const reasoningEnabled = this._app?.ai?.options?.reasoning !== false;
+    const reasoningEffort = normalizeReasoningEffort(this._app?.ai?.options?.reasoningEffort);
+    const tools = this._toolSpecModule.agentToolsSpec();
     const payload = {
       model: String(options?.model || this._app.ai.model || ""),
-      tools: this._toolSpecModule.agentToolsSpec(),
+      tools,
       tool_choice: "auto",
+      parallel_tool_calls: true,
     };
+    if (reasoningEnabled) {
+      payload.reasoning = {
+        effort: reasoningEffort,
+        summary: "auto",
+      };
+    }
+    const hasComputerUse = Array.isArray(tools) && tools.some((tool) => String(tool?.type || "") === "computer_use_preview");
+    if (hasComputerUse) payload.truncation = "auto";
     const previousResponseId = String(options?.previousResponseId || "").trim();
     if (previousResponseId) payload.previous_response_id = previousResponseId;
     if (!previousResponseId) {

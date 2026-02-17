@@ -160,7 +160,7 @@ function createAgentRuntimePromptInternal(ctx) {
         if (parseError) details.push(`parse_error=${parseError.slice(0, 120)}`);
         return `- ${String(f?.name || "file")} (${details.join(", ")})`;
       });
-      out.push(`Attached files:\n${files.join("\n")}\nUse list_attachments/read_attachment tools to inspect contents.`);
+      out.push(`Attached files:\n${files.join("\n")}\nUse file_search first; use list_attachments/read_attachment for exact fragments.`);
     }
     return out.join("\n\n").slice(0, 120000);
   }

@@ -27,11 +27,13 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
     const isContinuation = Boolean(payload?.previous_response_id);
     const model = String(payload?.model || app.ai.model || "");
     const toolsCount = Array.isArray(payload?.tools) ? payload.tools.length : 0;
+    const reasoningEffort = String(payload?.reasoning?.effort || "medium");
+    const reasoningSummary = String(payload?.reasoning?.summary || "");
     const continuationHasTools = isContinuation ? toolsCount > 0 : false;
     const requestId = uid();
     app.ai.currentRequestId = requestId;
 
-    addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${toolsCount}`, {
+    addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${toolsCount} reasoning=${reasoningEffort}`, {
       turn_id: options?.turnId || app.ai.turnId || "",
       request_id: requestId,
       status: "start",
@@ -41,6 +43,8 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
         continuation: isContinuation,
         tools_count: toolsCount,
         continuation_has_tools: continuationHasTools,
+        reasoning_effort: reasoningEffort,
+        reasoning_summary: reasoningSummary || null,
       },
     });
 

@@ -33,13 +33,15 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     const model = String(payload?.model || app.ai.model || "");
     const isContinuation = Boolean(payload?.previous_response_id);
     const toolsCount = Array.isArray(payload?.tools) ? payload.tools.length : 0;
+    const reasoningEffort = String(payload?.reasoning?.effort || "medium");
+    const reasoningSummary = String(payload?.reasoning?.summary || "");
     const continuationHasTools = isContinuation ? toolsCount > 0 : false;
     const requestId = uid();
     const turnId = options?.turnId || app.ai.turnId || "";
     app.ai.currentRequestId = requestId;
     const timeoutMs = Math.max(30000, num(options?.timeout_ms, 180000));
 
-    addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${toolsCount}`, {
+    addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${toolsCount} reasoning=${reasoningEffort}`, {
       turn_id: turnId,
       request_id: requestId,
       status: "start",
@@ -49,6 +51,8 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         continuation: isContinuation,
         tools_count: toolsCount,
         continuation_has_tools: continuationHasTools,
+        reasoning_effort: reasoningEffort,
+        reasoning_summary: reasoningSummary || null,
       },
     });
 

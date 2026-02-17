@@ -52,7 +52,54 @@ function createAiJournalInternal(ctx) {
     timer: 0,
     kinds: new Set(),
   };
+  const REASONING_EFFORT_ORDER = ["low", "medium", "high"];
+  const WEB_SEARCH_CONTEXT_SIZE_ORDER = ["low", "medium", "high"];
+  const REASONING_EFFORT_LABELS = {
+    low: "Низкий",
+    medium: "Средний",
+    high: "Высокий",
+  };
   ensureJournalUiState();
+
+function normalizeReasoningEffort(value, fallback = "medium") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (REASONING_EFFORT_ORDER.includes(normalized)) return normalized;
+  const fb = String(fallback || "").trim().toLowerCase();
+  return REASONING_EFFORT_ORDER.includes(fb) ? fb : "medium";
+}
+
+function reasoningEffortLabel(value) {
+  const effort = normalizeReasoningEffort(value, "medium");
+  return REASONING_EFFORT_LABELS[effort] || effort;
+}
+
+function reasoningEffortBadge(value) {
+  const effort = normalizeReasoningEffort(value, "medium");
+  if (effort === "low") return "L";
+  if (effort === "high") return "H";
+  return "M";
+}
+
+function normalizeWebSearchCountry(value, fallback = "RU") {
+  const raw = String(value || "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(raw)) return raw;
+  const fb = String(fallback || "").trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(fb) ? fb : "RU";
+}
+
+function normalizeWebSearchContextSize(value, fallback = "high") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (WEB_SEARCH_CONTEXT_SIZE_ORDER.includes(raw)) return raw;
+  const fb = String(fallback || "").trim().toLowerCase();
+  return WEB_SEARCH_CONTEXT_SIZE_ORDER.includes(fb) ? fb : "high";
+}
+
+function webSearchContextSizeLabel(value) {
+  const size = normalizeWebSearchContextSize(value, "high");
+  if (size === "low") return "low";
+  if (size === "medium") return "medium";
+  return "max";
+}
 
 function loadAiSettings() {
   try {
@@ -74,11 +121,17 @@ function loadAiSettings() {
     const raw = storage.getItem(STORAGE_KEYS.agentOptions);
     if (raw) {
       const parsed = JSON.parse(raw);
-      for (const k of ["webSearch", "allowQuestions"]) {
+      for (const k of ["webSearch", "reasoning", "allowQuestions"]) {
         if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
       }
+      app.ai.options.reasoningEffort = normalizeReasoningEffort(parsed.reasoningEffort, app.ai.options.reasoningEffort || "medium");
+      app.ai.options.webSearchCountry = normalizeWebSearchCountry(parsed.webSearchCountry, app.ai.options.webSearchCountry || "RU");
+      app.ai.options.webSearchContextSize = normalizeWebSearchContextSize(parsed.webSearchContextSize, app.ai.options.webSearchContextSize || "high");
     }
   } catch {}
+
+  app.ai.webSearchPopoverOpen = false;
+  app.ai.reasoningPopoverOpen = false;
 
   try {
     const rawWidth = num(storage.getItem(STORAGE_KEYS.sidebarWidth), app.ui.sidebarWidth);
@@ -155,18 +208,92 @@ function renderAiUi() {
 function renderAgentChips() {
   if (!dom.agentChips) return;
   const parts = [];
+  const gearIcon = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM4 12h2m12 0h2M12 4v2m0 12v2M6.3 6.3l1.4 1.4m8.6 8.6 1.4 1.4m0-11.4-1.4 1.4m-8.6 8.6-1.4 1.4\" /></svg>";
+  const selectedAttr = (current, value) => (current === value ? " selected" : "");
 
-  for (const [key, title] of Object.entries({
-    webSearch: "Веб-поиск",
-    allowQuestions: "Вопросы ИИ",
-  })) {
-    if (!app.ai.options[key]) continue;
-    parts.push(`<span class="agent-chip"><b>${esc(key)}</b><span>${esc(title)}</span></span>`);
+  if (app.ai.options.webSearch) {
+    const country = normalizeWebSearchCountry(app.ai.options.webSearchCountry, "RU");
+    const contextSize = normalizeWebSearchContextSize(app.ai.options.webSearchContextSize, "high");
+    const contextSizeLabel = webSearchContextSizeLabel(contextSize);
+    const wrapCls = app.ai.webSearchPopoverOpen
+      ? "agent-tool-chip-wrap agent-web-search-wrap is-open"
+      : "agent-tool-chip-wrap agent-web-search-wrap";
+    const chipCls = app.ai.webSearchPopoverOpen
+      ? "agent-chip agent-tool-chip is-selected"
+      : "agent-chip agent-tool-chip";
+    parts.push(`<div class="${wrapCls}" data-web-search-wrap>
+      <button type="button" class="${chipCls}" data-ai-chip-option="webSearchSettings" title="Web search settings" aria-label="Web search settings">
+        <b>webSearch</b>
+        <span>Web search</span>
+        ${gearIcon}
+      </button>
+      <div class="agent-web-search-popover" data-web-search-popover role="dialog" aria-label="Web search settings">
+        <div class="agent-web-search-head">
+          <strong>Web Search</strong>
+          <button type="button" class="agent-web-search-close" data-web-search-action="close" aria-label="Close settings">x</button>
+        </div>
+        <label class="agent-web-search-row">
+          <span>Country</span>
+          <select data-web-search-config="country">
+            <option value="RU"${selectedAttr(country, "RU")}>Russia (RU)</option>
+            <option value="US"${selectedAttr(country, "US")}>United States (US)</option>
+            <option value="DE"${selectedAttr(country, "DE")}>Germany (DE)</option>
+            <option value="GB"${selectedAttr(country, "GB")}>United Kingdom (GB)</option>
+            <option value="FR"${selectedAttr(country, "FR")}>France (FR)</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span>Context</span>
+          <select data-web-search-config="contextSize">
+            <option value="high"${selectedAttr(contextSize, "high")}>max</option>
+            <option value="medium"${selectedAttr(contextSize, "medium")}>medium</option>
+            <option value="low"${selectedAttr(contextSize, "low")}>low</option>
+          </select>
+        </label>
+        <div class="agent-web-search-summary" data-web-search-config="summary">enabled=on, country=${esc(country)}, search_context_size=${esc(contextSizeLabel)}</div>
+      </div>
+    </div>`);
+  }
+
+  if (app.ai.options.allowQuestions) {
+    parts.push('<span class="agent-chip"><b>allowQuestions</b><span>AI questions</span></span>');
+  }
+
+  if (app.ai.options.reasoning !== false) {
+    const effort = normalizeReasoningEffort(app.ai.options.reasoningEffort, "medium");
+    const wrapCls = app.ai.reasoningPopoverOpen
+      ? "agent-tool-chip-wrap agent-reasoning-wrap is-open"
+      : "agent-tool-chip-wrap agent-reasoning-wrap";
+    const chipCls = app.ai.reasoningPopoverOpen
+      ? "agent-chip agent-tool-chip is-selected"
+      : "agent-chip agent-tool-chip";
+    parts.push(`<div class="${wrapCls}" data-reasoning-wrap>
+      <button type="button" class="${chipCls}" data-ai-chip-option="reasoningSettings" title="Reasoning settings" aria-label="Reasoning settings">
+        <b>reasoning</b>
+        <span>${esc(reasoningEffortLabel(effort))}</span>
+        ${gearIcon}
+      </button>
+      <div class="agent-reasoning-popover" data-reasoning-popover role="dialog" aria-label="Reasoning settings">
+        <div class="agent-web-search-head">
+          <strong>Reasoning</strong>
+          <button type="button" class="agent-web-search-close" data-reasoning-action="close" aria-label="Close settings">x</button>
+        </div>
+        <label class="agent-web-search-row">
+          <span>Effort</span>
+          <select data-reasoning-config="effort">
+            <option value="low"${selectedAttr(effort, "low")}>low</option>
+            <option value="medium"${selectedAttr(effort, "medium")}>medium</option>
+            <option value="high"${selectedAttr(effort, "high")}>high</option>
+          </select>
+        </label>
+        <div class="agent-web-search-summary" data-reasoning-config="summary">enabled=on, effort=${esc(effort)}</div>
+      </div>
+    </div>`);
   }
 
   for (const f of app.ai.attachments) {
     const kb = Math.max(1, Math.round(num(f.size) / 1024));
-    parts.push(`<span class="agent-chip" data-chip-type="file" data-chip-id="${esc(f.id)}"><b>file</b><span>${esc(f.name)} (${kb} KB)</span><button type="button" class="remove" title="Открепить" aria-label="Открепить">×</button></span>`);
+    parts.push(`<span class="agent-chip" data-chip-type="file" data-chip-id="${esc(f.id)}"><b>file</b><span>${esc(f.name)} (${kb} KB)</span><button type="button" class="remove" title="Detach" aria-label="Detach">x</button></span>`);
   }
 
   dom.agentChips.innerHTML = parts.join("");
@@ -180,10 +307,31 @@ function renderAgentContextIcons() {
       btn.classList.toggle("is-selected", app.ai.attachments.length > 0);
       return;
     }
+    if (key === "reasoning") {
+      const enabled = app.ai.options.reasoning !== false;
+      const effort = normalizeReasoningEffort(app.ai.options.reasoningEffort, "medium");
+      btn.classList.toggle("is-selected", enabled);
+      btn.dataset.effort = effort;
+      const title = `Reasoning: ${enabled ? "on" : "off"}, effort=${effort}`;
+      btn.title = title;
+      btn.setAttribute("aria-label", `${title}. Click to toggle.`);
+      const badge = btn.querySelector("[data-ai-effort-badge]");
+      if (badge) {
+        badge.textContent = reasoningEffortBadge(effort);
+        badge.style.opacity = enabled ? "1" : "0.45";
+      }
+      return;
+    }
+    if (key === "webSearch") {
+      const title = `Web search: ${app.ai.options.webSearch ? "on" : "off"}`;
+      btn.title = title;
+      btn.setAttribute("aria-label", `${title}. Click to toggle.`);
+      btn.classList.toggle("is-selected", Boolean(app.ai.options.webSearch));
+      return;
+    }
     btn.classList.toggle("is-selected", Boolean(app.ai.options[key]));
   });
 }
-
 function hasLockedQuestionOptions() {
   const q = app.ai.pendingQuestion;
   if (!q || typeof q !== "object") return false;
@@ -253,6 +401,8 @@ function beginAgentStreamingEntry(turnId) {
   const entryId = uid();
   app.ai.streamEntryId = entryId;
   app.ai.streamDeltaHasPending = false;
+  app.ai.streamReasoningBuffer = "";
+  app.ai.streamReasoningDeltaCount = 0;
   if (app.ai.streamDeltaFlushTimer) {
     win.clearTimeout(app.ai.streamDeltaFlushTimer);
     app.ai.streamDeltaFlushTimer = 0;
@@ -287,6 +437,27 @@ function appendAgentStreamingDelta(entryId, delta) {
   }, STREAM_DELTA_FLUSH_MS);
 }
 
+function appendAgentStreamingReasoningDelta(entryId, delta, options = {}) {
+  const replace = Boolean(options?.replace);
+  const text = String(delta || "");
+  app.ai.streamEntryId = entryId || app.ai.streamEntryId || "";
+  if (!text && !replace) return;
+
+  if (replace) {
+    app.ai.streamReasoningBuffer = text;
+  } else {
+    app.ai.streamReasoningBuffer = `${app.ai.streamReasoningBuffer || ""}${text}`;
+  }
+  app.ai.streamReasoningDeltaCount = num(app.ai.streamReasoningDeltaCount, 0) + 1;
+  app.ai.streamDeltaHasPending = true;
+
+  if (app.ai.streamDeltaFlushTimer) return;
+  app.ai.streamDeltaFlushTimer = win.setTimeout(() => {
+    app.ai.streamDeltaFlushTimer = 0;
+    flushAgentStreamingDeltaPatch();
+  }, STREAM_DELTA_FLUSH_MS);
+}
+
 function finalizeAgentStreamingEntry(entryId, finalText, status = "completed", level = "info", extraMeta = undefined) {
   if (app.ai.streamDeltaFlushTimer) {
     win.clearTimeout(app.ai.streamDeltaFlushTimer);
@@ -300,6 +471,8 @@ function finalizeAgentStreamingEntry(entryId, finalText, status = "completed", l
     stream: true,
     delta_count: num(app.ai.streamDeltaCount, 0),
     chars: text.length,
+    reasoning_delta_count: num(app.ai.streamReasoningDeltaCount, 0),
+    reasoning_chars: String(app.ai.streamReasoningBuffer || "").length,
   };
   if (extraMeta && typeof extraMeta === "object") {
     Object.assign(meta, extraMeta);
@@ -307,13 +480,23 @@ function finalizeAgentStreamingEntry(entryId, finalText, status = "completed", l
   patchJournalEntry(app.ai.chatJournal, entryId, { text, status, level, meta }, "chat");
   app.ai.streamEntryId = "";
   app.ai.streamDeltaHasPending = false;
+  app.ai.streamReasoningBuffer = "";
+  app.ai.streamReasoningDeltaCount = 0;
   rollupChatSummaryState();
 }
 
-function buildStreamingPreviewText(textRaw) {
+function clipStreamingPreviewText(textRaw, maxLen = STREAM_TEXT_PREVIEW_LIMIT) {
   const text = String(textRaw || "");
-  if (text.length <= STREAM_TEXT_PREVIEW_LIMIT) return text;
-  return `[streaming preview: ${text.length} chars]\n...\n${text.slice(-STREAM_TEXT_PREVIEW_LIMIT)}`;
+  if (text.length <= maxLen) return text;
+  return `[streaming preview: ${text.length} chars]\n...\n${text.slice(-maxLen)}`;
+}
+
+function buildStreamingPreviewText(textRaw, reasoningRaw = "") {
+  const answerText = clipStreamingPreviewText(textRaw);
+  const reasoningText = clipStreamingPreviewText(reasoningRaw, Math.min(8000, STREAM_TEXT_PREVIEW_LIMIT));
+  if (!reasoningText) return answerText;
+  if (!answerText) return `Размышления ИИ:\n${reasoningText}`;
+  return `Размышления ИИ:\n${reasoningText}\n\n-----\nПромежуточный ответ:\n${answerText}`;
 }
 
 function flushAgentStreamingDeltaPatch() {
@@ -322,12 +505,14 @@ function flushAgentStreamingDeltaPatch() {
 
   app.ai.streamDeltaHasPending = false;
   patchJournalEntry(app.ai.chatJournal, app.ai.streamEntryId, {
-    text: buildStreamingPreviewText(app.ai.lastStreamBuffer),
+    text: buildStreamingPreviewText(app.ai.lastStreamBuffer, app.ai.streamReasoningBuffer),
     status: "streaming",
     meta: {
       stream: true,
       delta_count: app.ai.streamDeltaCount,
       chars: String(app.ai.lastStreamBuffer || "").length,
+      reasoning_delta_count: app.ai.streamReasoningDeltaCount,
+      reasoning_chars: String(app.ai.streamReasoningBuffer || "").length,
       preview: true,
     },
   }, "chat");
@@ -644,7 +829,9 @@ function compactJournalTraceText(itRaw) {
   const it = normalizeJournalEntry(itRaw);
   const text = String(it.text || "").replace(/\s+/g, " ").trim();
   if (!text) return it.kind || "event";
-  if (text.length > 180) return `${text.slice(0, 177)}...`;
+  const isToolIo = it.kind === "tool.call" || it.kind === "tool.result";
+  const maxLen = isToolIo ? 340 : 180;
+  if (text.length > maxLen) return `${text.slice(0, maxLen - 3)}...`;
   return text;
 }
 
@@ -653,11 +840,12 @@ function renderJournalItemRow(itRaw) {
   const level = esc(String(it.level || "info"));
   const status = renderJournalStatusBadge(it.status);
   const aux = renderJournalAuxInfo(it);
+  const reasoning = renderJournalReasoningBlock(it.meta);
   const meta = renderJournalMetaBlock(it.meta);
   return `<div class="agent-journal-item level-${level}">
     <span class="time">${esc(journalTime(it.ts))}</span>
     <span class="kind">${esc(it.kind)}</span>
-    <span class="text">${status}${aux}${renderJournalTextHtml(it.text, { status: it.status })}${meta}</span>
+    <span class="text">${status}${aux}${renderJournalTextHtml(it.text, { status: it.status })}${reasoning}${meta}</span>
   </div>`;
 }
 
@@ -719,6 +907,45 @@ function renderJournalAuxInfo(it) {
   if (Number.isFinite(it.duration_ms)) parts.push(`${Math.max(0, Math.round(it.duration_ms))}ms`);
   if (!parts.length) return "";
   return `<div class="journal-aux">${esc(parts.join(" | "))}</div>`;
+}
+
+function normalizeJournalReasoningHistory(metaRaw) {
+  const src = metaRaw && typeof metaRaw === "object" ? metaRaw.reasoning_history : null;
+  if (!Array.isArray(src) || !src.length) return [];
+  const out = [];
+  for (const rowRaw of src) {
+    const row = rowRaw && typeof rowRaw === "object" ? rowRaw : {};
+    const summary = String(row.summary || "").trim();
+    const assistant = String(row.assistant_text || "").trim();
+    if (!summary && !assistant) continue;
+    out.push({
+      seq: Math.max(1, num(row.seq, out.length + 1)),
+      request_id: String(row.request_id || "").trim(),
+      response_id: String(row.response_id || "").trim(),
+      summary: summary.slice(0, 4000),
+      assistant_text: assistant.slice(0, 1400),
+    });
+  }
+  out.sort((a, b) => a.seq - b.seq);
+  return out;
+}
+
+function renderJournalReasoningBlock(metaRaw) {
+  const items = normalizeJournalReasoningHistory(metaRaw);
+  if (!items.length) return "";
+  const sections = items.map((item) => {
+    const lines = [];
+    lines.push(`Запрос #${item.seq}`);
+    const refs = [];
+    if (item.request_id) refs.push(`req=${item.request_id}`);
+    if (item.response_id) refs.push(`resp=${item.response_id}`);
+    if (refs.length) lines.push(refs.join(" | "));
+    if (item.summary) lines.push(`Summary:\n${item.summary}`);
+    if (item.assistant_text) lines.push(`Промежуточный ответ:\n${item.assistant_text}`);
+    return lines.join("\n");
+  });
+  const body = sections.join("\n\n-----\n\n");
+  return `<details class="journal-reasoning-block"><summary>${esc(`История размышлений: ${items.length}`)}</summary><pre>${esc(body)}</pre></details>`;
 }
 
 function renderJournalMetaBlock(meta) {
@@ -1197,6 +1424,7 @@ function moneyUsd(v) {
     addAgentLog,
     beginAgentStreamingEntry,
     appendAgentStreamingDelta,
+    appendAgentStreamingReasoningDelta,
     finalizeAgentStreamingEntry,
     buildStreamingPreviewText,
     flushAgentStreamingDeltaPatch,
@@ -1242,3 +1470,5 @@ function moneyUsd(v) {
     moneyUsd,
   };
 }
+
+

@@ -40,6 +40,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     normalizeToolResult,
     isMutationToolName,
     updateAgentTurnWebEvidence,
+    prepareToolResources,
   } = deps;
 
   if (!Number.isFinite(AGENT_MAX_FORCED_RETRIES) || AGENT_MAX_FORCED_RETRIES < 0) {
@@ -73,6 +74,86 @@ function createAgentRuntimeTurnInternal(ctx) {
   if (typeof normalizeToolResult !== "function") throw new Error("AgentRuntimeTurnModule requires deps.normalizeToolResult()");
   if (typeof isMutationToolName !== "function") throw new Error("AgentRuntimeTurnModule requires deps.isMutationToolName()");
   if (typeof updateAgentTurnWebEvidence !== "function") throw new Error("AgentRuntimeTurnModule requires deps.updateAgentTurnWebEvidence()");
+  if (typeof prepareToolResources !== "function") throw new Error("AgentRuntimeTurnModule requires deps.prepareToolResources()");
+
+  const TOOL_IO_TEXT_LIMIT = 320;
+
+  function compactToolIoText(value, maxLen = TOOL_IO_TEXT_LIMIT) {
+    let raw = "";
+    try {
+      raw = JSON.stringify(value);
+    } catch {
+      raw = String(value ?? "");
+    }
+    const text = String(raw || "").replace(/\s+/g, " ").trim();
+    if (!text) return "{}";
+    if (text.length <= maxLen) return text;
+    return `${text.slice(0, Math.max(0, maxLen - 3))}...`;
+  }
+
+  function summarizeToolOutput(result) {
+    const src = result && typeof result === "object" ? result : {};
+    const out = {
+      ok: Boolean(src.ok),
+      applied: Math.max(0, num(src.applied, 0)),
+    };
+
+    if (src.entity && typeof src.entity === "object") {
+      out.entity = {
+        type: String(src.entity.type || ""),
+        id: String(src.entity.id || ""),
+      };
+    }
+    if (Array.isArray(src.warnings) && src.warnings.length) out.warnings = src.warnings.slice(0, 3);
+    if (src.awaiting_user_input) out.awaiting_user_input = true;
+    if (src.error) {
+      out.error = String(src.error).replace(/\s+/g, " ").trim().slice(0, 180);
+    } else if (src.message && !src.ok) {
+      out.message = String(src.message).replace(/\s+/g, " ").trim().slice(0, 180);
+    }
+    if (src.selection && typeof src.selection === "object" && src.selection.range) {
+      out.selection = { range: String(src.selection.range || "") };
+    }
+    if (src.sheet && typeof src.sheet === "object" && src.sheet.id) {
+      out.sheet = { id: String(src.sheet.id || "") };
+    }
+    return out;
+  }
+
+  function extractReasoningItemsForInput(response) {
+    const out = [];
+    const src = Array.isArray(response?.output) ? response.output : [];
+    for (const item of src) {
+      if (String(item?.type || "") !== "reasoning") continue;
+      const id = String(item?.id || "").trim();
+      if (!id) continue;
+      const row = { type: "reasoning", id };
+      const encrypted = String(item?.encrypted_content || "").trim();
+      if (encrypted) row.encrypted_content = encrypted;
+      out.push(row);
+    }
+    return out;
+  }
+
+  function hasBuiltInToolUsage(response) {
+    const src = Array.isArray(response?.output) ? response.output : [];
+    for (const item of src) {
+      const type = String(item?.type || "").toLowerCase();
+      if (!type) continue;
+      if (type.includes("web_search")) return true;
+      if (type.includes("file_search")) return true;
+      if (type === "computer_call" || type.includes("computer_use")) return true;
+    }
+    return false;
+  }
+
+  function hasComputerUseCall(response) {
+    const src = Array.isArray(response?.output) ? response.output : [];
+    return src.some((item) => {
+      const type = String(item?.type || "").toLowerCase();
+      return type === "computer_call" || type.includes("computer_use");
+    });
+  }
 
   async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
     const modelId = currentAiModelMeta().id;
@@ -97,6 +178,20 @@ function createAgentRuntimeTurnInternal(ctx) {
     const startedAt = Date.now();
     let roundsUsed = 0;
 
+    try {
+      await prepareToolResources({ turnId });
+    } catch (err) {
+      if (err?.no_fallback) throw err;
+      const hasAttachments = Array.isArray(app?.ai?.attachments) && app.ai.attachments.length > 0;
+      addExternalJournal("file_search.sync.error", String(err?.message || err), {
+        turn_id: turnId,
+        level: "warning",
+        status: "error",
+        meta: { attachments: hasAttachments ? app.ai.attachments.length : 0 },
+      });
+      if (hasAttachments) throw err;
+    }
+
     let response = await callOpenAiResponses(buildAgentResponsesPayload({
       model: modelId,
       instructions: agentSystemPrompt(),
@@ -114,6 +209,19 @@ function createAgentRuntimeTurnInternal(ctx) {
       const calls = extractAgentFunctionCalls(response);
       if (!calls.length) {
         const text = extractAgentText(response);
+        const builtInToolUsed = hasBuiltInToolUsage(response);
+        const computerUseCalled = hasComputerUseCall(response);
+
+        if (!text && computerUseCalled) {
+          addExternalJournal("agent.computer_use.unsupported", "computer_use_preview requires browser executor", {
+            turn_id: turnId,
+            request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+            response_id: String(response?.id || ""),
+            level: "warning",
+            status: "error",
+          });
+          return "computer_use_preview недоступен в этом клиенте без browser executor. Используйте web_search.";
+        }
 
         if (shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text) && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
           const reason = buildAgentRetryReason(expectedMutations, toolStats, text);
@@ -156,7 +264,7 @@ function createAgentRuntimeTurnInternal(ctx) {
         if (intentToMutate && toolStats.mutationCalls === 0) {
           return "Изменения не применены: модель не вызвала инструменты изменения.";
         }
-        if (intentToUseTools && toolStats.totalToolCalls === 0) {
+        if (intentToUseTools && toolStats.totalToolCalls === 0 && !builtInToolUsed) {
           return "Действия не применены: модель не вызвала инструменты.";
         }
         if (intentToMutate && isAgentTextIncomplete(text)) {
@@ -181,39 +289,55 @@ function createAgentRuntimeTurnInternal(ctx) {
         }
         toolStats.totalToolCalls += 1;
         const args = parseJsonSafe(call.arguments, {});
-        addExternalJournal("tool.call", `${call.name}`, {
+        const summarizedArgs = summarizeToolArgs(args);
+        const callText = `${call.name} <= ${compactToolIoText(summarizedArgs)}`;
+        addExternalJournal("tool.call", callText, {
           turn_id: turnId,
           request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
           response_id: String(response?.id || ""),
           status: "running",
-          meta: { tool: call.name, args: compactForTool(args) },
+          meta: {
+            tool: call.name,
+            call_id: call.call_id || "",
+            input: compactForTool(args),
+          },
         });
-        addTableJournal("tool.call", `${call.name}`, {
+        addTableJournal("tool.call", callText, {
           turn_id: turnId,
           request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+          response_id: String(response?.id || ""),
           status: "running",
-          meta: { args: summarizeToolArgs(args) },
+          meta: {
+            tool: call.name,
+            call_id: call.call_id || "",
+            input: summarizedArgs,
+          },
         });
         const result = normalizeToolResult(call.name, await executeAgentTool(call.name, args, turnCtx));
-        addExternalJournal("tool.result", `${call.name}: ${result.ok ? "ok" : "error"}`, {
+        const resultSummary = summarizeToolOutput(result);
+        const resultText = `${call.name}: ${result.ok ? "ok" : "error"} => ${compactToolIoText(resultSummary)}`;
+        addExternalJournal("tool.result", resultText, {
           turn_id: turnId,
           request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
           response_id: String(response?.id || ""),
-          status: result.ok ? "completed" : "error",
-          level: result.ok ? "info" : "error",
-          meta: compactForTool(result),
-        });
-        addTableJournal("tool.result", `${call.name}: ${result.ok ? "ok" : "error"}, applied=${num(result.applied, 0)}`, {
-          turn_id: turnId,
-          request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
           status: result.ok ? "completed" : "error",
           level: result.ok ? "info" : "error",
           meta: {
             tool: call.name,
-            applied: num(result.applied, 0),
-            entity: result.entity || null,
-            warnings: result.warnings || [],
-            error: result.error || "",
+            call_id: call.call_id || "",
+            output: compactForTool(result),
+          },
+        });
+        addTableJournal("tool.result", resultText, {
+          turn_id: turnId,
+          request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+          response_id: String(response?.id || ""),
+          status: result.ok ? "completed" : "error",
+          level: result.ok ? "info" : "error",
+          meta: {
+            tool: call.name,
+            call_id: call.call_id || "",
+            output: resultSummary,
           },
         });
         if (isMutationToolName(call.name)) {
@@ -254,7 +378,7 @@ function createAgentRuntimeTurnInternal(ctx) {
       response = await callOpenAiResponses(buildAgentResponsesPayload({
         model: modelId,
         previousResponseId: response.id,
-        input: outputs,
+        input: [...extractReasoningItemsForInput(response), ...outputs],
       }), {
         turnId,
         onDelta: options?.onStreamDelta,

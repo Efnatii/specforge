@@ -136,6 +136,7 @@ export class AppBindingsModule {
       this._renderAiUi();
     };
     this._dom.agentChips.onclick = (e) => this._agentAttachmentApi.onAgentChipClick(e);
+    this._dom.agentChips.onchange = (e) => this._agentAttachmentApi.onAgentContextIconsChange(e);
     if (this._dom.btnCopyChatJournal) {
       this._dom.btnCopyChatJournal.onclick = () => {
         void this._copyJournal("chat");
@@ -171,8 +172,11 @@ export class AppBindingsModule {
         this._app.ai.pendingTask = "";
         this._app.ai.pendingQuestion = null;
         this._app.ai.lastStreamBuffer = "";
+        this._app.ai.streamReasoningBuffer = "";
         this._app.ai.streamEntryId = "";
         this._app.ai.streamDeltaHasPending = false;
+        this._app.ai.streamDeltaCount = 0;
+        this._app.ai.streamReasoningDeltaCount = 0;
         if (this._app.ai.streamDeltaFlushTimer) {
           this._window.clearTimeout(this._app.ai.streamDeltaFlushTimer);
           this._app.ai.streamDeltaFlushTimer = 0;
@@ -198,7 +202,10 @@ export class AppBindingsModule {
         this._renderAgentJournals();
       };
     }
-    if (this._dom.agentContextIcons) this._dom.agentContextIcons.onclick = (e) => this._agentAttachmentApi.onAgentContextIconsClick(e);
+    if (this._dom.agentContextIcons) {
+      this._dom.agentContextIcons.onclick = (e) => this._agentAttachmentApi.onAgentContextIconsClick(e);
+      this._dom.agentContextIcons.onchange = (e) => this._agentAttachmentApi.onAgentContextIconsChange(e);
+    }
     this._dom.btnAgentSend.onclick = () => {
       void this._agentPromptApi.sendAgentPrompt();
     };
@@ -282,6 +289,7 @@ export class AppBindingsModule {
     this._window.onmousemove = (e) => this._projectSheetSelectionApi.onViewportMouseMove(e);
     this._window.onmouseup = (e) => this._projectSheetSelectionApi.onViewportMouseUp(e);
     this._document.addEventListener("mousedown", (e) => this._projectSheetSelectionApi.onDocumentMouseDown(e), true);
+    this._document.addEventListener("click", (e) => this._agentAttachmentApi.onDocumentClick(e));
 
     this._dom.viewport.addEventListener("wheel", (e) => {
       e.preventDefault();

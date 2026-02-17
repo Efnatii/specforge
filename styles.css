@@ -367,6 +367,114 @@ body.sidebar-resizing * {
   gap: 5px;
 }
 
+.agent-web-search-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.agent-reasoning-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.agent-web-search-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  width: 220px;
+  border: 1px solid #2f2f2f;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+  display: none;
+  z-index: 12;
+}
+
+.agent-reasoning-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  width: 220px;
+  border: 1px solid #2f2f2f;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+  display: none;
+  z-index: 12;
+}
+
+.agent-web-search-wrap.is-open .agent-web-search-popover {
+  display: block;
+}
+
+.agent-reasoning-wrap.is-open .agent-reasoning-popover {
+  display: block;
+}
+
+.agent-web-search-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.agent-web-search-head strong {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.agent-web-search-close {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #404040;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.agent-web-search-close:hover {
+  background: #111;
+  color: #fff;
+}
+
+.agent-web-search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 10px;
+}
+
+.agent-web-search-row:last-of-type {
+  margin-bottom: 4px;
+}
+
+.agent-web-search-row select {
+  accent-color: #111;
+}
+
+.agent-web-search-row select {
+  width: 118px;
+  height: 22px;
+  border: 1px solid #3a3a3a;
+  background: #fff;
+  font-size: 10px;
+}
+
+.agent-web-search-summary {
+  border-top: 1px dashed #cecece;
+  padding-top: 4px;
+  font-size: 9px;
+  color: #2f2f2f;
+}
+
 .agent-question-frame {
   margin-top: 6px;
   border: 1px solid #3e3e3e;
@@ -424,6 +532,43 @@ body.sidebar-resizing * {
   justify-content: center;
 }
 
+.agent-icon-btn[data-ai-option="reasoning"] {
+  position: relative;
+}
+
+.agent-effort-badge {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  min-width: 11px;
+  height: 11px;
+  padding: 0 2px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 8px;
+  line-height: 9px;
+  font-weight: 700;
+  background: #fff;
+  color: #111;
+}
+
+.agent-icon-btn.is-selected .agent-effort-badge {
+  background: #111;
+  color: #fff;
+}
+
+.agent-icon-btn[data-ai-option="reasoning"][data-effort="low"] .agent-effort-badge {
+  border-color: #2e7d32;
+}
+
+.agent-icon-btn[data-ai-option="reasoning"][data-effort="medium"] .agent-effort-badge {
+  border-color: #1565c0;
+}
+
+.agent-icon-btn[data-ai-option="reasoning"][data-effort="high"] .agent-effort-badge {
+  border-color: #ad1457;
+}
+
 .agent-icon-btn svg {
   width: 14px;
   height: 14px;
@@ -449,6 +594,41 @@ body.sidebar-resizing * {
   padding: 2px 5px;
   font-size: 10px;
   max-width: 240px;
+}
+
+.agent-tool-chip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.agent-tool-chip {
+  appearance: none;
+  border: 1px solid #2f2f2f;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  padding: 1px 4px;
+  gap: 3px;
+  max-width: 190px;
+  line-height: 1.15;
+}
+
+.agent-tool-chip svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agent-tool-chip:hover,
+.agent-tool-chip.is-selected {
+  background: #111;
+  color: #fff;
 }
 
 .agent-chip b {
@@ -799,6 +979,29 @@ body.sidebar-resizing * {
   max-height: 220px;
   overflow: auto;
   white-space: pre;
+  user-select: text;
+}
+
+.journal-reasoning-block {
+  margin-top: 4px;
+  border: 1px solid #d1d1d1;
+  background: #fff;
+}
+
+.journal-reasoning-block summary {
+  cursor: pointer;
+  padding: 2px 6px;
+  font-weight: 700;
+}
+
+.journal-reasoning-block pre {
+  margin: 0;
+  padding: 6px;
+  border-top: 1px dashed #d7d7d7;
+  background: #fbfbfb;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
   user-select: text;
 }
 

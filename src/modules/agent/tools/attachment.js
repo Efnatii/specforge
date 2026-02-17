@@ -7,6 +7,8 @@ const EXCEL_ATTACHMENT_MAX_SHEETS = 6;
 const EXCEL_ATTACHMENT_MAX_ROWS = 120;
 const EXCEL_ATTACHMENT_MAX_COLS = 20;
 const ATTACHMENT_CELL_MAX_CHARS = 240;
+const REASONING_EFFORT_ORDER = ["low", "medium", "high"];
+const WEB_SEARCH_CONTEXT_SIZE_ORDER = ["low", "medium", "high"];
 
 export class AgentAttachmentModule {
   constructor({
@@ -39,6 +41,43 @@ export class AgentAttachmentModule {
   }
 
   onAgentChipClick(e) {
+    const webActionBtn = e.target.closest("[data-web-search-action]");
+    if (webActionBtn) {
+      const action = String(webActionBtn.dataset.webSearchAction || "");
+      if (action === "close") {
+        this._app.ai.webSearchPopoverOpen = false;
+        this._renderAiUi();
+      }
+      return;
+    }
+
+    const reasoningActionBtn = e.target.closest("[data-reasoning-action]");
+    if (reasoningActionBtn) {
+      const action = String(reasoningActionBtn.dataset.reasoningAction || "");
+      if (action === "close") {
+        this._app.ai.reasoningPopoverOpen = false;
+        this._renderAiUi();
+      }
+      return;
+    }
+
+    const settingsBtn = e.target.closest("[data-ai-chip-option]");
+    if (settingsBtn) {
+      const option = String(settingsBtn.dataset.aiChipOption || "");
+      if (option === "webSearchSettings") {
+        this._app.ai.reasoningPopoverOpen = false;
+        this._app.ai.webSearchPopoverOpen = !this._app.ai.webSearchPopoverOpen;
+        this._renderAiUi();
+        return;
+      }
+      if (option === "reasoningSettings") {
+        this._app.ai.webSearchPopoverOpen = false;
+        this._app.ai.reasoningPopoverOpen = !this._app.ai.reasoningPopoverOpen;
+        this._renderAiUi();
+        return;
+      }
+    }
+
     const remove = e.target.closest("button.remove");
     if (!remove) return;
     const chip = e.target.closest(".agent-chip");
@@ -49,7 +88,21 @@ export class AgentAttachmentModule {
     const id = chip.dataset.chipId;
     const removed = this._app.ai.attachments.find((f) => f.id === id);
     this._app.ai.attachments = this._app.ai.attachments.filter((f) => f.id !== id);
-    if (removed) this._addChangesJournal("ai.file.detach", removed.name);
+    if (removed) {
+      this._addChangesJournal("ai.file.detach", removed.name);
+      this._invalidateFileSearchSync();
+    }
+    this._renderAiUi();
+  }
+
+  onDocumentClick(e) {
+    if (!this._app.ai.webSearchPopoverOpen && !this._app.ai.reasoningPopoverOpen) return;
+    const target = e?.target || null;
+    if (!target || typeof target.closest !== "function") return;
+    if (target.closest("[data-web-search-wrap]")) return;
+    if (target.closest("[data-reasoning-wrap]")) return;
+    this._app.ai.webSearchPopoverOpen = false;
+    this._app.ai.reasoningPopoverOpen = false;
     this._renderAiUi();
   }
 
@@ -63,6 +116,29 @@ export class AgentAttachmentModule {
       return;
     }
 
+    if (option === "webSearch") {
+      const next = !Boolean(this._app.ai.options.webSearch);
+      this._app.ai.options.webSearch = next;
+      if (!next) this._app.ai.webSearchPopoverOpen = false;
+      this._saveAiOptions();
+      this._addChangesJournal("ai.option", `webSearch=${next ? "on" : "off"}`);
+      this._renderAiUi();
+      return;
+    }
+
+    if (option === "reasoning") {
+      const current = this._app.ai.options.reasoning !== false;
+      const next = !current;
+      this._app.ai.options.reasoning = next;
+      if (!next) this._app.ai.reasoningPopoverOpen = false;
+      this._saveAiOptions();
+      this._addChangesJournal("ai.option", `reasoning=${next ? "on" : "off"}`);
+      this._renderAiUi();
+      return;
+    }
+
+    this._app.ai.webSearchPopoverOpen = false;
+    this._app.ai.reasoningPopoverOpen = false;
     if (!(option in this._app.ai.options)) return;
     this._app.ai.options[option] = !this._app.ai.options[option];
     if (option === "allowQuestions" && !this._app.ai.options[option]) {
@@ -71,6 +147,44 @@ export class AgentAttachmentModule {
     this._saveAiOptions();
     this._addChangesJournal("ai.option", `${option}=${this._app.ai.options[option] ? "on" : "off"}`);
     this._renderAiUi();
+  }
+
+  onAgentContextIconsChange(e) {
+    const target = e?.target || null;
+    const webField = String(target?.dataset?.webSearchConfig || "");
+    const reasoningField = String(target?.dataset?.reasoningConfig || "");
+
+    if (webField === "country") {
+      const next = this._normalizeWebSearchCountry(target.value, this._app.ai.options.webSearchCountry || "RU");
+      if (this._app.ai.options.webSearchCountry !== next) {
+        this._app.ai.options.webSearchCountry = next;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `webSearchCountry=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (webField === "contextSize") {
+      const next = this._normalizeWebSearchContextSize(target.value, this._app.ai.options.webSearchContextSize || "high");
+      if (this._app.ai.options.webSearchContextSize !== next) {
+        this._app.ai.options.webSearchContextSize = next;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `webSearchContextSize=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "effort") {
+      const next = this._normalizeReasoningEffort(target.value, this._app.ai.options.reasoningEffort || "medium");
+      if (this._app.ai.options.reasoningEffort !== next) {
+        this._app.ai.options.reasoningEffort = next;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `reasoningEffort=${next}`);
+      }
+      this._renderAiUi();
+    }
   }
 
   async onAgentAttachmentsPicked(e) {
@@ -83,6 +197,7 @@ export class AgentAttachmentModule {
       incoming.push(entry);
     }
     this._app.ai.attachments.push(...incoming);
+    this._invalidateFileSearchSync();
     this._dom.agentAttachmentInput.value = "";
     this._addChangesJournal("ai.file.attach", `Добавлено файлов: ${incoming.length}`);
     this._renderAiUi();
@@ -91,6 +206,37 @@ export class AgentAttachmentModule {
     const failed = incoming.filter((x) => String(x?.parse_error || "").trim()).length;
     const failedPart = failed > 0 ? `, parse errors: ${failed}` : "";
     this._toast(`Файлы прикреплены: ${incoming.length}, readable: ${readable}${failedPart}`);
+  }
+
+  _normalizeWebSearchCountry(value, fallback = "RU") {
+    const raw = String(value || "").trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(raw)) return raw;
+    const fb = String(fallback || "").trim().toUpperCase();
+    return /^[A-Z]{2}$/.test(fb) ? fb : "RU";
+  }
+
+  _normalizeWebSearchContextSize(value, fallback = "high") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (WEB_SEARCH_CONTEXT_SIZE_ORDER.includes(raw)) return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    return WEB_SEARCH_CONTEXT_SIZE_ORDER.includes(fb) ? fb : "high";
+  }
+
+  _normalizeReasoningEffort(value, fallback = "medium") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (REASONING_EFFORT_ORDER.includes(raw)) return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    return REASONING_EFFORT_ORDER.includes(fb) ? fb : "medium";
+  }
+
+  _invalidateFileSearchSync() {
+    if (!this._app.ai.fileSearch || typeof this._app.ai.fileSearch !== "object") {
+      this._app.ai.fileSearch = { vectorStoreId: "", attachmentsSignature: "", syncedAt: 0 };
+      return;
+    }
+    this._app.ai.fileSearch.vectorStoreId = "";
+    this._app.ai.fileSearch.attachmentsSignature = "";
+    this._app.ai.fileSearch.syncedAt = 0;
   }
 
   async _makeAgentAttachment(file) {

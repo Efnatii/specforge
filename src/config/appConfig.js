@@ -7,12 +7,22 @@ const SHEET_NAMES = {
 const DEV_LABEL = "Гороховицкий Егор Русланович";
 const DEFAULT_AI_MODEL = "gpt-5-mini";
 const AI_MODELS = [
+  { id: "gpt-5.2", label: "GPT-5.2", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+  { id: "gpt-5.2-codex", label: "GPT-5.2 Codex", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
   { id: "gpt-5-mini", label: "GPT-5 mini", inputUsdPer1M: 0.25, outputUsdPer1M: 2 },
   { id: "gpt-5", label: "GPT-5", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
   { id: "gpt-5.1", label: "GPT-5.1", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
   { id: "gpt-5-nano", label: "GPT-5 nano", inputUsdPer1M: 0.05, outputUsdPer1M: 0.4 },
+  { id: "gpt-4.1", label: "GPT-4.1", inputUsdPer1M: 2, outputUsdPer1M: 8 },
+  { id: "gpt-4.1-mini", label: "GPT-4.1 mini", inputUsdPer1M: 0.4, outputUsdPer1M: 1.6 },
+  { id: "gpt-4.1-nano", label: "GPT-4.1 nano", inputUsdPer1M: 0.1, outputUsdPer1M: 0.4 },
+  { id: "gpt-4o", label: "GPT-4o", inputUsdPer1M: 2.5, outputUsdPer1M: 10 },
+  { id: "gpt-4o-mini", label: "GPT-4o mini", inputUsdPer1M: 0.15, outputUsdPer1M: 0.6 },
+  { id: "o3", label: "o3", inputUsdPer1M: 2, outputUsdPer1M: 8 },
+  { id: "o4-mini", label: "o4-mini", inputUsdPer1M: 1.1, outputUsdPer1M: 4.4 },
   { id: "o1", label: "o1", inputUsdPer1M: 15, outputUsdPer1M: 60 },
   { id: "o3-pro", label: "o3-pro", inputUsdPer1M: 20, outputUsdPer1M: 80 },
+  { id: "computer-use-preview", label: "Computer Use Preview", inputUsdPer1M: 3, outputUsdPer1M: 12 },
 ];
 const WEB_SEARCH_PRICE_NOTE = "Веб-поиск (reasoning models): $10 за 1K tool calls + стоимость входных/выходных токенов.";
 const STORAGE_KEYS = {

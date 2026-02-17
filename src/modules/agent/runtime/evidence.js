@@ -35,6 +35,15 @@ function createAgentRuntimeWebEvidenceInternal(ctx) {
         pushQuery(item?.query);
         pushQuery(item?.search_query);
         pushQuery(item?.q);
+        pushQuery(item?.action?.query);
+        if (Array.isArray(item?.action?.queries)) {
+          for (const query of item.action.queries) pushQuery(query);
+        }
+        if (Array.isArray(item?.action?.sources)) {
+          for (const source of item.action.sources) {
+            pushUrl(source?.url || source?.link || source?.uri);
+          }
+        }
       }
       if (item?.type !== "message") continue;
       for (const c of item.content || []) {

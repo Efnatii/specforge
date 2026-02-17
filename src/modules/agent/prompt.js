@@ -12,6 +12,7 @@ export class AgentPromptModule {
     addChangesJournal,
     beginAgentStreamingEntry,
     appendAgentStreamingDelta,
+    appendAgentStreamingReasoningDelta,
     addExternalJournal,
     compactForTool,
     finalizeAgentStreamingEntry,
@@ -33,6 +34,7 @@ export class AgentPromptModule {
     if (typeof addChangesJournal !== "function") throw new Error("AgentPromptModule requires addChangesJournal()");
     if (typeof beginAgentStreamingEntry !== "function") throw new Error("AgentPromptModule requires beginAgentStreamingEntry()");
     if (typeof appendAgentStreamingDelta !== "function") throw new Error("AgentPromptModule requires appendAgentStreamingDelta()");
+    if (typeof appendAgentStreamingReasoningDelta !== "function") throw new Error("AgentPromptModule requires appendAgentStreamingReasoningDelta()");
     if (typeof addExternalJournal !== "function") throw new Error("AgentPromptModule requires addExternalJournal()");
     if (typeof compactForTool !== "function") throw new Error("AgentPromptModule requires compactForTool()");
     if (typeof finalizeAgentStreamingEntry !== "function") throw new Error("AgentPromptModule requires finalizeAgentStreamingEntry()");
@@ -54,6 +56,7 @@ export class AgentPromptModule {
     this._addChangesJournal = addChangesJournal;
     this._beginAgentStreamingEntry = beginAgentStreamingEntry;
     this._appendAgentStreamingDelta = appendAgentStreamingDelta;
+    this._appendAgentStreamingReasoningDelta = appendAgentStreamingReasoningDelta;
     this._addExternalJournal = addExternalJournal;
     this._compactForTool = compactForTool;
     this._finalizeAgentStreamingEntry = finalizeAgentStreamingEntry;
@@ -188,6 +191,167 @@ export class AgentPromptModule {
     };
   }
 
+  _createReasoningTracker() {
+    return {
+      order: [],
+      byRequest: new Map(),
+      nextSeq: 1,
+      liveUpdates: 0,
+    };
+  }
+
+  _ensureReasoningRequest(tracker, requestIdRaw = "", responseIdRaw = "") {
+    const requestId = String(requestIdRaw || "").trim() || `request_${tracker.nextSeq}`;
+    const responseId = String(responseIdRaw || "").trim();
+    let row = tracker.byRequest.get(requestId);
+    if (!row) {
+      row = {
+        seq: tracker.nextSeq,
+        request_id: requestId,
+        response_id: responseId,
+        summary_live: "",
+        summary: "",
+        assistant_text: "",
+      };
+      tracker.nextSeq += 1;
+      tracker.byRequest.set(requestId, row);
+      tracker.order.push(requestId);
+    } else if (!row.response_id && responseId) {
+      row.response_id = responseId;
+    }
+    return row;
+  }
+
+  _normalizeReasoningText(textRaw, maxLen = 4800) {
+    const text = String(textRaw || "")
+      .replace(/\r/g, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    if (!text) return "";
+    if (text.length <= maxLen) return text;
+    return `${text.slice(0, Math.max(0, maxLen - 3))}...`;
+  }
+
+  _readReasoningTextFromEvent(eventName, eventData) {
+    const name = String(eventName || "").toLowerCase();
+    if (!name.includes("reasoning_summary")) return "";
+    const candidates = [
+      eventData?.delta,
+      eventData?.text,
+      eventData?.summary?.text,
+      eventData?.part?.text,
+      eventData?.item?.text,
+      eventData?.reasoning_summary_text,
+    ];
+    for (const candidate of candidates) {
+      const text = this._normalizeReasoningText(candidate, 1800);
+      if (text) return text;
+    }
+    return "";
+  }
+
+  _extractReasoningSummaryFromResponse(response) {
+    const parts = [];
+    for (const item of response?.output || []) {
+      if (String(item?.type || "") !== "reasoning") continue;
+      const summaryItems = Array.isArray(item?.summary) ? item.summary : [];
+      for (const summaryPart of summaryItems) {
+        const text = this._normalizeReasoningText(summaryPart?.text, 2400);
+        if (!text) continue;
+        parts.push(text);
+      }
+    }
+    return this._normalizeReasoningText(parts.join("\n\n"), 4800);
+  }
+
+  _extractAssistantTextFromResponse(response) {
+    const parts = [];
+    for (const item of response?.output || []) {
+      if (item?.type !== "message") continue;
+      for (const content of item?.content || []) {
+        if ((content?.type === "output_text" || content?.type === "text") && typeof content?.text === "string") {
+          parts.push(content.text);
+        }
+      }
+    }
+    return this._normalizeReasoningText(parts.join("\n"), 1800);
+  }
+
+  _captureReasoningEvent(tracker, eventName, eventData) {
+    const name = String(eventName || "").toLowerCase();
+    const requestId = String(eventData?.__request_id || this._app.ai.currentRequestId || "").trim();
+    const responseId = String(eventData?.response?.id || eventData?.id || "").trim();
+    let changed = false;
+
+    if (name.includes("reasoning_summary")) {
+      const row = this._ensureReasoningRequest(tracker, requestId, responseId);
+      const text = this._readReasoningTextFromEvent(eventName, eventData);
+      if (text) {
+        if (name.endsWith(".delta")) {
+          row.summary_live = `${row.summary_live || ""}${text}`;
+        } else {
+          row.summary_live = text;
+        }
+        changed = true;
+      }
+    }
+
+    if (name === "response.completed") {
+      const response = eventData?.response || eventData;
+      const row = this._ensureReasoningRequest(tracker, requestId, String(response?.id || responseId || ""));
+      const summary = this._extractReasoningSummaryFromResponse(response);
+      if (summary) {
+        row.summary = summary;
+        changed = true;
+      } else if (row.summary_live) {
+        row.summary = this._normalizeReasoningText(row.summary_live, 4800);
+        changed = true;
+      }
+      const assistant = this._extractAssistantTextFromResponse(response);
+      if (assistant) {
+        row.assistant_text = assistant;
+        changed = true;
+      }
+    }
+
+    if (changed) tracker.liveUpdates += 1;
+    return changed;
+  }
+
+  _buildReasoningLivePreview(tracker, maxItems = 3) {
+    const ids = Array.isArray(tracker?.order) ? tracker.order.slice(-maxItems) : [];
+    if (!ids.length) return "";
+    const parts = [];
+    for (const id of ids) {
+      const row = tracker.byRequest.get(id);
+      if (!row) continue;
+      const summary = this._normalizeReasoningText(row.summary || row.summary_live, 1200);
+      if (!summary) continue;
+      parts.push(`Запрос #${row.seq}\n${summary}`);
+    }
+    return this._normalizeReasoningText(parts.join("\n\n-----\n\n"), 5000);
+  }
+
+  _buildReasoningHistory(tracker) {
+    const out = [];
+    for (const id of tracker?.order || []) {
+      const row = tracker.byRequest.get(id);
+      if (!row) continue;
+      const summary = this._normalizeReasoningText(row.summary || row.summary_live, 4200);
+      const assistant = this._normalizeReasoningText(row.assistant_text, 1600);
+      if (!summary && !assistant) continue;
+      out.push({
+        seq: row.seq,
+        request_id: row.request_id || "",
+        response_id: row.response_id || "",
+        summary,
+        assistant_text: assistant,
+      });
+    }
+    return out;
+  }
+
   async onAgentQuestionFrameClick(e) {
     const btn = e?.target?.closest ? e.target.closest("[data-agent-question-choice],[data-agent-question-custom]") : null;
     if (!btn) return;
@@ -271,7 +435,9 @@ export class AgentPromptModule {
     this._app.ai.turnId = this._nextAgentTurnId();
     this._app.ai.taskState = "running";
     this._app.ai.lastStreamBuffer = "";
+    this._app.ai.streamReasoningBuffer = "";
     this._app.ai.streamDeltaCount = 0;
+    this._app.ai.streamReasoningDeltaCount = 0;
     this._app.ai.streamResponseId = "";
     this._app.ai.streamEntryId = "";
     this._app.ai.streamDeltaHasPending = false;
@@ -298,6 +464,9 @@ export class AgentPromptModule {
     const streamEntryId = this._beginAgentStreamingEntry(this._app.ai.turnId);
     let streamDeltaEvents = 0;
     let streamDeltaChars = 0;
+    let reasoningDeltaEvents = 0;
+    let reasoningDeltaChars = 0;
+    const reasoningTracker = this._createReasoningTracker();
     const turnStartedAt = Date.now();
     let focusPromptForReply = false;
 
@@ -309,8 +478,11 @@ export class AgentPromptModule {
         streamEntryId,
         onStreamDelta: (delta) => this._appendAgentStreamingDelta(streamEntryId, delta),
         onStreamEvent: (eventName, eventData) => {
-          const isDelta = eventName === "response.output_text.delta";
-          if (isDelta) {
+          const eventNameText = String(eventName || "");
+          const isOutputDelta = eventNameText === "response.output_text.delta";
+          const isReasoningSummaryEvent = /reasoning_summary/i.test(eventNameText);
+
+          if (isOutputDelta) {
             streamDeltaEvents += 1;
             streamDeltaChars += String(eventData?.delta || "").length;
             if (streamDeltaEvents % 40 !== 0) return;
@@ -323,6 +495,46 @@ export class AgentPromptModule {
             });
             return;
           }
+
+          if (isReasoningSummaryEvent) {
+            const changed = this._captureReasoningEvent(reasoningTracker, eventNameText, eventData || {});
+            const deltaText = this._readReasoningTextFromEvent(eventNameText, eventData || {});
+            if (deltaText && /delta$/i.test(eventNameText)) {
+              reasoningDeltaEvents += 1;
+              reasoningDeltaChars += deltaText.length;
+            }
+            if (changed && (
+              reasoningTracker.liveUpdates <= 2
+              || reasoningTracker.liveUpdates % 4 === 0
+              || /done$/i.test(eventNameText)
+            )) {
+              const livePreview = this._buildReasoningLivePreview(reasoningTracker);
+              if (livePreview) {
+                this._appendAgentStreamingReasoningDelta(streamEntryId, livePreview, { replace: true });
+              }
+            }
+            if (reasoningDeltaEvents > 0 && reasoningDeltaEvents % 30 === 0) {
+              this._addExternalJournal("stream.reasoning", `chunks=${reasoningDeltaEvents}, chars=${reasoningDeltaChars}`, {
+                turn_id: this._app.ai.turnId,
+                request_id: String(eventData?.__request_id || ""),
+                response_id: String(eventData?.response?.id || eventData?.id || ""),
+                status: "streaming",
+                meta: { chunks: reasoningDeltaEvents, chars: reasoningDeltaChars },
+              });
+            }
+            return;
+          }
+
+          if (eventNameText === "response.completed") {
+            const changed = this._captureReasoningEvent(reasoningTracker, eventNameText, eventData || {});
+            if (changed) {
+              const livePreview = this._buildReasoningLivePreview(reasoningTracker);
+              if (livePreview) {
+                this._appendAgentStreamingReasoningDelta(streamEntryId, livePreview, { replace: true });
+              }
+            }
+          }
+
           this._addExternalJournal("stream.event", String(eventName || "event"), {
             turn_id: this._app.ai.turnId,
             request_id: String(eventData?.__request_id || ""),
@@ -332,10 +544,13 @@ export class AgentPromptModule {
           });
         },
       });
-      const finalText = this._sanitizeAgentOutputText(out || "Готово.");
+      const outText = typeof out === "string" ? out : String(out?.text || "");
+      const finalText = this._sanitizeAgentOutputText(outText || "Готово.");
+      const reasoningHistory = this._buildReasoningHistory(reasoningTracker);
       this._finalizeAgentStreamingEntry(streamEntryId, finalText, "completed", "info", {
         response_id: this._app.ai.streamResponseId || "",
         duration_ms: Date.now() - turnStartedAt,
+        reasoning_history: reasoningHistory,
       });
       this._app.ai.taskState = "completed";
       if (normalized.actionable) this._app.ai.pendingTask = "";
@@ -346,6 +561,9 @@ export class AgentPromptModule {
           duration_ms: Date.now() - turnStartedAt,
           delta_chunks: streamDeltaEvents,
           delta_chars: streamDeltaChars,
+          reasoning_chunks: reasoningDeltaEvents,
+          reasoning_chars: reasoningDeltaChars,
+          reasoning_requests: reasoningHistory.length,
         },
       });
       const allowQuestions = this._app.ai.options?.allowQuestions !== false;
@@ -380,15 +598,23 @@ export class AgentPromptModule {
     } catch (err) {
       console.error(err);
       const details = String(err?.message || "Неизвестная ошибка").slice(0, 400);
+      const reasoningHistory = this._buildReasoningHistory(reasoningTracker);
       this._finalizeAgentStreamingEntry(streamEntryId, `Ошибка выполнения: ${details}`, "error", "error", {
         duration_ms: Date.now() - turnStartedAt,
+        reasoning_history: reasoningHistory,
       });
       this._app.ai.taskState = "failed";
       this._addChangesJournal("ai.task.error", `turn=${this._app.ai.turnId}`, {
         turn_id: this._app.ai.turnId,
         level: "error",
         status: "error",
-        meta: { error: details, duration_ms: Date.now() - turnStartedAt },
+        meta: {
+          error: details,
+          duration_ms: Date.now() - turnStartedAt,
+          reasoning_chunks: reasoningDeltaEvents,
+          reasoning_chars: reasoningDeltaChars,
+          reasoning_requests: reasoningHistory.length,
+        },
       });
       this._toast("Ошибка выполнения запроса ИИ");
     } finally {

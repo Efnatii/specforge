@@ -156,6 +156,13 @@ export class OpenAiAuthModule {
     this._app.ai.connected = false;
     this._app.ai.sending = false;
     this._app.ai.attachments = [];
+    this._app.ai.webSearchPopoverOpen = false;
+    this._app.ai.reasoningPopoverOpen = false;
+    this._app.ai.fileSearch = {
+      vectorStoreId: "",
+      attachmentsSignature: "",
+      syncedAt: 0,
+    };
     this._app.ai.streamEntryId = "";
     this._app.ai.streamDeltaHasPending = false;
     this._app.ai.lastStreamBuffer = "";
