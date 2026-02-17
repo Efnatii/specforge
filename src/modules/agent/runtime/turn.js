@@ -127,7 +127,18 @@ function createAgentRuntimeTurnInternal(ctx) {
       if (String(item?.type || "") !== "reasoning") continue;
       const id = String(item?.id || "").trim();
       if (!id) continue;
+      const summary = Array.isArray(item?.summary)
+        ? item.summary
+          .map((part) => {
+            const text = String(part?.text || "").trim();
+            if (!text) return null;
+            return { type: "summary_text", text };
+          })
+          .filter(Boolean)
+        : [];
+      if (!summary.length) continue;
       const row = { type: "reasoning", id };
+      row.summary = summary;
       const encrypted = String(item?.encrypted_content || "").trim();
       if (encrypted) row.encrypted_content = encrypted;
       out.push(row);
