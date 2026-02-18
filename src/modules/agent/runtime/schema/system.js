@@ -24,13 +24,13 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
 
   function resolveRuntimeTaskProfileInfo() {
     const modeRaw = String(app?.ai?.options?.taskProfile || "auto").trim().toLowerCase();
-    const mode = modeRaw === "auto" || modeRaw === "balanced" || modeRaw === "bulk" || modeRaw === "accurate" || modeRaw === "research" || modeRaw === "fast" || modeRaw === "custom"
+    const mode = modeRaw === "auto" || modeRaw === "balanced" || modeRaw === "proposal" || modeRaw === "price_search" || modeRaw === "source_audit" || modeRaw === "spec_strict" || modeRaw === "bulk" || modeRaw === "accurate" || modeRaw === "research" || modeRaw === "longrun" || modeRaw === "fast" || modeRaw === "custom"
       ? modeRaw
       : "auto";
     const runtime = app?.ai?.runtimeProfile || null;
     const selected = normalizeEnum(
       runtime?.selected || (mode === "auto" ? "balanced" : mode),
-      ["balanced", "bulk", "accurate", "research", "fast", "custom"],
+      ["balanced", "proposal", "price_search", "source_audit", "spec_strict", "bulk", "accurate", "research", "longrun", "fast", "custom"],
       "balanced",
     );
     const reasonRaw = String(runtime?.reason || (mode === "auto" ? "auto_default" : "manual_profile")).trim();

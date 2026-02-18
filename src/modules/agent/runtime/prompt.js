@@ -165,10 +165,13 @@ function createAgentRuntimePromptInternal(ctx) {
     return out.join("\n\n").slice(0, 120000);
   }
 
-  function buildAgentInput(userText) {
+  function buildAgentInput(userText, options = {}) {
     const parts = [];
-    const chatCtx = buildChatHistoryContext();
-    if (chatCtx) parts.push(`Conversation history:\n${chatCtx}`);
+    const skipConversationHistory = options?.skipConversationHistory === true;
+    if (!skipConversationHistory) {
+      const chatCtx = buildChatHistoryContext();
+      if (chatCtx) parts.push(`Conversation history:\n${chatCtx}`);
+    }
 
     parts.push(`Current user request:\n${userText}`);
 

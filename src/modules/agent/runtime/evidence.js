@@ -57,7 +57,71 @@ function createAgentRuntimeWebEvidenceInternal(ctx) {
         }
       }
     }
+
+    scanIncludeEvidence(response?.include, out, pushQuery, pushUrl);
     return out;
+  }
+
+  function scanIncludeEvidence(includeRoot, out, pushQuery, pushUrl) {
+    if (!includeRoot || typeof includeRoot !== "object") return;
+    const queue = [includeRoot];
+    const seen = new Set();
+    let visited = 0;
+    const VISIT_LIMIT = 3000;
+
+    while (queue.length && visited < VISIT_LIMIT) {
+      const node = queue.shift();
+      visited += 1;
+      if (!node || typeof node !== "object") continue;
+      if (seen.has(node)) continue;
+      seen.add(node);
+
+      if (Array.isArray(node)) {
+        for (let i = 0; i < node.length && i < 400; i += 1) {
+          queue.push(node[i]);
+        }
+        continue;
+      }
+
+      const type = String(node?.type || node?.tool || node?.name || "").toLowerCase();
+      if (type.includes("web_search")) out.used = true;
+
+      pushQuery(node?.query);
+      pushQuery(node?.search_query);
+      pushQuery(node?.q);
+      pushQuery(node?.action?.query);
+      if (Array.isArray(node?.action?.queries)) {
+        for (const query of node.action.queries) pushQuery(query);
+      }
+
+      if (Array.isArray(node?.action?.sources)) {
+        for (const source of node.action.sources) {
+          pushUrl(source?.url || source?.link || source?.uri || source?.source_url);
+        }
+      }
+      if (Array.isArray(node?.sources)) {
+        for (const source of node.sources) {
+          pushUrl(source?.url || source?.link || source?.uri || source?.source_url);
+          pushQuery(source?.query || source?.title || source?.name);
+        }
+      }
+      if (Array.isArray(node?.results)) {
+        for (const result of node.results) {
+          pushUrl(result?.url || result?.link || result?.uri || result?.source_url);
+          pushQuery(result?.query || result?.title || result?.name);
+          if (result && typeof result === "object") queue.push(result);
+        }
+      }
+
+      pushUrl(node?.url || node?.uri || node?.link || node?.source_url);
+      if (typeof node?.text === "string") {
+        for (const url of node.text.match(/https?:\/\/[^\s)]+/g) || []) pushUrl(url);
+      }
+
+      for (const value of Object.values(node)) {
+        if (value && typeof value === "object") queue.push(value);
+      }
+    }
   }
 
   function normalizeHttpUrl(raw) {

@@ -181,6 +181,13 @@ export class AppBindingsModule {
         this._app.ai.streamDeltaHasPending = false;
         this._app.ai.streamDeltaCount = 0;
         this._app.ai.streamReasoningDeltaCount = 0;
+        this._app.ai.conversationId = "";
+        this._app.ai.lastCompletedResponseId = "";
+        this._app.ai.lastCompactedResponseId = "";
+        this._app.ai.lastCompactionTs = 0;
+        this._app.ai.lastInputTokens = 0;
+        this._app.ai.lastOutputTokens = 0;
+        this._app.ai.lastTotalTokens = 0;
         if (this._app.ai.streamDeltaFlushTimer) {
           this._window.clearTimeout(this._app.ai.streamDeltaFlushTimer);
           this._app.ai.streamDeltaFlushTimer = 0;
@@ -267,10 +274,6 @@ export class AppBindingsModule {
     this._dom.agentAttachmentInput.onchange = (e) => {
       void this._agentAttachmentApi.onAgentAttachmentsPicked(e);
     };
-
-    if (this._dom.btnSettings) {
-      this._dom.btnSettings.onclick = () => this._projectWorkspaceApi.openSettingsDialog();
-    }
 
     if (this._dom.btnAddAssembly) {
       this._dom.btnAddAssembly.onclick = () => this._projectUiActionApi.addAssembly();

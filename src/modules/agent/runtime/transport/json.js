@@ -183,9 +183,24 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
     if (!responseId) return null;
     const turnId = String(options?.turnId || app.ai.turnId || "");
     const requestId = String(options?.requestId || app.ai.currentRequestId || "");
+    const model = String(options?.model || app?.ai?.model || "").trim();
     const startedAt = Date.now();
-    try {
-      const res = await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(responseId)}/compact`, {
+    const callCompact = async (mode = "new") => {
+      if (mode === "new") {
+        const body = {
+          previous_response_id: responseId,
+        };
+        if (model) body.model = model;
+        return fetch("https://api.openai.com/v1/responses/compact", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${app.ai.apiKey}`,
+          },
+          body: JSON.stringify(body),
+        });
+      }
+      return fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(responseId)}/compact`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -193,6 +208,14 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
         },
         body: "{}",
       });
+    };
+    try {
+      let endpointMode = "new";
+      let res = await callCompact(endpointMode);
+      if (!res.ok && (res.status === 400 || res.status === 404 || res.status === 405 || res.status === 422)) {
+        endpointMode = "legacy";
+        res = await callCompact(endpointMode);
+      }
       const ms = Date.now() - startedAt;
       if (res.status === 401 || res.status === 403) {
         disconnectOpenAi();
@@ -209,7 +232,7 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
           request_id: requestId,
           response_id: responseId,
           duration_ms: ms,
-          meta: { status: res.status, body },
+          meta: { status: res.status, body, endpoint: endpointMode, model: model || null },
         });
         return null;
       }
@@ -220,6 +243,7 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
         request_id: requestId,
         response_id: String(parsed?.id || responseId),
         duration_ms: ms,
+        meta: { endpoint: endpointMode, model: model || null },
       });
       return parsed;
     } catch (err) {
@@ -342,6 +366,16 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
     const requestId = uid();
     const turnId = String(options?.turnId || app.ai.turnId || "");
     const requestedServiceTier = String(payload?.service_tier || "default");
+    const includeItems = Array.isArray(payload?.include)
+      ? payload.include.map((x) => String(x || "").trim()).filter(Boolean)
+      : [];
+    const metadataKeys = payload?.metadata && typeof payload.metadata === "object"
+      ? Object.keys(payload.metadata).map((k) => String(k || "").trim()).filter(Boolean)
+      : [];
+    const hasPromptCache = Boolean(String(payload?.prompt_cache_key || "").trim() || String(payload?.prompt_cache_retention || "").trim());
+    const hasSafetyIdentifier = Boolean(String(payload?.safety_identifier || "").trim());
+    const truncationMode = String(payload?.truncation || "").trim().toLowerCase();
+    const textFormatType = String(payload?.text?.format?.type || "").trim().toLowerCase();
     app.ai.currentRequestId = requestId;
 
     const abortController = new AbortController();
@@ -366,6 +400,14 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
         reasoning_summary: reasoningSummary || null,
         background: Boolean(payload?.background),
         service_tier_requested: requestedServiceTier,
+        truncation: truncationMode || null,
+        include_count: includeItems.length,
+        include: includeItems.slice(0, 4),
+        metadata_keys: metadataKeys.slice(0, 16),
+        metadata_count: metadataKeys.length,
+        prompt_cache: hasPromptCache,
+        safety_identifier: hasSafetyIdentifier,
+        text_format: textFormatType || null,
       },
     });
 
@@ -459,6 +501,12 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
           background: Boolean(payload?.background),
           service_tier_requested: requestedServiceTier,
           service_tier_actual: actualServiceTier || null,
+          include_count: includeItems.length,
+          metadata_count: metadataKeys.length,
+          prompt_cache: hasPromptCache,
+          safety_identifier: hasSafetyIdentifier,
+          truncation: truncationMode || null,
+          text_format: textFormatType || null,
         },
       });
 

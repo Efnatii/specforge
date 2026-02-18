@@ -491,7 +491,7 @@ body.sidebar-resizing * {
   padding: 7px 8px;
   font-size: 10px;
   line-height: 1.35;
-  white-space: normal;
+  white-space: pre-line;
   overflow-wrap: anywhere;
   pointer-events: none;
   box-sizing: border-box;

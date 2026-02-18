@@ -22,7 +22,6 @@ export const DOM_ID_SELECTORS = {
   settingVat: "settingVatRate",
   settingMode: "settingTotalMode",
   btnToggleSidebar: "btnToggleSidebar",
-  btnSettings: "btnOpenSettings",
   btnAddAssembly: "btnAddAssembly",
   btnAddPosition: "btnAddPosition",
   btnToggleProjCons: "btnToggleConsumablesSheet",

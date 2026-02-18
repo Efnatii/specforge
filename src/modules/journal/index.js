@@ -66,7 +66,11 @@ function createAiJournalInternal(ctx) {
   const RISKY_ACTIONS_MODE_ORDER = ["allow_if_asked", "confirm", "never"];
   const STYLE_MODE_ORDER = ["clean", "verbose"];
   const CITATIONS_MODE_ORDER = ["off", "on"];
-  const TASK_PROFILE_ORDER = ["auto", "balanced", "bulk", "accurate", "research", "fast", "custom"];
+  const TASK_PROFILE_ORDER = ["auto", "fast", "balanced", "bulk", "longrun", "price_search", "proposal", "source_audit", "accurate", "research", "spec_strict", "custom"];
+  const OPTIONAL_TEXT_MODE_ORDER = ["auto", "off", "custom"];
+  const BACKGROUND_MODE_ORDER = ["off", "auto", "on"];
+  const COMPACT_MODE_ORDER = ["off", "auto", "on"];
+  const INCLUDE_SOURCES_MODE_ORDER = ["off", "auto", "on"];
   const SERVICE_TIER_ORDER = ["flex", "standard", "priority"];
   const SERVICE_TIER_LABELS = {
     flex: "FLEX",
@@ -88,11 +92,16 @@ function createAiJournalInternal(ctx) {
   };
   const TASK_PROFILE_LABELS = {
     auto: "Авто (по задаче)",
-    balanced: "Сбалансированный",
-    bulk: "Массовый импорт",
-    accurate: "Точность",
-    research: "Исследование",
-    fast: "Быстрый",
+    fast: "Черновик (макс. скорость)",
+    balanced: "Стандартный",
+    bulk: "Пакетный (быстро)",
+    longrun: "Длинная сессия",
+    price_search: "Поиск цен и источников",
+    proposal: "КП и спецификация",
+    source_audit: "Аудит исходников",
+    accurate: "Точный (усиленная проверка)",
+    research: "Исследование (глубоко)",
+    spec_strict: "Спецификация ЩО (максимум)",
     custom: "Пользовательский",
   };
   ensureJournalUiState();
@@ -189,6 +198,7 @@ function normalizeServiceTier(value, fallback = "standard") {
 }
 
 function serviceTierLabel(value) {
+  if (String(value || "").trim().toLowerCase() === "default") return "DEFAULT";
   const tier = normalizeServiceTier(value, "standard");
   return SERVICE_TIER_LABELS[tier] || tier.toUpperCase();
 }
@@ -242,6 +252,80 @@ function normalizeTaskProfile(value, fallback = "auto") {
   return normalizeEnum(value, TASK_PROFILE_ORDER, fallback);
 }
 
+function normalizeBackgroundMode(value, fallback = "auto") {
+  return normalizeEnum(value, BACKGROUND_MODE_ORDER, fallback);
+}
+
+function normalizeCompactMode(value, fallback = "off") {
+  return normalizeEnum(value, COMPACT_MODE_ORDER, fallback);
+}
+
+function normalizeIncludeSourcesMode(value, fallback = "off") {
+  return normalizeEnum(value, INCLUDE_SOURCES_MODE_ORDER, fallback);
+}
+
+function normalizeOptionalTextMode(value, fallback = "auto") {
+  return normalizeEnum(value, OPTIONAL_TEXT_MODE_ORDER, fallback);
+}
+
+function inferOptionalTextMode(modeRaw, valueRaw, defaultValue = "") {
+  const raw = String(modeRaw || "").trim().toLowerCase();
+  if (raw === "auto" || raw === "off" || raw === "custom") return raw;
+  const value = String(valueRaw || "").trim();
+  const def = String(defaultValue || "").trim();
+  if (value && value !== def) return "custom";
+  return "auto";
+}
+
+function normalizeBooleanOption(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (value === undefined || value === null) return Boolean(fallback);
+  const raw = String(value).trim().toLowerCase();
+  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") return true;
+  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") return false;
+  return Boolean(fallback);
+}
+
+function normalizePromptCacheKey(value, fallback = "") {
+  const raw = String(value || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  if (raw) return raw;
+  return String(fallback || "").replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function normalizePromptCacheRetention(value, fallback = "default") {
+  const raw = String(value || "").trim().toLowerCase().slice(0, 64).replace(/_/g, "-");
+  if (raw === "default" || raw === "in-memory" || raw === "24h") return raw;
+  const fb = String(fallback || "").trim().toLowerCase().slice(0, 64).replace(/_/g, "-");
+  if (fb === "default" || fb === "in-memory" || fb === "24h") return fb;
+  return "default";
+}
+
+function normalizeSafetyIdentifier(value, fallback = "") {
+  const raw = String(value || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  if (raw) return raw;
+  return String(fallback || "").replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function normalizeTokenThreshold(value, fallback = 0, min = 1, max = 4000000) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    const fb = Number(fallback);
+    if (!Number.isFinite(fb) || fb <= 0) return 0;
+    return Math.max(min, Math.min(max, Math.round(fb)));
+  }
+  return Math.max(min, Math.min(max, Math.round(raw)));
+}
+
+function normalizeTurnThreshold(value, fallback = 0, min = 1, max = 10000) {
+  return normalizeTokenThreshold(value, fallback, min, max);
+}
+
+function normalizeMetadataTag(value, fallback = "") {
+  const raw = String(value || "").replace(/\s+/g, " ").trim().slice(0, 64);
+  if (raw) return raw;
+  return String(fallback || "").replace(/\s+/g, " ").trim().slice(0, 64);
+}
+
 function normalizeReasoningMaxTokens(value, fallback = 0) {
   const raw = Number(value);
   if (!Number.isFinite(raw) || raw <= 0) return Math.max(0, Number(fallback) || 0);
@@ -268,7 +352,7 @@ function loadAiSettings() {
     const raw = storage.getItem(STORAGE_KEYS.agentOptions);
     if (raw) {
       const parsed = JSON.parse(raw);
-      for (const k of ["webSearch", "reasoning", "compatCache"]) {
+      for (const k of ["webSearch", "reasoning", "compatCache", "safeTruncationAuto", "useConversationState", "structuredSpecOutput", "metadataEnabled", "lowBandwidthMode"]) {
         if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
       }
       app.ai.options.taskProfile = normalizeTaskProfile(parsed.taskProfile, app.ai.options.taskProfile || "auto");
@@ -287,6 +371,27 @@ function loadAiSettings() {
       app.ai.options.reasoningMaxTokens = normalizeReasoningMaxTokens(parsed.reasoningMaxTokens, app.ai.options.reasoningMaxTokens || 0);
       app.ai.options.webSearchCountry = normalizeWebSearchCountry(parsed.webSearchCountry, app.ai.options.webSearchCountry || "RU");
       app.ai.options.webSearchContextSize = normalizeWebSearchContextSize(parsed.webSearchContextSize, app.ai.options.webSearchContextSize || "high");
+      app.ai.options.promptCacheKeyMode = inferOptionalTextMode(parsed.promptCacheKeyMode, parsed.promptCacheKey, "");
+      app.ai.options.promptCacheKey = normalizePromptCacheKey(parsed.promptCacheKey, app.ai.options.promptCacheKey || "");
+      app.ai.options.promptCacheRetentionMode = inferOptionalTextMode(parsed.promptCacheRetentionMode, parsed.promptCacheRetention, "default");
+      app.ai.options.promptCacheRetention = normalizePromptCacheRetention(parsed.promptCacheRetention, app.ai.options.promptCacheRetention || "default");
+      app.ai.options.safetyIdentifierMode = inferOptionalTextMode(parsed.safetyIdentifierMode, parsed.safetyIdentifier, "");
+      app.ai.options.safetyIdentifier = normalizeSafetyIdentifier(parsed.safetyIdentifier, app.ai.options.safetyIdentifier || "");
+      app.ai.options.backgroundMode = normalizeBackgroundMode(parsed.backgroundMode, app.ai.options.backgroundMode || "auto");
+      app.ai.options.backgroundTokenThreshold = normalizeTokenThreshold(parsed.backgroundTokenThreshold, app.ai.options.backgroundTokenThreshold || 12000, 2000, 2000000);
+      app.ai.options.compactMode = normalizeCompactMode(parsed.compactMode, app.ai.options.compactMode || "off");
+      app.ai.options.compactThresholdTokens = normalizeTokenThreshold(parsed.compactThresholdTokens, app.ai.options.compactThresholdTokens || 90000, 1000, 4000000);
+      app.ai.options.compactTurnThreshold = normalizeTurnThreshold(parsed.compactTurnThreshold, app.ai.options.compactTurnThreshold || 45, 1, 10000);
+      app.ai.options.metadataPromptVersionMode = inferOptionalTextMode(parsed.metadataPromptVersionMode, parsed.metadataPromptVersion, "v1");
+      app.ai.options.metadataPromptVersion = normalizeMetadataTag(parsed.metadataPromptVersion, app.ai.options.metadataPromptVersion || "v1");
+      app.ai.options.metadataFrontendBuildMode = inferOptionalTextMode(parsed.metadataFrontendBuildMode, parsed.metadataFrontendBuild, "");
+      app.ai.options.metadataFrontendBuild = normalizeMetadataTag(parsed.metadataFrontendBuild, app.ai.options.metadataFrontendBuild || "");
+      app.ai.options.includeSourcesMode = normalizeIncludeSourcesMode(parsed.includeSourcesMode, app.ai.options.includeSourcesMode || "off");
+      app.ai.options.safeTruncationAuto = normalizeBooleanOption(parsed.safeTruncationAuto, app.ai.options.safeTruncationAuto === true);
+      app.ai.options.useConversationState = normalizeBooleanOption(parsed.useConversationState, app.ai.options.useConversationState === true);
+      app.ai.options.structuredSpecOutput = normalizeBooleanOption(parsed.structuredSpecOutput, app.ai.options.structuredSpecOutput === true);
+      app.ai.options.metadataEnabled = normalizeBooleanOption(parsed.metadataEnabled, app.ai.options.metadataEnabled !== false);
+      app.ai.options.lowBandwidthMode = normalizeBooleanOption(parsed.lowBandwidthMode, app.ai.options.lowBandwidthMode === true);
     }
   } catch {}
 
@@ -415,7 +520,7 @@ function renderAgentChips() {
           <button type="button" class="agent-web-search-close" data-web-search-action="close" aria-label="Закрыть настройки">x</button>
         </div>
         <label class="agent-web-search-row">
-          <span data-tooltip="Страна влияет на локализацию результатов и источники выдачи.">Страна</span>
+          <span data-tooltip="Что делает настройка: определяет географию веб-выдачи и источников.&#10;&#10;• Россия (RU) — приоритет русскоязычных и локальных источников.&#10;• США (US) — приоритет англоязычных источников США.&#10;• Германия (DE), Великобритания (GB), Франция (FR) — приоритет источников выбранного региона.">Страна</span>
           <select data-web-search-config="country">
             <option value="RU"${selectedAttr(country, "RU")}>Россия (RU)</option>
             <option value="US"${selectedAttr(country, "US")}>США (US)</option>
@@ -425,14 +530,13 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Объём контекста веб-поиска: больше контекста повышает полноту, но может быть медленнее и дороже.">Контекст</span>
+          <span data-tooltip="Что делает настройка: задаёт объём контекста, который берётся из веб-поиска.&#10;&#10;• Максимальный — больше материалов из поиска, выше полнота, но медленнее и дороже.&#10;• Средний — баланс полноты и скорости.&#10;• Минимальный — быстрее и дешевле, но меньше контекста.">Контекст</span>
           <select data-web-search-config="contextSize">
             <option value="high"${selectedAttr(contextSize, "high")}>Максимальный</option>
             <option value="medium"${selectedAttr(contextSize, "medium")}>Средний</option>
             <option value="low"${selectedAttr(contextSize, "low")}>Минимальный</option>
           </select>
         </label>
-        <div class="agent-web-search-summary" data-web-search-config="summary">включено, страна=${esc(countryLabel)}, контекст=${esc(contextSizeLabel)}</div>
       </div>
     </div>`);
   }
@@ -452,6 +556,31 @@ function renderAgentChips() {
     const citationsMode = normalizeCitationsMode(app.ai.options.citationsMode, "off");
     const reasoningMaxTokens = normalizeReasoningMaxTokens(app.ai.options.reasoningMaxTokens, 0);
     const compatCache = app.ai.options.compatCache !== false;
+    const promptCacheKeyMode = normalizeOptionalTextMode(app.ai.options.promptCacheKeyMode, "auto");
+    const promptCacheKeyRaw = normalizePromptCacheKey(app.ai.options.promptCacheKey, "");
+    const promptCacheRetentionMode = normalizeOptionalTextMode(app.ai.options.promptCacheRetentionMode, "auto");
+    const promptCacheRetentionRaw = normalizePromptCacheRetention(app.ai.options.promptCacheRetention, "default");
+    const safetyIdentifierMode = normalizeOptionalTextMode(app.ai.options.safetyIdentifierMode, "auto");
+    const safetyIdentifierRaw = normalizeSafetyIdentifier(app.ai.options.safetyIdentifier, "");
+    const safeTruncationAuto = normalizeBooleanOption(app.ai.options.safeTruncationAuto, false);
+    const backgroundMode = normalizeBackgroundMode(app.ai.options.backgroundMode, "auto");
+    const backgroundTokenThreshold = normalizeTokenThreshold(app.ai.options.backgroundTokenThreshold, 12000, 2000, 2000000);
+    const compactMode = normalizeCompactMode(app.ai.options.compactMode, "off");
+    const compactThresholdTokens = normalizeTokenThreshold(app.ai.options.compactThresholdTokens, 90000, 1000, 4000000);
+    const compactTurnThreshold = normalizeTurnThreshold(app.ai.options.compactTurnThreshold, 45, 1, 10000);
+    const useConversationState = normalizeBooleanOption(app.ai.options.useConversationState, false);
+    const structuredSpecOutput = normalizeBooleanOption(app.ai.options.structuredSpecOutput, false);
+    const metadataEnabled = normalizeBooleanOption(app.ai.options.metadataEnabled, true);
+    const metadataPromptVersionMode = normalizeOptionalTextMode(app.ai.options.metadataPromptVersionMode, "auto");
+    const metadataPromptVersionRaw = normalizeMetadataTag(app.ai.options.metadataPromptVersion, "v1");
+    const metadataFrontendBuildMode = normalizeOptionalTextMode(app.ai.options.metadataFrontendBuildMode, "auto");
+    const metadataFrontendBuildRaw = normalizeMetadataTag(app.ai.options.metadataFrontendBuild, "");
+    const includeSourcesMode = normalizeIncludeSourcesMode(app.ai.options.includeSourcesMode, "off");
+    const lowBandwidthMode = normalizeBooleanOption(app.ai.options.lowBandwidthMode, false);
+    const serviceTierRequested = normalizeServiceTier(app?.ai?.options?.serviceTier, "standard");
+    const serviceTierActual = String(app?.ai?.serviceTierActual || "").trim().toLowerCase();
+    const backgroundActive = Boolean(app?.ai?.backgroundActive);
+    const backgroundPollCount = Math.max(0, Number(app?.ai?.backgroundPollCount || 0));
 
     const effortLabel = reasoningEffortLabel(effort);
     const taskProfileLabelText = taskProfileLabel(taskProfile);
@@ -460,6 +589,46 @@ function renderAgentChips() {
     const summaryLabel = reasoningSummaryLabel(summaryMode);
     const clarifyLabel = reasoningClarifyLabel(clarify);
     const toolsLabel = reasoningToolsModeLabel(toolsMode);
+    const compactStatus = compactMode === "on"
+      ? "вкл"
+      : compactMode === "auto"
+        ? `авто(${compactThresholdTokens}/${compactTurnThreshold})`
+        : "выкл";
+    const bgStatus = backgroundMode === "on"
+      ? "вкл"
+      : backgroundMode === "auto"
+        ? `авто(>=${backgroundTokenThreshold})`
+        : "выкл";
+    const sourcesStatus = includeSourcesMode === "on"
+      ? "вкл"
+      : includeSourcesMode === "auto"
+        ? "авто"
+        : "выкл";
+    const serviceActualLabel = serviceTierActual ? serviceTierLabel(serviceTierActual) : "н/д";
+    const effortScore = effort === "xhigh" ? 4 : effort === "high" ? 3 : effort === "medium" ? 2 : 1;
+    const resourceScore = effortScore
+      + (depth === "deep" ? 2 : depth === "balanced" ? 1 : 0)
+      + (verify === "strict" ? 2 : verify === "basic" ? 1 : 0)
+      + (structuredSpecOutput ? 2 : 0)
+      + (backgroundMode === "on" ? 1 : 0)
+      + (compactMode === "on" ? 1 : 0)
+      + (reasoningMaxTokens >= 16000 ? 2 : reasoningMaxTokens >= 8000 ? 1 : 0)
+      + (includeSourcesMode === "on" ? 1 : 0);
+    const resourceTier = resourceScore >= 10 ? "Высокая нагрузка" : resourceScore >= 6 ? "Средняя нагрузка" : "Низкая нагрузка";
+    const speedTier = resourceScore >= 10 ? "скорость ниже" : resourceScore >= 6 ? "скорость средняя" : "скорость выше";
+    const budgetTier = resourceScore >= 10 ? "расход выше" : resourceScore >= 6 ? "расход средний" : "расход ниже";
+    const resourceSummary = `${resourceTier}; ${speedTier}; ${budgetTier}`;
+    const customModeLabel = (valueRaw) => {
+      const text = String(valueRaw || "").trim();
+      if (!text) return "Введите текст…";
+      if (text.length <= 20) return `Введите текст: ${text}`;
+      return `Введите текст: ${text.slice(0, 20)}…`;
+    };
+    const promptCacheKeyCustomLabel = customModeLabel(promptCacheKeyRaw);
+    const promptCacheRetentionCustomLabel = customModeLabel(promptCacheRetentionRaw === "default" ? "" : promptCacheRetentionRaw);
+    const safetyIdentifierCustomLabel = customModeLabel(safetyIdentifierRaw);
+    const metadataPromptVersionCustomLabel = customModeLabel(metadataPromptVersionRaw === "v1" ? "" : metadataPromptVersionRaw);
+    const metadataFrontendBuildCustomLabel = customModeLabel(metadataFrontendBuildRaw);
 
     const wrapCls = app.ai.reasoningPopoverOpen
       ? "agent-tool-chip-wrap agent-reasoning-wrap is-open"
@@ -480,19 +649,28 @@ function renderAgentChips() {
           <button type="button" class="agent-web-search-close" data-reasoning-action="close" aria-label="Закрыть настройки">x</button>
         </div>
         <label class="agent-web-search-row">
-          <span data-tooltip="Авто: профиль выбирается по типу задачи. Сбалансированный: универсальный режим по умолчанию. Массовый импорт: короче ответ, минимум уточнений, инструменты по возможности обязательны для пакетных действий. Точность: максимальная глубина и строгая проверка, больше времени. Исследование: глубокий анализ с упором на проверку через инструменты и ссылки. Быстрый: минимальное усилие и глубина ради скорости. Пользовательский: используются ваши ручные настройки без автоподбора.">Профиль</span>
+          <span data-tooltip="Что делает настройка: выбирает стратегию работы агента под тип задачи (порядок сверху вниз: от самого лёгкого к самому тяжёлому).&#10;&#10;• Авто — профиль подбирается по задаче и ключевым словам.&#10;• Черновик — самая высокая скорость, минимальная глубина.&#10;• Стандартный — базовый универсальный режим.&#10;• Пакетный — быстрые массовые операции.&#10;• Длинная сессия — устойчивость на долгом диалоге.&#10;• Поиск цен и источников — сбор цен, поставщиков и ссылок.&#10;• КП и спецификация — фокус на структуру коммерческого предложения.&#10;• Аудит исходников — глубокий разбор кода и артефактов.&#10;• Точный — усиленная самопроверка и детализация.&#10;• Исследование — самый глубокий поиск и сравнение источников.&#10;• Спецификация ЩО (максимум) — наиболее строгий профиль для электрощитовой спецификации.&#10;• Пользовательский — полностью ручные настройки.">Профиль</span>
           <select data-reasoning-config="taskProfile">
             <option value="auto"${selectedAttr(taskProfile, "auto")}>Авто (по задаче)</option>
-            <option value="balanced"${selectedAttr(taskProfile, "balanced")}>Сбалансированный</option>
-            <option value="bulk"${selectedAttr(taskProfile, "bulk")}>Массовый импорт</option>
-            <option value="accurate"${selectedAttr(taskProfile, "accurate")}>Точность</option>
-            <option value="research"${selectedAttr(taskProfile, "research")}>Исследование</option>
-            <option value="fast"${selectedAttr(taskProfile, "fast")}>Быстрый</option>
+            <option value="fast"${selectedAttr(taskProfile, "fast")}>Черновик (макс. скорость)</option>
+            <option value="balanced"${selectedAttr(taskProfile, "balanced")}>Стандартный</option>
+            <option value="bulk"${selectedAttr(taskProfile, "bulk")}>Пакетный (быстро)</option>
+            <option value="longrun"${selectedAttr(taskProfile, "longrun")}>Длинная сессия</option>
+            <option value="price_search"${selectedAttr(taskProfile, "price_search")}>Поиск цен и источников</option>
+            <option value="proposal"${selectedAttr(taskProfile, "proposal")}>КП и спецификация</option>
+            <option value="source_audit"${selectedAttr(taskProfile, "source_audit")}>Аудит исходников</option>
+            <option value="accurate"${selectedAttr(taskProfile, "accurate")}>Точный (усиленная проверка)</option>
+            <option value="research"${selectedAttr(taskProfile, "research")}>Исследование (глубоко)</option>
+            <option value="spec_strict"${selectedAttr(taskProfile, "spec_strict")}>Спецификация ЩО (максимум)</option>
             <option value="custom"${selectedAttr(taskProfile, "custom")}>Пользовательский</option>
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Низкое: быстрый ответ, минимум анализа и проверок. Среднее: сбалансированный режим по умолчанию. Высокое: больше сравнений вариантов и самопроверок. Максимальное: максимально тщательная проработка, больше времени и затрат.">Усилие</span>
+          <span data-tooltip="Что показывает настройка: суммарную оценку нагрузки текущих параметров.&#10;&#10;• Формируется из усилия, глубины, проверки, лимитов токенов, включённых источников, фона и структурированного JSON.&#10;• Используйте для быстрой оценки компромисса «качество/скорость/стоимость».">Оценка ресурсов</span>
+          <input type="text" value="${esc(resourceSummary)}" readonly tabindex="-1" />
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт вычислительное усилие модели.&#10;&#10;• Низкое — быстрый ответ, минимум анализа.&#10;• Среднее — баланс скорости и качества.&#10;• Высокое — больше сравнений и самопроверок.&#10;• Максимальное — наиболее тщательная проработка (дольше и дороже).">Усилие</span>
           <select data-reasoning-config="effort">
             <option value="low"${selectedAttr(effort, "low")}>Низкое</option>
             <option value="medium"${selectedAttr(effort, "medium")}>Среднее</option>
@@ -501,7 +679,7 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Быстро: короткая цепочка рассуждений, фокус на скорости. Сбалансировано: стандартная глубина, обычно один внутренний цикл проверки. Глубоко: несколько подходов, больше сравнений и аккуратная финальная проверка.">Глубина</span>
+          <span data-tooltip="Что делает настройка: определяет глубину рассуждений.&#10;&#10;• Быстро — короткая цепочка рассуждений.&#10;• Сбалансировано — стандартная глубина анализа.&#10;• Глубоко — несколько подходов и расширенная проверка.">Глубина</span>
           <select data-reasoning-config="depth">
             <option value="fast"${selectedAttr(depth, "fast")}>Быстро</option>
             <option value="balanced"${selectedAttr(depth, "balanced")}>Сбалансировано</option>
@@ -509,7 +687,7 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Выключена: без явной самопроверки. Базовая: короткий sanity-check логики и очевидных ошибок. Строгая: подробный чеклист, поиск противоречий и проверка краевых случаев с исправлением.">Проверка</span>
+          <span data-tooltip="Что делает настройка: задаёт строгость самопроверки перед ответом.&#10;&#10;• Выключена — без явной самопроверки.&#10;• Базовая — короткая проверка логики и очевидных ошибок.&#10;• Строгая — подробный чеклист, поиск противоречий и проверка краевых случаев.">Проверка</span>
           <select data-reasoning-config="verify">
             <option value="off"${selectedAttr(verify, "off")}>Выключена</option>
             <option value="basic"${selectedAttr(verify, "basic")}>Базовая</option>
@@ -517,7 +695,7 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Выключена: без сводки рассуждений. Авто: уровень сводки выбирается автоматически. Краткая: только ключевые выводы. Подробная: расширенная сводка шагов и выводов.">Сводка</span>
+          <span data-tooltip="Что делает настройка: определяет, какую сводку рассуждений показывать.&#10;&#10;• Авто — уровень сводки выбирается автоматически.&#10;• Краткая — только ключевые выводы.&#10;• Подробная — расширенная сводка шагов.&#10;• Выключена — без сводки рассуждений.">Сводка</span>
           <select data-reasoning-config="summaryMode">
             <option value="auto"${selectedAttr(summaryMode, "auto")}>Авто</option>
             <option value="concise"${selectedAttr(summaryMode, "concise")}>Краткая</option>
@@ -526,7 +704,7 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Никогда: не задавать уточнения, действовать с явными допущениями. Минимально: спрашивать только при высоком риске ошибки. Обычно: спрашивать при существенной неопределенности. Если в Риски выбран режим Никогда, вопросы запрещаются независимо от этого поля.">Уточнения</span>
+          <span data-tooltip="Что делает настройка: регулирует частоту уточняющих вопросов пользователю.&#10;&#10;• Никогда — не задавать уточнения, работать с допущениями.&#10;• Минимально — спрашивать только при высоком риске ошибки.&#10;• Обычно — спрашивать при существенной неопределённости.&#10;• Если в «Риски» выбран «Никогда», вопросы блокируются независимо от этого поля.">Уточнения</span>
           <select data-reasoning-config="clarify">
             <option value="never"${selectedAttr(clarify, "never")}>Никогда</option>
             <option value="minimal"${selectedAttr(clarify, "minimal")}>Минимально</option>
@@ -534,7 +712,7 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Не использовать: отвечать без инструментов. Авто: использовать инструменты по необходимости. Предпочитать: чаще обращаться к инструментам для проверки фактов. Обязательно: по возможности решать через инструменты, а не предположения.">Инструменты</span>
+          <span data-tooltip="Что делает настройка: задаёт политику использования инструментов.&#10;&#10;• Авто — использовать инструменты по необходимости.&#10;• Предпочитать — чаще обращаться к инструментам для проверки фактов.&#10;• Обязательно — по возможности решать через инструменты.&#10;• Не использовать — отвечать без инструментов.">Инструменты</span>
           <select data-reasoning-config="toolsMode">
             <option value="auto"${selectedAttr(toolsMode, "auto")}>Авто</option>
             <option value="prefer"${selectedAttr(toolsMode, "prefer")}>Предпочитать</option>
@@ -543,7 +721,7 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Кратко: только итог и минимум деталей. Нормально: баланс краткости и пояснений. Подробно: развернутые шаги, контекст и пояснения.">Краткость</span>
+          <span data-tooltip="Что делает настройка: определяет длину и насыщенность финального ответа.&#10;&#10;• Кратко — только итог и минимум деталей.&#10;• Нормально — баланс краткости и пояснений.&#10;• Подробно — развернутые шаги, контекст и пояснения.">Краткость</span>
           <select data-reasoning-config="brevityMode">
             <option value="short"${selectedAttr(brevityMode, "short")}>Кратко</option>
             <option value="normal"${selectedAttr(brevityMode, "normal")}>Нормально</option>
@@ -551,7 +729,7 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Обычный текст: свободная форма. Пункты: структурированный ответ списком. JSON: строгий JSON для машинной обработки без лишнего текста.">Формат</span>
+          <span data-tooltip="Что делает настройка: определяет формат финального ответа.&#10;&#10;• Обычный текст — свободная форма ответа.&#10;• Пункты — структурированный список.&#10;• JSON — строгий JSON без лишнего текста.">Формат</span>
           <select data-reasoning-config="outputMode">
             <option value="plain"${selectedAttr(outputMode, "plain")}>Обычный текст</option>
             <option value="bullets"${selectedAttr(outputMode, "bullets")}>Пункты</option>
@@ -559,7 +737,7 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Подтверждать: перед рискованными/необратимыми действиями просить явное подтверждение; вопросы разрешены. Только по явной просьбе: не запрашивать отдельное подтверждение, выполнять рискованные шаги только когда пользователь прямо попросил; вопросы разрешены, их частота задаётся опцией Уточнения. Никогда: полностью запретить вопросы пользователю и вызов ask_user_question.">Риски</span>
+          <span data-tooltip="Что делает настройка: управляет поведением при рискованных действиях.&#10;&#10;• Только по явной просьбе — рискованные шаги выполнять только по прямому запросу пользователя.&#10;• Подтверждать — перед рискованными/необратимыми действиями просить подтверждение.&#10;• Никогда — полностью запретить вопросы пользователю и вызов ask_user_question.">Риски</span>
           <select data-reasoning-config="riskyActionsMode">
             <option value="allow_if_asked"${selectedAttr(riskyActionsMode, "allow_if_asked")}>Только по явной просьбе</option>
             <option value="confirm"${selectedAttr(riskyActionsMode, "confirm")}>Подтверждать</option>
@@ -567,31 +745,146 @@ function renderAgentChips() {
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Сухой: максимально по делу, без лишней воды. Развернутый: больше контекста, обоснований и пояснений.">Стиль</span>
+          <span data-tooltip="Что делает настройка: задаёт стиль подачи ответа.&#10;&#10;• Сухой — максимально по делу.&#10;• Развёрнутый — больше контекста и обоснований.">Стиль</span>
           <select data-reasoning-config="styleMode">
             <option value="clean"${selectedAttr(styleMode, "clean")}>Сухой</option>
             <option value="verbose"${selectedAttr(styleMode, "verbose")}>Развёрнутый</option>
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="Выключены: ссылки на источники не добавляются автоматически. Включены: если использован веб-поиск, в финале добавляются ссылки на ключевые источники.">Ссылки</span>
+          <span data-tooltip="Что делает настройка: управляет автоматическим добавлением ссылок на источники.&#10;&#10;• Выключены — ссылки на источники не добавляются автоматически.&#10;• Включены — при web_search добавляются ссылки на ключевые источники.">Ссылки</span>
           <select data-reasoning-config="citationsMode">
             <option value="off"${selectedAttr(citationsMode, "off")}>Выключены</option>
             <option value="on"${selectedAttr(citationsMode, "on")}>Включены</option>
           </select>
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="0: лимит выбирается автоматически моделью. Положительное число: жесткий верхний предел длины ответа в токенах. Больше лимит — потенциально длиннее и детальнее ответ, но выше стоимость и время.">Токены</span>
+          <span data-tooltip="Что делает настройка: задаёт верхнюю границу длины ответа в токенах.&#10;&#10;• 0 — лимит выбирается моделью автоматически.&#10;• Положительное число — жёсткий верхний предел длины ответа в токенах.&#10;• Чем выше лимит, тем потенциально длиннее ответ, но выше время и стоимость.&#10;• Пример: 12000.">Токены</span>
           <input type="number" min="0" step="1" value="${reasoningMaxTokens}" data-reasoning-config="maxTokens" />
         </label>
         <label class="agent-web-search-row">
-          <span data-tooltip="При включении рантайм запоминает совместимые фолбэки параметров для модели и применяет их в следующих запросах.">Кэш совместимости</span>
+          <span data-tooltip="Что делает настройка: включает/выключает запоминание фолбэков неподдерживаемых параметров модели.&#10;&#10;• Вкл — рантайм запоминает совместимые фолбэки параметров модели и применяет их дальше.&#10;• Выкл — кэш совместимости не используется.">Кэш совместимости</span>
           <select data-reasoning-config="compatCache">
             <option value="on"${compatCache ? " selected" : ""}>Вкл</option>
             <option value="off"${compatCache ? "" : " selected"}>Выкл</option>
           </select>
         </label>
-        <div class="agent-web-search-summary" data-reasoning-config="summary">включено, профиль=${esc(taskProfileLabelText)}, усилие=${esc(effortLabel)}, глубина=${esc(depthLabel)}, проверка=${esc(verifyLabel)}, сводка=${esc(summaryLabel)}, уточнения=${esc(clarifyLabel)}, инструменты=${esc(toolsLabel)}, токены=${esc(reasoningMaxTokens || "авто")}, кэш совместимости=${esc(compatCache ? "вкл" : "выкл")}</div>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт режим и значение prompt_cache_key одним полем.&#10;&#10;• Авто — ключ формируется автоматически.&#10;• Выкл — prompt_cache_key не отправляется.&#10;• Введите текст… — при выборе откроется ввод вашего ключа.">Ключ кэша промпта</span>
+          <select data-reasoning-config="promptCacheKeyMode">
+            ${promptCacheKeyMode === "custom" ? `<option value="" selected hidden>${esc(promptCacheKeyCustomLabel)}</option>` : ""}
+            <option value="auto"${selectedAttr(promptCacheKeyMode, "auto")}>Авто</option>
+            <option value="off"${selectedAttr(promptCacheKeyMode, "off")}>Выкл</option>
+            <option value="custom">Введите текст…</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт режим и значение prompt_cache_retention одним полем.&#10;&#10;• Авто — удержание выбирается автоматически по профилю и нагрузке (обычно in-memory для лёгких задач, 24h для тяжёлых/длинных).&#10;• Выкл — не отправлять prompt_cache_retention.&#10;• Введите текст… — при выборе откроется ввод (например 24h или in-memory).">Удержание кэша</span>
+          <select data-reasoning-config="promptCacheRetentionMode">
+            ${promptCacheRetentionMode === "custom" ? `<option value="" selected hidden>${esc(promptCacheRetentionCustomLabel)}</option>` : ""}
+            <option value="auto"${selectedAttr(promptCacheRetentionMode, "auto")}>Авто</option>
+            <option value="off"${selectedAttr(promptCacheRetentionMode, "off")}>Выкл</option>
+            <option value="custom">Введите текст…</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт режим и значение safety_identifier одним полем.&#10;&#10;• Авто — идентификатор формируется автоматически.&#10;• Выкл — safety_identifier не отправляется.&#10;• Введите текст… — при выборе откроется ввод вашего идентификатора.">Идентификатор безопасности</span>
+          <select data-reasoning-config="safetyIdentifierMode">
+            ${safetyIdentifierMode === "custom" ? `<option value="" selected hidden>${esc(safetyIdentifierCustomLabel)}</option>` : ""}
+            <option value="auto"${selectedAttr(safetyIdentifierMode, "auto")}>Авто</option>
+            <option value="off"${selectedAttr(safetyIdentifierMode, "off")}>Выкл</option>
+            <option value="custom">Введите текст…</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: определяет поведение при переполнении контекста.&#10;&#10;• Вкл — отправлять truncation=auto (режим «не падать» при переполнении контекста).&#10;• Выкл — не отправлять truncation (кроме специальных случаев модели).">Безопасная обрезка</span>
+          <select data-reasoning-config="safeTruncationAuto">
+            <option value="off"${safeTruncationAuto ? "" : " selected"}>Выкл</option>
+            <option value="on"${safeTruncationAuto ? " selected" : ""}>Вкл</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт режим запуска ответа (синхронно/в фоне).&#10;&#10;• Выкл — всегда синхронный запуск.&#10;• Авто — фон только для bulk или при большом max_output_tokens.&#10;• Вкл — стартовый запрос всегда в фоне.">Фоновый режим</span>
+          <select data-reasoning-config="backgroundMode">
+            <option value="off"${selectedAttr(backgroundMode, "off")}>Выкл</option>
+            <option value="auto"${selectedAttr(backgroundMode, "auto")}>Авто</option>
+            <option value="on"${selectedAttr(backgroundMode, "on")}>Вкл</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт порог автоперехода в фоновый режим.&#10;&#10;• Используется в режиме «Авто».&#10;• Если max_output_tokens >= порога, стартовый запрос уходит в фон.&#10;• Пример: 12000.">Порог фона</span>
+          <input type="number" min="2000" step="500" value="${backgroundTokenThreshold}" data-reasoning-config="backgroundTokenThreshold" />
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: управляет автокомпакцией контекста через endpoint compact в Responses API.&#10;&#10;• Выкл — компакция отключена.&#10;• Авто — компакция по порогам токенов/ходов.&#10;• Вкл — компакция всегда включена.">Компакция</span>
+          <select data-reasoning-config="compactMode">
+            <option value="off"${selectedAttr(compactMode, "off")}>Выкл</option>
+            <option value="auto"${selectedAttr(compactMode, "auto")}>Авто</option>
+            <option value="on"${selectedAttr(compactMode, "on")}>Вкл</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт токен-порог для автокомпакции.&#10;&#10;• Используется в режиме «Авто».&#10;• Если input_tokens >= порога, выполняется compact.&#10;• Пример: 90000.">Порог компакции (токены)</span>
+          <input type="number" min="1000" step="1000" value="${compactThresholdTokens}" data-reasoning-config="compactThresholdTokens" />
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт порог по числу ходов для автокомпакции.&#10;&#10;• Используется в режиме «Авто».&#10;• Если число ходов >= порога, выполняется компакция длинной сессии.&#10;• Пример: 45.">Порог компакции (ходы)</span>
+          <input type="number" min="1" step="1" value="${compactTurnThreshold}" data-reasoning-config="compactTurnThreshold" />
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: управляет переносом состояния диалога между запросами.&#10;&#10;• Вкл — в длинных сессиях переносить контекст через previous_response_id.&#10;• Выкл — контекст собирается только из локальной истории.">Состояние диалога</span>
+          <select data-reasoning-config="useConversationState">
+            <option value="off"${useConversationState ? "" : " selected"}>Выкл</option>
+            <option value="on"${useConversationState ? " selected" : ""}>Вкл</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: включает строгий структурированный вывод по JSON Schema.&#10;&#10;• Вкл — включить структурированный вывод по JSON Schema.&#10;• Выкл — обычный текстовый вывод.">Структурированный JSON спецификации</span>
+          <select data-reasoning-config="structuredSpecOutput">
+            <option value="off"${structuredSpecOutput ? "" : " selected"}>Выкл</option>
+            <option value="on"${structuredSpecOutput ? " selected" : ""}>Вкл</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: включает передачу служебных metadata в Responses API.&#10;&#10;• Вкл — отправлять metadata в Responses API (до 16 пар ключ-значение).&#10;• Выкл — не отправлять metadata.">Метаданные</span>
+          <select data-reasoning-config="metadataEnabled">
+            <option value="on"${metadataEnabled ? " selected" : ""}>Вкл</option>
+            <option value="off"${metadataEnabled ? "" : " selected"}>Выкл</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт режим и значение metadata.prompt_version одним полем.&#10;&#10;• Авто — версия формируется автоматически из текущей версии системы/профиля.&#10;• Выкл — тег prompt_version не отправляется.&#10;• Введите текст… — при выборе откроется ввод версии.">Версия промпта</span>
+          <select data-reasoning-config="metadataPromptVersionMode">
+            ${metadataPromptVersionMode === "custom" ? `<option value="" selected hidden>${esc(metadataPromptVersionCustomLabel)}</option>` : ""}
+            <option value="auto"${selectedAttr(metadataPromptVersionMode, "auto")}>Авто</option>
+            <option value="off"${selectedAttr(metadataPromptVersionMode, "off")}>Выкл</option>
+            <option value="custom">Введите текст…</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: задаёт режим и значение metadata.frontend_build одним полем.&#10;&#10;• Авто — тег сборки фронта формируется автоматически.&#10;• Выкл — тег frontend_build не отправляется.&#10;• Введите текст… — при выборе откроется ввод сборки.">Сборка фронтенда</span>
+          <select data-reasoning-config="metadataFrontendBuildMode">
+            ${metadataFrontendBuildMode === "custom" ? `<option value="" selected hidden>${esc(metadataFrontendBuildCustomLabel)}</option>` : ""}
+            <option value="auto"${selectedAttr(metadataFrontendBuildMode, "auto")}>Авто</option>
+            <option value="off"${selectedAttr(metadataFrontendBuildMode, "off")}>Выкл</option>
+            <option value="custom">Введите текст…</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: управляет запросом источников и результатов tool-call через include.&#10;&#10;• Выкл — поле include не запрашивается.&#10;• Авто — include включается по профилю/инструментам.&#10;• Вкл — всегда запрашивать источники и результаты web/file search.">Источники в ответе</span>
+          <select data-reasoning-config="includeSourcesMode">
+            <option value="off"${selectedAttr(includeSourcesMode, "off")}>Выкл</option>
+            <option value="auto"${selectedAttr(includeSourcesMode, "auto")}>Авто</option>
+            <option value="on"${selectedAttr(includeSourcesMode, "on")}>Вкл</option>
+          </select>
+        </label>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: включает экономию трафика при стриминге.&#10;&#10;• Вкл — stream_options.include_obfuscation=false (меньше трафика).&#10;• Выкл — стандартное поведение API.">Режим низкой полосы</span>
+          <select data-reasoning-config="lowBandwidthMode">
+            <option value="off"${lowBandwidthMode ? "" : " selected"}>Выкл</option>
+            <option value="on"${lowBandwidthMode ? " selected" : ""}>Вкл</option>
+          </select>
+        </label>
       </div>
     </div>`);
   }
@@ -619,6 +912,12 @@ function renderAgentContextIcons() {
       const depth = normalizeReasoningDepth(app.ai.options.reasoningDepth, "balanced");
       const verify = normalizeReasoningVerify(app.ai.options.reasoningVerify, "basic");
       const summaryMode = normalizeReasoningSummary(app.ai.options.reasoningSummary, "auto");
+      const backgroundMode = normalizeBackgroundMode(app.ai.options.backgroundMode, "auto");
+      const compactMode = normalizeCompactMode(app.ai.options.compactMode, "off");
+      const useConversationState = normalizeBooleanOption(app.ai.options.useConversationState, false);
+      const lowBandwidthMode = normalizeBooleanOption(app.ai.options.lowBandwidthMode, false);
+      const serviceTierRequested = normalizeServiceTier(app?.ai?.options?.serviceTier, "standard");
+      const serviceTierActualRaw = String(app?.ai?.serviceTierActual || "").trim().toLowerCase();
       const effortLabel = reasoningEffortLabel(effort);
       const depthLabel = reasoningDepthLabel(depth);
       const verifyLabel = reasoningVerifyLabel(verify);
@@ -626,7 +925,10 @@ function renderAgentContextIcons() {
       const profileLabel = taskProfileLabel(taskProfile);
       btn.classList.toggle("is-selected", enabled);
       btn.dataset.effort = effort;
-      const title = `Размышления: ${enabled ? "включены" : "выключены"}, профиль — ${profileLabel}, усилие — ${effortLabel}, глубина — ${depthLabel}, проверка — ${verifyLabel}, сводка — ${summaryLabel}`;
+      const backgroundTitle = backgroundMode === "auto" ? "авто" : backgroundMode === "on" ? "вкл" : "выкл";
+      const compactTitle = compactMode === "auto" ? "авто" : compactMode === "on" ? "вкл" : "выкл";
+      const serviceTierActualLabel = serviceTierActualRaw ? serviceTierLabel(serviceTierActualRaw) : "н/д";
+      const title = `Размышления: ${enabled ? "включены" : "выключены"}, профиль — ${profileLabel}, усилие — ${effortLabel}, глубина — ${depthLabel}, проверка — ${verifyLabel}, сводка — ${summaryLabel}, фон — ${backgroundTitle}, компакция — ${compactTitle}, состояние диалога — ${useConversationState ? "вкл" : "выкл"}, низкая полоса — ${lowBandwidthMode ? "вкл" : "выкл"}, уровень сервиса — ${serviceTierLabel(serviceTierRequested)}/${serviceTierActualLabel}`;
       btn.title = title;
       btn.setAttribute("aria-label", `${title}. Нажмите для переключения.`);
       const badge = btn.querySelector("[data-ai-effort-badge]");
@@ -1785,7 +2087,7 @@ function renderOpenAiModelOptions() {
       const options = items
         .map((m) => {
           const price = modelPriceByTier(m, group.key);
-          return `<option value="${esc(modelSelectValue(m.id, group.key))}" data-model-id="${esc(m.id)}" data-service-tier="${esc(group.key)}">${esc(m.label)} (${moneyUsd(price.inputUsdPer1M)} in / ${moneyUsd(price.outputUsdPer1M)} out за 1M)</option>`;
+          return `<option value="${esc(modelSelectValue(m.id, group.key))}" data-model-id="${esc(m.id)}" data-service-tier="${esc(group.key)}">${esc(m.label)} (${moneyUsd(price.inputUsdPer1M)} вход / ${moneyUsd(price.outputUsdPer1M)} выход за 1M)</option>`;
         })
         .join("");
       return `<optgroup label="${esc(group.label)}">${options}</optgroup>`;

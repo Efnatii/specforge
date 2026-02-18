@@ -42,6 +42,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     isMutationToolName,
     updateAgentTurnWebEvidence,
     prepareToolResources,
+    compactOpenAiResponse,
   } = deps;
 
   if (!Number.isFinite(AGENT_MAX_FORCED_RETRIES) || AGENT_MAX_FORCED_RETRIES < 0) {
@@ -77,6 +78,7 @@ function createAgentRuntimeTurnInternal(ctx) {
   if (typeof isMutationToolName !== "function") throw new Error("AgentRuntimeTurnModule requires deps.isMutationToolName()");
   if (typeof updateAgentTurnWebEvidence !== "function") throw new Error("AgentRuntimeTurnModule requires deps.updateAgentTurnWebEvidence()");
   if (typeof prepareToolResources !== "function") throw new Error("AgentRuntimeTurnModule requires deps.prepareToolResources()");
+  if (typeof compactOpenAiResponse !== "function") throw new Error("AgentRuntimeTurnModule requires deps.compactOpenAiResponse()");
 
   const TOOL_IO_TEXT_LIMIT = 320;
 
@@ -154,6 +156,127 @@ function createAgentRuntimeTurnInternal(ctx) {
     });
   }
 
+  function getRuntimeAwareOption(key, fallback = undefined) {
+    const runtimeOverrides = app?.ai?.runtimeProfile?.overrides;
+    if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
+      return runtimeOverrides[key];
+    }
+    const value = app?.ai?.options?.[key];
+    return value === undefined ? fallback : value;
+  }
+
+  function normalizeCompactMode(value, fallback = "off") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "off" || raw === "auto" || raw === "on") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "off" || fb === "auto" || fb === "on") return fb;
+    return "off";
+  }
+
+  function normalizePositiveInt(value, fallback = 0, min = 1, max = 4000000) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) {
+      const fb = Number(fallback);
+      if (!Number.isFinite(fb) || fb <= 0) return 0;
+      return Math.max(min, Math.min(max, Math.round(fb)));
+    }
+    return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  function extractResponseUsage(response) {
+    const usage = response?.usage && typeof response.usage === "object" ? response.usage : {};
+    const pick = (...keys) => {
+      for (const key of keys) {
+        const n = Number(usage?.[key]);
+        if (Number.isFinite(n) && n >= 0) return Math.round(n);
+      }
+      return 0;
+    };
+    const inputTokens = pick("input_tokens", "prompt_tokens", "total_input_tokens");
+    const outputTokens = pick("output_tokens", "completion_tokens", "total_output_tokens");
+    const totalTokens = pick("total_tokens");
+    return {
+      inputTokens,
+      outputTokens,
+      totalTokens: totalTokens > 0 ? totalTokens : inputTokens + outputTokens,
+    };
+  }
+
+  function rememberResponseUsage(response) {
+    const usage = extractResponseUsage(response);
+    if (usage.inputTokens > 0) app.ai.lastInputTokens = usage.inputTokens;
+    if (usage.outputTokens > 0) app.ai.lastOutputTokens = usage.outputTokens;
+    if (usage.totalTokens > 0) app.ai.lastTotalTokens = usage.totalTokens;
+  }
+
+  function isPreviousResponseError(err) {
+    const text = String(err?.message || "").toLowerCase();
+    if (!text.includes("previous_response_id")) return false;
+    return text.includes("not found")
+      || text.includes("invalid")
+      || text.includes("unknown")
+      || text.includes("expired")
+      || text.includes("does not exist");
+  }
+
+  async function maybeAutoCompactResponse(response, options = {}) {
+    const responseId = String(response?.id || "").trim();
+    if (!responseId) return { compacted: false, responseId: "" };
+    if (String(app.ai.lastCompactedResponseId || "") === responseId) return { compacted: false, responseId };
+    const mode = normalizeCompactMode(getRuntimeAwareOption("compactMode", "off"), "off");
+    if (mode === "off") return { compacted: false, responseId };
+
+    const thresholdTokens = normalizePositiveInt(getRuntimeAwareOption("compactThresholdTokens", 90000), 90000, 1000, 4000000);
+    const turnThreshold = normalizePositiveInt(getRuntimeAwareOption("compactTurnThreshold", 45), 45, 1, 10000);
+    const usage = extractResponseUsage(response);
+    const turns = Math.max(0, Number(app.ai.turnCounter || 0));
+    const contextHeavy = usage.inputTokens > 0 && thresholdTokens > 0 && usage.inputTokens >= thresholdTokens;
+    const longSession = turnThreshold > 0 && turns >= turnThreshold;
+    const shouldCompact = mode === "on" || contextHeavy || longSession;
+    if (!shouldCompact) return { compacted: false, responseId };
+
+    const nowTs = Date.now();
+    const lastCompactionTs = Math.max(0, Number(app.ai.lastCompactionTs || 0));
+    const minIntervalMs = mode === "on" ? 5000 : 45000;
+    if (lastCompactionTs > 0 && (nowTs - lastCompactionTs) < minIntervalMs) {
+      return { compacted: false, responseId };
+    }
+
+    const turnId = String(options?.turnId || app.ai.turnId || "");
+    const requestId = String(response?.__request_id || app.ai.currentRequestId || "");
+    const reason = mode === "on"
+      ? "mode_on"
+      : contextHeavy
+        ? "input_tokens_threshold"
+        : "long_running_session";
+    const compacted = await compactOpenAiResponse(responseId, { turnId, requestId, reason });
+    if (!compacted) return { compacted: false, responseId };
+    const compactedResponseId = String(compacted?.id || responseId).trim() || responseId;
+
+    app.ai.lastCompactedResponseId = compactedResponseId;
+    app.ai.lastCompactionTs = nowTs;
+    if (compactedResponseId) app.ai.lastCompletedResponseId = compactedResponseId;
+    addExternalJournal("responses.compact.auto", `auto compact (${reason})`, {
+      turn_id: turnId,
+      request_id: requestId,
+      response_id: responseId,
+      status: "completed",
+      meta: {
+        reason,
+        mode,
+        input_tokens: usage.inputTokens || 0,
+        threshold_tokens: thresholdTokens || 0,
+        turn_counter: turns,
+        turn_threshold: turnThreshold || 0,
+        compacted_response_id: compactedResponseId,
+      },
+    });
+    return {
+      compacted: true,
+      responseId: compactedResponseId,
+    };
+  }
+
   async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
     throwIfCanceled();
     const modelId = currentAiModelMeta().id;
@@ -215,21 +338,47 @@ function createAgentRuntimeTurnInternal(ctx) {
         output: String(item.output || ""),
       }))
       .filter((item) => item.type === "function_call_output" && item.call_id && item.output);
-    const initialInput = initialPreviousResponseId && previousToolOutputs.length
-      ? [...previousToolOutputs, ...userMessageInput]
-      : userMessageInput;
     throwIfCanceled();
-    let response = await callOpenAiResponses(buildAgentResponsesPayload({
-      model: modelId,
-      instructions: agentSystemPrompt(),
-      previousResponseId: initialPreviousResponseId,
-      input: initialInput,
-    }), {
-      turnId,
-      onDelta: options?.onStreamDelta,
-      onEvent: options?.onStreamEvent,
-    });
+    const buildInitialPayload = (previousResponseId = "") => {
+      const initialInput = previousResponseId && previousToolOutputs.length
+        ? [...previousToolOutputs, ...userMessageInput]
+        : userMessageInput;
+      return buildAgentResponsesPayload({
+        model: modelId,
+        instructions: agentSystemPrompt(),
+        previousResponseId,
+        input: initialInput,
+        turnId,
+        taskText: userText,
+        allowBackground: true,
+      });
+    };
+    let response = null;
+    try {
+      response = await callOpenAiResponses(buildInitialPayload(initialPreviousResponseId), {
+        turnId,
+        onDelta: options?.onStreamDelta,
+        onEvent: options?.onStreamEvent,
+      });
+    } catch (err) {
+      if (!initialPreviousResponseId || !isPreviousResponseError(err)) throw err;
+      addExternalJournal("conversation_state.fallback", "previous_response_id rejected, fallback to fresh turn", {
+        turn_id: turnId,
+        level: "warning",
+        status: "error",
+        meta: {
+          previous_response_id: initialPreviousResponseId,
+          reason: String(err?.message || err || "").slice(0, 220),
+        },
+      });
+      response = await callOpenAiResponses(buildInitialPayload(""), {
+        turnId,
+        onDelta: options?.onStreamDelta,
+        onEvent: options?.onStreamEvent,
+      });
+    }
     app.ai.streamResponseId = String(response?.id || "");
+    rememberResponseUsage(response);
     updateAgentTurnWebEvidence(turnCtx, response);
 
     for (let i = 0; i < AGENT_MAX_TOOL_ROUNDS; i += 1) {
@@ -237,6 +386,10 @@ function createAgentRuntimeTurnInternal(ctx) {
       roundsUsed = i + 1;
       const calls = extractAgentFunctionCalls(response);
       if (!calls.length) {
+        const compactInfo = await maybeAutoCompactResponse(response, { turnId });
+        if (compactInfo?.responseId && compactInfo.responseId !== String(response?.id || "")) {
+          response = { ...(response || {}), id: compactInfo.responseId };
+        }
         const text = extractAgentText(response);
         const builtInToolUsed = hasBuiltInToolUsage(response);
         const computerUseCalled = hasComputerUseCall(response);
@@ -266,6 +419,10 @@ function createAgentRuntimeTurnInternal(ctx) {
               successful_mutations: toolStats.successfulMutations,
             },
           });
+          const compactInfo = await maybeAutoCompactResponse(response, { turnId });
+          if (compactInfo?.responseId && compactInfo.responseId !== String(response?.id || "")) {
+            response = { ...(response || {}), id: compactInfo.responseId };
+          }
           response = await callOpenAiResponses(buildAgentResponsesPayload({
             model: modelId,
             previousResponseId: response.id,
@@ -276,6 +433,9 @@ function createAgentRuntimeTurnInternal(ctx) {
                 text: buildAgentContinuationInstruction(reason, true),
               }],
             }],
+            turnId,
+            taskText: userText,
+            allowBackground: false,
           }), {
             turnId,
             onDelta: options?.onStreamDelta,
@@ -283,6 +443,7 @@ function createAgentRuntimeTurnInternal(ctx) {
           });
           throwIfCanceled();
           app.ai.streamResponseId = String(response?.id || app.ai.streamResponseId || "");
+          rememberResponseUsage(response);
           updateAgentTurnWebEvidence(turnCtx, response);
           continue;
         }
@@ -414,6 +575,10 @@ function createAgentRuntimeTurnInternal(ctx) {
       }
 
       throwIfCanceled();
+      const compactInfo = await maybeAutoCompactResponse(response, { turnId });
+      if (compactInfo?.responseId && compactInfo.responseId !== String(response?.id || "")) {
+        response = { ...(response || {}), id: compactInfo.responseId };
+      }
       response = await callOpenAiResponses(buildAgentResponsesPayload({
         model: modelId,
         previousResponseId: response.id,
@@ -422,6 +587,9 @@ function createAgentRuntimeTurnInternal(ctx) {
         // This path uses previous_response_id, so we only send fresh function_call_output.
         // Re-sending prior reasoning items here can trigger duplicate item-id errors.
         input: outputs,
+        turnId,
+        taskText: userText,
+        allowBackground: false,
       }), {
         turnId,
         onDelta: options?.onStreamDelta,
@@ -429,6 +597,7 @@ function createAgentRuntimeTurnInternal(ctx) {
       });
       throwIfCanceled();
       app.ai.streamResponseId = String(response?.id || app.ai.streamResponseId || "");
+      rememberResponseUsage(response);
       updateAgentTurnWebEvidence(turnCtx, response);
     }
 

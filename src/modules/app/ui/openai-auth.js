@@ -241,7 +241,11 @@ export class OpenAiAuthModule {
     this._app.ai.conversationId = "";
     this._app.ai.lastCompletedResponseId = "";
     this._app.ai.lastCompactedResponseId = "";
+    this._app.ai.lastCompactionTs = 0;
     this._app.ai.serviceTierActual = "";
+    this._app.ai.lastInputTokens = 0;
+    this._app.ai.lastOutputTokens = 0;
+    this._app.ai.lastTotalTokens = 0;
     this._addExternalJournal("auth", "Ключ OpenAI отключен");
     this._addChangesJournal("auth.disconnect", "manual");
     this._saveOpenAiApiKey();

@@ -77,6 +77,16 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     const timeoutMs = Math.max(30000, num(options?.timeout_ms, 180000));
     const requestedServiceTier = String(payload?.service_tier || "default");
     const lowBandwidthMode = app?.ai?.options?.lowBandwidthMode === true;
+    const includeItems = Array.isArray(payload?.include)
+      ? payload.include.map((x) => String(x || "").trim()).filter(Boolean)
+      : [];
+    const metadataKeys = payload?.metadata && typeof payload.metadata === "object"
+      ? Object.keys(payload.metadata).map((k) => String(k || "").trim()).filter(Boolean)
+      : [];
+    const hasPromptCache = Boolean(String(payload?.prompt_cache_key || "").trim() || String(payload?.prompt_cache_retention || "").trim());
+    const hasSafetyIdentifier = Boolean(String(payload?.safety_identifier || "").trim());
+    const truncationMode = String(payload?.truncation || "").trim().toLowerCase();
+    const textFormatType = String(payload?.text?.format?.type || "").trim().toLowerCase();
 
     addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${toolsCount} reasoning=${reasoningEffort}`, {
       turn_id: turnId,
@@ -92,6 +102,14 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         reasoning_summary: reasoningSummary || null,
         service_tier_requested: requestedServiceTier,
         low_bandwidth_mode: lowBandwidthMode,
+        truncation: truncationMode || null,
+        include_count: includeItems.length,
+        include: includeItems.slice(0, 4),
+        metadata_keys: metadataKeys.slice(0, 16),
+        metadata_count: metadataKeys.length,
+        prompt_cache: hasPromptCache,
+        safety_identifier: hasSafetyIdentifier,
+        text_format: textFormatType || null,
       },
     });
 
@@ -182,6 +200,12 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
           service_tier_requested: requestedServiceTier,
           service_tier_actual: String(parsed?.service_tier || "") || null,
           low_bandwidth_mode: lowBandwidthMode,
+          include_count: includeItems.length,
+          metadata_count: metadataKeys.length,
+          prompt_cache: hasPromptCache,
+          safety_identifier: hasSafetyIdentifier,
+          truncation: truncationMode || null,
+          text_format: textFormatType || null,
         },
       });
       app.ai.serviceTierActual = String(parsed?.service_tier || "");
@@ -313,6 +337,12 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         service_tier_requested: requestedServiceTier,
         service_tier_actual: actualServiceTier || null,
         low_bandwidth_mode: lowBandwidthMode,
+        include_count: includeItems.length,
+        metadata_count: metadataKeys.length,
+        prompt_cache: hasPromptCache,
+        safety_identifier: hasSafetyIdentifier,
+        truncation: truncationMode || null,
+        text_format: textFormatType || null,
       },
     });
 

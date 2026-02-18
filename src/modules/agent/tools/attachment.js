@@ -19,12 +19,17 @@ const OUTPUT_MODE_ORDER = ["plain", "bullets", "json"];
 const RISKY_ACTIONS_MODE_ORDER = ["allow_if_asked", "confirm", "never"];
 const STYLE_MODE_ORDER = ["clean", "verbose"];
 const CITATIONS_MODE_ORDER = ["off", "on"];
-const TASK_PROFILE_ORDER = ["auto", "balanced", "bulk", "accurate", "research", "fast", "custom"];
+const TASK_PROFILE_ORDER = ["auto", "fast", "balanced", "bulk", "longrun", "price_search", "proposal", "source_audit", "accurate", "research", "spec_strict", "custom"];
+const OPTIONAL_TEXT_MODE_ORDER = ["auto", "off", "custom"];
+const BACKGROUND_MODE_ORDER = ["off", "auto", "on"];
+const COMPACT_MODE_ORDER = ["off", "auto", "on"];
+const INCLUDE_SOURCES_MODE_ORDER = ["off", "auto", "on"];
 const TASK_PROFILE_PRESETS = {
   fast: {
+    serviceTier: "flex",
     reasoningEffort: "low",
     reasoningDepth: "fast",
-    reasoningVerify: "basic",
+    reasoningVerify: "off",
     reasoningSummary: "off",
     reasoningClarify: "never",
     toolsMode: "auto",
@@ -34,8 +39,31 @@ const TASK_PROFILE_PRESETS = {
     styleMode: "clean",
     citationsMode: "off",
     reasoningMaxTokens: 0,
+    compatCache: true,
+    promptCacheKeyMode: "off",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "off",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "off",
+    safetyIdentifier: "",
+    safeTruncationAuto: false,
+    backgroundMode: "off",
+    backgroundTokenThreshold: 12000,
+    compactMode: "off",
+    compactThresholdTokens: 90000,
+    compactTurnThreshold: 45,
+    useConversationState: false,
+    structuredSpecOutput: false,
+    metadataEnabled: false,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "off",
+    lowBandwidthMode: false,
   },
   balanced: {
+    serviceTier: "standard",
     reasoningEffort: "medium",
     reasoningDepth: "balanced",
     reasoningVerify: "basic",
@@ -48,8 +76,179 @@ const TASK_PROFILE_PRESETS = {
     styleMode: "clean",
     citationsMode: "off",
     reasoningMaxTokens: 0,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "auto",
+    backgroundTokenThreshold: 12000,
+    compactMode: "off",
+    compactThresholdTokens: 90000,
+    compactTurnThreshold: 45,
+    useConversationState: false,
+    structuredSpecOutput: false,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "off",
+    lowBandwidthMode: false,
+  },
+  proposal: {
+    serviceTier: "standard",
+    reasoningEffort: "high",
+    reasoningDepth: "deep",
+    reasoningVerify: "basic",
+    reasoningSummary: "concise",
+    reasoningClarify: "minimal",
+    toolsMode: "prefer",
+    brevityMode: "normal",
+    outputMode: "json",
+    riskyActionsMode: "confirm",
+    styleMode: "clean",
+    citationsMode: "on",
+    reasoningMaxTokens: 12000,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "auto",
+    backgroundTokenThreshold: 12000,
+    compactMode: "auto",
+    compactThresholdTokens: 80000,
+    compactTurnThreshold: 40,
+    useConversationState: true,
+    structuredSpecOutput: true,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "auto",
+    lowBandwidthMode: false,
+  },
+  price_search: {
+    serviceTier: "flex",
+    reasoningEffort: "medium",
+    reasoningDepth: "balanced",
+    reasoningVerify: "basic",
+    reasoningSummary: "concise",
+    reasoningClarify: "never",
+    toolsMode: "require",
+    brevityMode: "short",
+    outputMode: "bullets",
+    riskyActionsMode: "allow_if_asked",
+    styleMode: "clean",
+    citationsMode: "on",
+    reasoningMaxTokens: 18000,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "auto",
+    backgroundTokenThreshold: 7000,
+    compactMode: "auto",
+    compactThresholdTokens: 70000,
+    compactTurnThreshold: 35,
+    useConversationState: true,
+    structuredSpecOutput: false,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "on",
+    lowBandwidthMode: true,
+  },
+  source_audit: {
+    serviceTier: "priority",
+    reasoningEffort: "xhigh",
+    reasoningDepth: "deep",
+    reasoningVerify: "strict",
+    reasoningSummary: "concise",
+    reasoningClarify: "minimal",
+    toolsMode: "prefer",
+    brevityMode: "normal",
+    outputMode: "bullets",
+    riskyActionsMode: "confirm",
+    styleMode: "clean",
+    citationsMode: "on",
+    reasoningMaxTokens: 14000,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "auto",
+    backgroundTokenThreshold: 12000,
+    compactMode: "auto",
+    compactThresholdTokens: 82000,
+    compactTurnThreshold: 40,
+    useConversationState: true,
+    structuredSpecOutput: false,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "on",
+    lowBandwidthMode: false,
+  },
+  spec_strict: {
+    serviceTier: "priority",
+    reasoningEffort: "xhigh",
+    reasoningDepth: "deep",
+    reasoningVerify: "strict",
+    reasoningSummary: "detailed",
+    reasoningClarify: "minimal",
+    toolsMode: "require",
+    brevityMode: "detailed",
+    outputMode: "json",
+    riskyActionsMode: "confirm",
+    styleMode: "clean",
+    citationsMode: "on",
+    reasoningMaxTokens: 24000,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "auto",
+    backgroundTokenThreshold: 12000,
+    compactMode: "auto",
+    compactThresholdTokens: 70000,
+    compactTurnThreshold: 30,
+    useConversationState: true,
+    structuredSpecOutput: true,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "on",
+    lowBandwidthMode: false,
   },
   bulk: {
+    serviceTier: "flex",
     reasoningEffort: "medium",
     reasoningDepth: "balanced",
     reasoningVerify: "basic",
@@ -62,25 +261,108 @@ const TASK_PROFILE_PRESETS = {
     styleMode: "clean",
     citationsMode: "off",
     reasoningMaxTokens: 0,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "auto",
+    backgroundTokenThreshold: 9000,
+    compactMode: "auto",
+    compactThresholdTokens: 85000,
+    compactTurnThreshold: 40,
+    useConversationState: true,
+    structuredSpecOutput: false,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "off",
+    lowBandwidthMode: true,
   },
   accurate: {
-    reasoningEffort: "high",
+    serviceTier: "priority",
+    reasoningEffort: "xhigh",
     reasoningDepth: "deep",
     reasoningVerify: "strict",
     reasoningSummary: "detailed",
-    reasoningClarify: "never",
+    reasoningClarify: "minimal",
     toolsMode: "prefer",
     brevityMode: "detailed",
     outputMode: "bullets",
     riskyActionsMode: "confirm",
     styleMode: "clean",
     citationsMode: "on",
-    reasoningMaxTokens: 0,
+    reasoningMaxTokens: 20000,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "auto",
+    backgroundTokenThreshold: 14000,
+    compactMode: "auto",
+    compactThresholdTokens: 80000,
+    compactTurnThreshold: 40,
+    useConversationState: true,
+    structuredSpecOutput: false,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "on",
+    lowBandwidthMode: false,
   },
   research: {
-    reasoningEffort: "high",
+    serviceTier: "priority",
+    reasoningEffort: "xhigh",
     reasoningDepth: "deep",
     reasoningVerify: "strict",
+    reasoningSummary: "detailed",
+    reasoningClarify: "minimal",
+    toolsMode: "prefer",
+    brevityMode: "detailed",
+    outputMode: "bullets",
+    riskyActionsMode: "confirm",
+    styleMode: "clean",
+    citationsMode: "on",
+    reasoningMaxTokens: 22000,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "on",
+    backgroundTokenThreshold: 22000,
+    compactMode: "auto",
+    compactThresholdTokens: 78000,
+    compactTurnThreshold: 35,
+    useConversationState: true,
+    structuredSpecOutput: false,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "on",
+    lowBandwidthMode: false,
+  },
+  longrun: {
+    serviceTier: "standard",
+    reasoningEffort: "medium",
+    reasoningDepth: "balanced",
+    reasoningVerify: "basic",
     reasoningSummary: "concise",
     reasoningClarify: "never",
     toolsMode: "prefer",
@@ -88,8 +370,30 @@ const TASK_PROFILE_PRESETS = {
     outputMode: "bullets",
     riskyActionsMode: "allow_if_asked",
     styleMode: "clean",
-    citationsMode: "on",
-    reasoningMaxTokens: 0,
+    citationsMode: "off",
+    reasoningMaxTokens: 14000,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "auto",
+    backgroundTokenThreshold: 10000,
+    compactMode: "on",
+    compactThresholdTokens: 60000,
+    compactTurnThreshold: 20,
+    useConversationState: true,
+    structuredSpecOutput: false,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "auto",
+    lowBandwidthMode: true,
   },
 };
 
@@ -238,35 +542,98 @@ export class AgentAttachmentModule {
       const idx = REASONING_EFFORT_ORDER.indexOf(normalized);
       return idx >= 0 ? idx : 0;
     };
-    const requiredEffortByDepthVerify = () => {
-      const depth = this._normalizeReasoningDepth(this._app.ai.options.reasoningDepth || "balanced", "balanced");
-      const verify = this._normalizeReasoningVerify(this._app.ai.options.reasoningVerify || "basic", "basic");
+    const requiredEffortByDepthVerify = (depthRaw, verifyRaw) => {
+      const depth = this._normalizeReasoningDepth(depthRaw, "balanced");
+      const verify = this._normalizeReasoningVerify(verifyRaw, "basic");
       if (depth === "deep" && verify === "strict") return "xhigh";
-      if (depth === "deep" || verify === "strict") return "high";
-      return "";
+      if (depth === "deep") return "high";
+      if (verify === "strict") return "high";
+      if (depth === "fast" && verify === "off") return "low";
+      return "medium";
     };
-    const applyReasoningDependencies = () => {
+    const requiredDepthVerifyByEffort = (effortRaw) => {
+      const effort = this._normalizeReasoningEffort(effortRaw, "medium");
+      if (effort === "xhigh") return { depth: "deep", verify: "strict" };
+      if (effort === "high") return { depth: "deep", verify: "basic" };
+      if (effort === "low") return { depth: "fast", verify: "off" };
+      return { depth: "balanced", verify: "basic" };
+    };
+    const applyReasoningDependencies = (trigger = "") => {
       let changed = false;
+      const setOption = (key, value, reason = "") => {
+        if (this._app.ai.options[key] === value) return;
+        this._app.ai.options[key] = value;
+        const note = reason ? ` (${reason})` : "";
+        this._addChangesJournal("ai.option", `${key}=${value}${note}`);
+        changed = true;
+      };
 
-      const minEffort = requiredEffortByDepthVerify();
-      if (minEffort) {
-        const currentEffort = this._normalizeReasoningEffort(this._app.ai.options.reasoningEffort || "medium", "medium");
-        if (reasoningEffortRank(currentEffort) < reasoningEffortRank(minEffort)) {
-          this._app.ai.options.reasoningEffort = minEffort;
-          this._addChangesJournal("ai.option", `reasoningEffort=${minEffort} (авто: зависит от depth/verify)`);
-          changed = true;
+      const triggerKey = String(trigger || "").trim();
+      const shouldSyncReasoningCore = triggerKey === "effort" || triggerKey === "depth" || triggerKey === "verify" || triggerKey === "profile";
+      if (shouldSyncReasoningCore) {
+        if (triggerKey === "effort") {
+          const currentEffort = this._normalizeReasoningEffort(this._app.ai.options.reasoningEffort || "medium", "medium");
+          const pair = requiredDepthVerifyByEffort(currentEffort);
+          setOption("reasoningDepth", pair.depth, "авто: зависит от effort");
+          setOption("reasoningVerify", pair.verify, "авто: зависит от effort");
+        } else {
+          const depth = this._normalizeReasoningDepth(this._app.ai.options.reasoningDepth || "balanced", "balanced");
+          const verify = this._normalizeReasoningVerify(this._app.ai.options.reasoningVerify || "basic", "basic");
+          const expectedEffort = requiredEffortByDepthVerify(depth, verify);
+          const currentEffort = this._normalizeReasoningEffort(this._app.ai.options.reasoningEffort || "medium", "medium");
+          if (expectedEffort && currentEffort !== expectedEffort) {
+            this._app.ai.options.reasoningEffort = expectedEffort;
+            this._addChangesJournal("ai.option", `reasoningEffort=${expectedEffort} (авто: зависит от depth/verify)`);
+            changed = true;
+          }
         }
       }
 
       const risky = this._normalizeRiskyActionsMode(this._app.ai.options.riskyActionsMode || "allow_if_asked", "allow_if_asked");
-      if (risky === "never") {
-        const clarify = this._normalizeReasoningClarify(this._app.ai.options.reasoningClarify || "never", "never");
+      const clarify = this._normalizeReasoningClarify(this._app.ai.options.reasoningClarify || "never", "never");
+      if (triggerKey === "clarify" && clarify !== "never" && risky === "never") {
+        setOption("riskyActionsMode", "confirm", "авто: чтобы разрешить уточнения");
+      } else if (risky === "never") {
         if (clarify !== "never") {
-          this._app.ai.options.reasoningClarify = "never";
-          this._addChangesJournal("ai.option", "reasoningClarify=never (авто: riskyActionsMode=never)");
-          changed = true;
+          setOption("reasoningClarify", "never", "авто: riskyActionsMode=never");
         }
         this._app.ai.pendingQuestion = null;
+      }
+
+      const structured = this._normalizeBooleanSelect(this._app.ai.options.structuredSpecOutput, false);
+      const output = this._normalizeOutputMode(this._app.ai.options.outputMode || "bullets", "bullets");
+      if (triggerKey === "outputMode") {
+        if (output === "json" && !structured) setOption("structuredSpecOutput", true, "авто: outputMode=json");
+        if (output !== "json" && structured) setOption("structuredSpecOutput", false, "авто: outputMode!=json");
+      } else if (triggerKey === "structuredSpecOutput") {
+        if (structured && output !== "json") setOption("outputMode", "json", "авто: structuredSpecOutput=on");
+        if (!structured && output === "json") setOption("outputMode", "bullets", "авто: structuredSpecOutput=off");
+      }
+
+      const includeSourcesMode = this._normalizeIncludeSourcesMode(this._app.ai.options.includeSourcesMode || "off", "off");
+      const citationsMode = this._normalizeCitationsMode(this._app.ai.options.citationsMode || "off", "off");
+      if (triggerKey === "includeSourcesMode" && includeSourcesMode === "on" && citationsMode !== "on") {
+        setOption("citationsMode", "on", "авто: includeSourcesMode=on");
+      } else if (triggerKey === "citationsMode" && citationsMode === "on" && includeSourcesMode === "off") {
+        setOption("includeSourcesMode", "auto", "авто: citationsMode=on");
+      }
+
+      const compactMode = this._normalizeCompactMode(this._app.ai.options.compactMode || "off", "off");
+      const useConversationState = this._normalizeBooleanSelect(this._app.ai.options.useConversationState, false);
+      if (triggerKey === "useConversationState" && !useConversationState && compactMode === "on") {
+        setOption("compactMode", "auto", "авто: useConversationState=off");
+      } else if (compactMode === "on" && !useConversationState) {
+        setOption("useConversationState", true, "авто: compactMode=on");
+      }
+
+      if (shouldSyncReasoningCore) {
+        const effort = this._normalizeReasoningEffort(this._app.ai.options.reasoningEffort || "medium", "medium");
+        const depth = this._normalizeReasoningDepth(this._app.ai.options.reasoningDepth || "balanced", "balanced");
+        const verify = this._normalizeReasoningVerify(this._app.ai.options.reasoningVerify || "basic", "basic");
+        const minEffort = requiredEffortByDepthVerify(depth, verify);
+        if (reasoningEffortRank(effort) < reasoningEffortRank(minEffort)) {
+          setOption("reasoningEffort", minEffort, "авто: минимальный уровень для depth/verify");
+        }
       }
 
       return changed;
@@ -278,12 +645,27 @@ export class AgentAttachmentModule {
       this._addChangesJournal("ai.option", "taskProfile=custom");
       return true;
     };
-    const updateReasoningOption = (key, value, journalKey = key) => {
+    const promptForCustomValue = (title, currentValue = "", hint = "") => {
+      const promptFn = globalThis?.window?.prompt || globalThis?.prompt;
+      if (typeof promptFn !== "function") return { canceled: true, value: String(currentValue || "") };
+      const message = hint ? `${title}\n${hint}` : title;
+      const entered = promptFn(message, String(currentValue || ""));
+      if (entered === null) return { canceled: true, value: String(currentValue || "") };
+      return { canceled: false, value: String(entered || "") };
+    };
+    const updateReasoningOption = (key, value, journalKey = key, dependencyTrigger = key) => {
       if (this._app.ai.options[key] === value) return false;
+      const triggerAliases = {
+        reasoningEffort: "effort",
+        reasoningDepth: "depth",
+        reasoningVerify: "verify",
+        reasoningClarify: "clarify",
+      };
+      const dependencyKey = triggerAliases[String(dependencyTrigger || key)] || dependencyTrigger || key;
       this._app.ai.options[key] = value;
       if (key !== "taskProfile") markTaskProfileCustom();
       this._addChangesJournal("ai.option", `${journalKey}=${value}`);
-      applyReasoningDependencies();
+      applyReasoningDependencies(dependencyKey);
       this._app.ai.runtimeProfile = null;
       this._saveAiOptions();
       return true;
@@ -329,7 +711,7 @@ export class AgentAttachmentModule {
           }
         }
       }
-      applyReasoningDependencies();
+      applyReasoningDependencies("profile");
       this._app.ai.runtimeProfile = null;
       this._saveAiOptions();
       if (changed) this._addChangesJournal("ai.option", `taskProfile=${next}`);
@@ -409,8 +791,472 @@ export class AgentAttachmentModule {
       const next = raw !== "off";
       if (this._app.ai.options.compatCache !== next) {
         this._app.ai.options.compatCache = next;
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `compatCache=${next ? "on" : "off"}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "promptCacheKeyMode") {
+      const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.promptCacheKeyMode || "auto", "auto");
+      const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.promptCacheKeyMode || "auto");
+      let changed = false;
+      if (next === "custom") {
+        const current = this._normalizePromptCacheKey(this._app.ai.options.promptCacheKey || "", "");
+        const asked = promptForCustomValue(
+          "Ключ кэша промпта",
+          current,
+          "Введите ключ prompt_cache_key (пример: specforge_v2_batch_prices).",
+        );
+        if (asked.canceled) {
+          this._renderAiUi();
+          return;
+        }
+        const custom = this._normalizePromptCacheKey(asked.value, "");
+        if (!custom) {
+          this._toast("Ключ кэша не задан");
+          this._renderAiUi();
+          return;
+        }
+        if (this._app.ai.options.promptCacheKey !== custom) {
+          this._app.ai.options.promptCacheKey = custom;
+          this._addChangesJournal("ai.option", "promptCacheKey=set");
+          changed = true;
+        }
+      }
+      if (this._app.ai.options.promptCacheKeyMode !== next) {
+        this._app.ai.options.promptCacheKeyMode = next;
+        changed = true;
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        if (prevMode !== next) this._addChangesJournal("ai.option", `promptCacheKeyMode=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "promptCacheKey") {
+      const next = this._normalizePromptCacheKey(target.value, "");
+      let changed = false;
+      if (this._app.ai.options.promptCacheKey !== next) {
+        this._app.ai.options.promptCacheKey = next;
+        changed = true;
+      }
+      if (next && this._normalizeOptionalTextMode(this._app.ai.options.promptCacheKeyMode, "auto") !== "custom") {
+        this._app.ai.options.promptCacheKeyMode = "custom";
+        changed = true;
+        this._addChangesJournal("ai.option", "promptCacheKeyMode=custom (авто: введено значение)");
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `promptCacheKey=${next ? "set" : "empty"}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "promptCacheRetentionMode") {
+      const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.promptCacheRetentionMode || "auto", "auto");
+      const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.promptCacheRetentionMode || "auto");
+      let changed = false;
+      if (next === "custom") {
+        const current = this._normalizePromptCacheRetention(this._app.ai.options.promptCacheRetention || "", "24h");
+        const asked = promptForCustomValue(
+          "Удержание кэша промпта",
+          current,
+          "Введите prompt_cache_retention: 24h или in-memory.",
+        );
+        if (asked.canceled) {
+          this._renderAiUi();
+          return;
+        }
+        const custom = this._normalizePromptCacheRetention(asked.value, "default");
+        if (custom !== "24h" && custom !== "in-memory" && custom !== "default") {
+          this._toast("Допустимо: 24h, in-memory или default");
+          this._renderAiUi();
+          return;
+        }
+        if (this._app.ai.options.promptCacheRetention !== custom) {
+          this._app.ai.options.promptCacheRetention = custom;
+          changed = true;
+          this._addChangesJournal("ai.option", `promptCacheRetention=${custom}`);
+        }
+      }
+      if (this._app.ai.options.promptCacheRetentionMode !== next) {
+        this._app.ai.options.promptCacheRetentionMode = next;
+        changed = true;
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        if (prevMode !== next) this._addChangesJournal("ai.option", `promptCacheRetentionMode=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "promptCacheRetention") {
+      const next = this._normalizePromptCacheRetention(target.value, this._app.ai.options.promptCacheRetention || "default");
+      let changed = false;
+      if (this._app.ai.options.promptCacheRetention !== next) {
+        this._app.ai.options.promptCacheRetention = next;
+        changed = true;
+      }
+      if (next !== "default" && this._normalizeOptionalTextMode(this._app.ai.options.promptCacheRetentionMode, "auto") !== "custom") {
+        this._app.ai.options.promptCacheRetentionMode = "custom";
+        changed = true;
+        this._addChangesJournal("ai.option", "promptCacheRetentionMode=custom (авто: введено значение)");
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `promptCacheRetention=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "safetyIdentifierMode") {
+      const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.safetyIdentifierMode || "auto", "auto");
+      const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.safetyIdentifierMode || "auto");
+      let changed = false;
+      if (next === "custom") {
+        const current = this._normalizeSafetyIdentifier(this._app.ai.options.safetyIdentifier || "", "");
+        const asked = promptForCustomValue(
+          "Идентификатор безопасности",
+          current,
+          "Введите safety_identifier (пример: user_42_task_15).",
+        );
+        if (asked.canceled) {
+          this._renderAiUi();
+          return;
+        }
+        const custom = this._normalizeSafetyIdentifier(asked.value, "");
+        if (!custom) {
+          this._toast("Идентификатор безопасности не задан");
+          this._renderAiUi();
+          return;
+        }
+        if (this._app.ai.options.safetyIdentifier !== custom) {
+          this._app.ai.options.safetyIdentifier = custom;
+          this._addChangesJournal("ai.option", "safetyIdentifier=set");
+          changed = true;
+        }
+      }
+      if (this._app.ai.options.safetyIdentifierMode !== next) {
+        this._app.ai.options.safetyIdentifierMode = next;
+        changed = true;
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        if (prevMode !== next) this._addChangesJournal("ai.option", `safetyIdentifierMode=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "safetyIdentifier") {
+      const next = this._normalizeSafetyIdentifier(target.value, "");
+      let changed = false;
+      if (this._app.ai.options.safetyIdentifier !== next) {
+        this._app.ai.options.safetyIdentifier = next;
+        changed = true;
+      }
+      if (next && this._normalizeOptionalTextMode(this._app.ai.options.safetyIdentifierMode, "auto") !== "custom") {
+        this._app.ai.options.safetyIdentifierMode = "custom";
+        changed = true;
+        this._addChangesJournal("ai.option", "safetyIdentifierMode=custom (авто: введено значение)");
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `safetyIdentifier=${next ? "set" : "empty"}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "safeTruncationAuto") {
+      const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.safeTruncationAuto === true);
+      if (this._app.ai.options.safeTruncationAuto !== next) {
+        this._app.ai.options.safeTruncationAuto = next;
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `safeTruncationAuto=${next ? "on" : "off"}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "backgroundMode") {
+      const next = this._normalizeBackgroundMode(target.value, this._app.ai.options.backgroundMode || "auto");
+      if (this._app.ai.options.backgroundMode !== next) {
+        this._app.ai.options.backgroundMode = next;
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `backgroundMode=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "backgroundTokenThreshold") {
+      const next = this._normalizeTokenThreshold(target.value, this._app.ai.options.backgroundTokenThreshold || 12000, 2000, 2000000);
+      if (this._app.ai.options.backgroundTokenThreshold !== next) {
+        this._app.ai.options.backgroundTokenThreshold = next;
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `backgroundTokenThreshold=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "compactMode") {
+      const next = this._normalizeCompactMode(target.value, this._app.ai.options.compactMode || "off");
+      if (this._app.ai.options.compactMode !== next) {
+        this._app.ai.options.compactMode = next;
+        markTaskProfileCustom();
+        applyReasoningDependencies("compactMode");
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `compactMode=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "compactThresholdTokens") {
+      const next = this._normalizeTokenThreshold(target.value, this._app.ai.options.compactThresholdTokens || 90000, 1000, 4000000);
+      if (this._app.ai.options.compactThresholdTokens !== next) {
+        this._app.ai.options.compactThresholdTokens = next;
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `compactThresholdTokens=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "compactTurnThreshold") {
+      const next = this._normalizeTurnThreshold(target.value, this._app.ai.options.compactTurnThreshold || 45, 1, 10000);
+      if (this._app.ai.options.compactTurnThreshold !== next) {
+        this._app.ai.options.compactTurnThreshold = next;
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `compactTurnThreshold=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "useConversationState") {
+      const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.useConversationState === true);
+      if (this._app.ai.options.useConversationState !== next) {
+        this._app.ai.options.useConversationState = next;
+        markTaskProfileCustom();
+        applyReasoningDependencies("useConversationState");
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `useConversationState=${next ? "on" : "off"}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "structuredSpecOutput") {
+      const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.structuredSpecOutput === true);
+      if (this._app.ai.options.structuredSpecOutput !== next) {
+        this._app.ai.options.structuredSpecOutput = next;
+        markTaskProfileCustom();
+        applyReasoningDependencies("structuredSpecOutput");
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `structuredSpecOutput=${next ? "on" : "off"}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "metadataEnabled") {
+      const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.metadataEnabled !== false);
+      if (this._app.ai.options.metadataEnabled !== next) {
+        this._app.ai.options.metadataEnabled = next;
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `metadataEnabled=${next ? "on" : "off"}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "metadataPromptVersionMode") {
+      const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.metadataPromptVersionMode || "auto", "auto");
+      const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.metadataPromptVersionMode || "auto");
+      let changed = false;
+      if (next === "custom") {
+        const current = this._normalizeMetadataTag(this._app.ai.options.metadataPromptVersion || "", "v1");
+        const asked = promptForCustomValue(
+          "Версия промпта (metadata.prompt_version)",
+          current,
+          "Введите тег версии (пример: spec-2026-02).",
+        );
+        if (asked.canceled) {
+          this._renderAiUi();
+          return;
+        }
+        const custom = this._normalizeMetadataTag(asked.value, "");
+        if (!custom) {
+          this._toast("Версия промпта не задана");
+          this._renderAiUi();
+          return;
+        }
+        if (this._app.ai.options.metadataPromptVersion !== custom) {
+          this._app.ai.options.metadataPromptVersion = custom;
+          changed = true;
+          this._addChangesJournal("ai.option", `metadataPromptVersion=${custom}`);
+        }
+      }
+      if (this._app.ai.options.metadataPromptVersionMode !== next) {
+        this._app.ai.options.metadataPromptVersionMode = next;
+        changed = true;
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        if (prevMode !== next) this._addChangesJournal("ai.option", `metadataPromptVersionMode=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "metadataPromptVersion") {
+      const next = this._normalizeMetadataTag(target.value, this._app.ai.options.metadataPromptVersion || "v1");
+      let changed = false;
+      if (this._app.ai.options.metadataPromptVersion !== next) {
+        this._app.ai.options.metadataPromptVersion = next;
+        changed = true;
+      }
+      if (next && this._normalizeOptionalTextMode(this._app.ai.options.metadataPromptVersionMode, "auto") !== "custom") {
+        this._app.ai.options.metadataPromptVersionMode = "custom";
+        changed = true;
+        this._addChangesJournal("ai.option", "metadataPromptVersionMode=custom (авто: введено значение)");
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `metadataPromptVersion=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "metadataFrontendBuildMode") {
+      const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.metadataFrontendBuildMode || "auto", "auto");
+      const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.metadataFrontendBuildMode || "auto");
+      let changed = false;
+      if (next === "custom") {
+        const current = this._normalizeMetadataTag(this._app.ai.options.metadataFrontendBuild || "", "");
+        const asked = promptForCustomValue(
+          "Сборка фронтенда (metadata.frontend_build)",
+          current,
+          "Введите тег сборки (пример: build-2026.02.18).",
+        );
+        if (asked.canceled) {
+          this._renderAiUi();
+          return;
+        }
+        const custom = this._normalizeMetadataTag(asked.value, "");
+        if (!custom) {
+          this._toast("Сборка фронтенда не задана");
+          this._renderAiUi();
+          return;
+        }
+        if (this._app.ai.options.metadataFrontendBuild !== custom) {
+          this._app.ai.options.metadataFrontendBuild = custom;
+          changed = true;
+          this._addChangesJournal("ai.option", `metadataFrontendBuild=${custom}`);
+        }
+      }
+      if (this._app.ai.options.metadataFrontendBuildMode !== next) {
+        this._app.ai.options.metadataFrontendBuildMode = next;
+        changed = true;
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        if (prevMode !== next) this._addChangesJournal("ai.option", `metadataFrontendBuildMode=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "metadataFrontendBuild") {
+      const next = this._normalizeMetadataTag(target.value, this._app.ai.options.metadataFrontendBuild || "");
+      let changed = false;
+      if (this._app.ai.options.metadataFrontendBuild !== next) {
+        this._app.ai.options.metadataFrontendBuild = next;
+        changed = true;
+      }
+      if (next && this._normalizeOptionalTextMode(this._app.ai.options.metadataFrontendBuildMode, "auto") !== "custom") {
+        this._app.ai.options.metadataFrontendBuildMode = "custom";
+        changed = true;
+        this._addChangesJournal("ai.option", "metadataFrontendBuildMode=custom (авто: введено значение)");
+      }
+      if (changed) {
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `metadataFrontendBuild=${next || "empty"}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "includeSourcesMode") {
+      const next = this._normalizeIncludeSourcesMode(target.value, this._app.ai.options.includeSourcesMode || "off");
+      if (this._app.ai.options.includeSourcesMode !== next) {
+        this._app.ai.options.includeSourcesMode = next;
+        markTaskProfileCustom();
+        applyReasoningDependencies("includeSourcesMode");
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `includeSourcesMode=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
+    if (reasoningField === "lowBandwidthMode") {
+      const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.lowBandwidthMode === true);
+      if (this._app.ai.options.lowBandwidthMode !== next) {
+        this._app.ai.options.lowBandwidthMode = next;
+        markTaskProfileCustom();
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `lowBandwidthMode=${next ? "on" : "off"}`);
       }
       this._renderAiUi();
       return;
@@ -524,6 +1370,69 @@ export class AgentAttachmentModule {
       return Number.isFinite(fb) && fb > 0 ? Math.max(1, Math.round(fb)) : 0;
     }
     return Math.max(1, Math.round(raw));
+  }
+
+  _normalizePromptCacheKey(value, fallback = "") {
+    const raw = String(value || "").replace(/\s+/g, " ").trim().slice(0, 240);
+    if (raw) return raw;
+    return String(fallback || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  }
+
+  _normalizePromptCacheRetention(value, fallback = "default") {
+    const raw = String(value || "").trim().toLowerCase().slice(0, 64).replace(/_/g, "-");
+    if (raw === "default" || raw === "in-memory" || raw === "24h") return raw;
+    const fb = String(fallback || "").trim().toLowerCase().slice(0, 64).replace(/_/g, "-");
+    if (fb === "default" || fb === "in-memory" || fb === "24h") return fb;
+    return "default";
+  }
+
+  _normalizeSafetyIdentifier(value, fallback = "") {
+    const raw = String(value || "").replace(/\s+/g, " ").trim().slice(0, 240);
+    if (raw) return raw;
+    return String(fallback || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  }
+
+  _normalizeBooleanSelect(value, fallback = false) {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "on" || raw === "true" || raw === "1" || raw === "yes") return true;
+    if (raw === "off" || raw === "false" || raw === "0" || raw === "no") return false;
+    return Boolean(fallback);
+  }
+
+  _normalizeBackgroundMode(value, fallback = "auto") {
+    return this._normalizeEnum(value, BACKGROUND_MODE_ORDER, fallback);
+  }
+
+  _normalizeCompactMode(value, fallback = "off") {
+    return this._normalizeEnum(value, COMPACT_MODE_ORDER, fallback);
+  }
+
+  _normalizeIncludeSourcesMode(value, fallback = "off") {
+    return this._normalizeEnum(value, INCLUDE_SOURCES_MODE_ORDER, fallback);
+  }
+
+  _normalizeOptionalTextMode(value, fallback = "auto") {
+    return this._normalizeEnum(value, OPTIONAL_TEXT_MODE_ORDER, fallback);
+  }
+
+  _normalizeTokenThreshold(value, fallback = 0, min = 1, max = 2000000) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) {
+      const fb = Number(fallback);
+      if (!Number.isFinite(fb) || fb <= 0) return 0;
+      return Math.max(min, Math.min(max, Math.round(fb)));
+    }
+    return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  _normalizeTurnThreshold(value, fallback = 0, min = 1, max = 10000) {
+    return this._normalizeTokenThreshold(value, fallback, min, max);
+  }
+
+  _normalizeMetadataTag(value, fallback = "") {
+    const raw = String(value || "").replace(/\s+/g, " ").trim().slice(0, 64);
+    if (raw) return raw;
+    return String(fallback || "").replace(/\s+/g, " ").trim().slice(0, 64);
   }
 
   _invalidateFileSearchSync() {

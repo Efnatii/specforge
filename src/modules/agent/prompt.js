@@ -704,6 +704,53 @@ export class AgentPromptModule {
       failed: failed.length,
     };
   }
+
+  _getRuntimeAwareOption(key, fallback = undefined) {
+    const runtimeOverrides = this._app?.ai?.runtimeProfile?.overrides;
+    if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
+      return runtimeOverrides[key];
+    }
+    const value = this._app?.ai?.options?.[key];
+    return value === undefined ? fallback : value;
+  }
+
+  _normalizeMode(value, allowed, fallback) {
+    const raw = String(value || "").trim().toLowerCase();
+    if (allowed.includes(raw)) return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    return allowed.includes(fb) ? fb : allowed[0];
+  }
+
+  _normalizePositiveInt(value, fallback = 0, min = 1, max = 4000000) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) {
+      const fb = Number(fallback);
+      if (!Number.isFinite(fb) || fb <= 0) return 0;
+      return Math.max(min, Math.min(max, Math.round(fb)));
+    }
+    return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  _resolveConversationPreviousResponseId() {
+    const enabled = Boolean(this._getRuntimeAwareOption("useConversationState", false));
+    if (!enabled) return "";
+    const lastResponseId = String(this._app.ai.lastCompletedResponseId || "").trim();
+    if (!lastResponseId) return "";
+
+    const compactMode = this._normalizeMode(this._getRuntimeAwareOption("compactMode", "off"), ["off", "auto", "on"], "off");
+    const compactThresholdTokens = this._normalizePositiveInt(this._getRuntimeAwareOption("compactThresholdTokens", 90000), 90000, 1000, 4000000);
+    const compactTurnThreshold = this._normalizePositiveInt(this._getRuntimeAwareOption("compactTurnThreshold", 45), 45, 1, 10000);
+    const lastInputTokens = Math.max(0, Number(this._app.ai.lastInputTokens || this._app.ai.lastTotalTokens || 0));
+    const contextOverThreshold = compactThresholdTokens > 0 && lastInputTokens > 0 && lastInputTokens >= compactThresholdTokens;
+    const turnCounter = Math.max(0, Number(this._app.ai.turnCounter || 0));
+    const longByTurns = compactTurnThreshold > 0 && turnCounter >= compactTurnThreshold;
+    const historyLen = Array.isArray(this._app.ai.chatJournal) ? this._app.ai.chatJournal.length : 0;
+    const longByHistory = historyLen >= Math.max(12, Math.round(compactTurnThreshold / 2) || 12);
+    const longSession = longByTurns || longByHistory;
+    const shouldReuse = compactMode === "on" || contextOverThreshold || longSession;
+    return shouldReuse ? lastResponseId : "";
+  }
+
   async sendAgentPrompt(options = {}) {
     if (!this._app.ai.connected || !this._app.ai.apiKey) {
       this._toast("\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 OpenAI");
@@ -791,7 +838,10 @@ export class AgentPromptModule {
     });
     this._addChangesJournal("ai.prompt", `Отправлен запрос (${rawText.length} символов)`, {
       turn_id: this._app.ai.turnId,
-      meta: { normalized: text.slice(0, 300) },
+      meta: {
+        normalized: text.slice(0, 300),
+        use_conversation_state: this._getRuntimeAwareOption("useConversationState", false) === true,
+      },
     });
     const streamEntryId = this._beginAgentStreamingEntry(this._app.ai.turnId);
     let streamDeltaEvents = 0;
@@ -803,11 +853,31 @@ export class AgentPromptModule {
     let focusPromptForReply = false;
 
     try {
-      const input = this._buildAgentInput(text);
+      const conversationPreviousResponseId = hadPendingQuestion
+        ? ""
+        : this._resolveConversationPreviousResponseId();
+      const previousResponseId = hadPendingQuestion
+        ? String(pending?.response_id || "").trim()
+        : conversationPreviousResponseId;
+      const reuseConversationState = !hadPendingQuestion && Boolean(previousResponseId);
+      if (reuseConversationState) {
+        this._addExternalJournal("conversation_state.use", "reuse previous_response_id for long-running context", {
+          turn_id: this._app.ai.turnId,
+          status: "running",
+          meta: {
+            previous_response_id: previousResponseId,
+            last_input_tokens: Math.max(0, Number(this._app.ai.lastInputTokens || 0)),
+            turn_counter: Math.max(0, Number(this._app.ai.turnCounter || 0)),
+          },
+        });
+      }
+      const input = this._buildAgentInput(text, {
+        skipConversationHistory: reuseConversationState,
+      });
       const out = await this._runOpenAiAgentTurn(input, text, {
         rawUserText: rawText,
         turnId: this._app.ai.turnId,
-        previousResponseId: hadPendingQuestion ? String(pending?.response_id || "").trim() : "",
+        previousResponseId,
         previousToolOutputs: hadPendingQuestion ? pendingToolOutputs : [],
         streamEntryId,
         onStreamDelta: (delta) => {

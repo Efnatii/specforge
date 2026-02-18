@@ -51,6 +51,11 @@ function createAgentRuntimeTransportInternal(ctx) {
   const effortCompatByModel = new Map();
   const serviceTierCompatByModel = new Map();
   const textVerbosityCompatByModel = new Map();
+  const textFormatCompatByModel = new Map();
+  const includeCompatByModel = new Map();
+  const promptCacheCompatByModel = new Map();
+  const safetyIdentifierCompatByModel = new Map();
+  const truncationCompatByModel = new Map();
   let compatApiKeySnapshot = "";
   const COMPAT_CACHE_MAX_MODELS = 64;
   const COMPAT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -78,6 +83,11 @@ function createAgentRuntimeTransportInternal(ctx) {
       || effortCompatByModel.size > 0
       || serviceTierCompatByModel.size > 0
       || textVerbosityCompatByModel.size > 0
+      || textFormatCompatByModel.size > 0
+      || includeCompatByModel.size > 0
+      || promptCacheCompatByModel.size > 0
+      || safetyIdentifierCompatByModel.size > 0
+      || truncationCompatByModel.size > 0
       || compatCachesUpdatedAt > 0;
   }
 
@@ -88,6 +98,11 @@ function createAgentRuntimeTransportInternal(ctx) {
     effortCompatByModel.clear();
     serviceTierCompatByModel.clear();
     textVerbosityCompatByModel.clear();
+    textFormatCompatByModel.clear();
+    includeCompatByModel.clear();
+    promptCacheCompatByModel.clear();
+    safetyIdentifierCompatByModel.clear();
+    truncationCompatByModel.clear();
     compatCachesUpdatedAt = 0;
     if (!forceLog && !hadState) return;
     addExternalJournal("openai.compat.reset", `compatibility caches reset (${reason})`, {
@@ -211,6 +226,56 @@ function createAgentRuntimeTransportInternal(ctx) {
     keepMapBounded(textVerbosityCompatByModel);
   }
 
+  function rememberTextFormatCompat(payload, modeRaw) {
+    const key = modelKey(payload);
+    const mode = String(modeRaw || "").trim().toLowerCase();
+    if (!key) return;
+    if (mode !== "off") return;
+    textFormatCompatByModel.set(key, "off");
+    touchCompatibilityCaches();
+    keepMapBounded(textFormatCompatByModel);
+  }
+
+  function rememberIncludeCompat(payload, modeRaw) {
+    const key = modelKey(payload);
+    const mode = String(modeRaw || "").trim().toLowerCase();
+    if (!key) return;
+    if (mode !== "off") return;
+    includeCompatByModel.set(key, "off");
+    touchCompatibilityCaches();
+    keepMapBounded(includeCompatByModel);
+  }
+
+  function rememberPromptCacheCompat(payload, modeRaw) {
+    const key = modelKey(payload);
+    const mode = String(modeRaw || "").trim().toLowerCase();
+    if (!key) return;
+    if (mode !== "off") return;
+    promptCacheCompatByModel.set(key, "off");
+    touchCompatibilityCaches();
+    keepMapBounded(promptCacheCompatByModel);
+  }
+
+  function rememberSafetyIdentifierCompat(payload, modeRaw) {
+    const key = modelKey(payload);
+    const mode = String(modeRaw || "").trim().toLowerCase();
+    if (!key) return;
+    if (mode !== "off") return;
+    safetyIdentifierCompatByModel.set(key, "off");
+    touchCompatibilityCaches();
+    keepMapBounded(safetyIdentifierCompatByModel);
+  }
+
+  function rememberTruncationCompat(payload, modeRaw) {
+    const key = modelKey(payload);
+    const mode = String(modeRaw || "").trim().toLowerCase();
+    if (!key) return;
+    if (mode !== "off") return;
+    truncationCompatByModel.set(key, "off");
+    touchCompatibilityCaches();
+    keepMapBounded(truncationCompatByModel);
+  }
+
   function withoutKnownUnsupportedTools(payload) {
     const key = modelKey(payload);
     const blocked = key ? unsupportedToolsByModel.get(key) : null;
@@ -287,6 +352,46 @@ function createAgentRuntimeTransportInternal(ctx) {
     return payload;
   }
 
+  function withKnownTextFormatCompatibility(payload) {
+    if (!payloadHasTextFormat(payload)) return payload;
+    const key = modelKey(payload);
+    const compat = key ? String(textFormatCompatByModel.get(key) || "").trim().toLowerCase() : "";
+    if (compat === "off") return withoutTextFormat(payload);
+    return payload;
+  }
+
+  function withKnownIncludeCompatibility(payload) {
+    if (!payloadHasInclude(payload)) return payload;
+    const key = modelKey(payload);
+    const compat = key ? String(includeCompatByModel.get(key) || "").trim().toLowerCase() : "";
+    if (compat === "off") return withoutInclude(payload);
+    return payload;
+  }
+
+  function withKnownPromptCacheCompatibility(payload) {
+    if (!payloadHasPromptCache(payload)) return payload;
+    const key = modelKey(payload);
+    const compat = key ? String(promptCacheCompatByModel.get(key) || "").trim().toLowerCase() : "";
+    if (compat === "off") return withoutPromptCache(payload);
+    return payload;
+  }
+
+  function withKnownSafetyIdentifierCompatibility(payload) {
+    if (!payloadHasSafetyIdentifier(payload)) return payload;
+    const key = modelKey(payload);
+    const compat = key ? String(safetyIdentifierCompatByModel.get(key) || "").trim().toLowerCase() : "";
+    if (compat === "off") return withoutSafetyIdentifier(payload);
+    return payload;
+  }
+
+  function withKnownTruncationCompatibility(payload) {
+    if (!payloadHasTruncation(payload)) return payload;
+    const key = modelKey(payload);
+    const compat = key ? String(truncationCompatByModel.get(key) || "").trim().toLowerCase() : "";
+    if (compat === "off") return withoutTruncation(payload);
+    return payload;
+  }
+
   function payloadHasComputerUseTool(payload) {
     const tools = Array.isArray(payload?.tools) ? payload.tools : [];
     return tools.some((tool) => String(tool?.type || "") === "computer_use_preview");
@@ -314,9 +419,30 @@ function createAgentRuntimeTransportInternal(ctx) {
     return Boolean(verbosity);
   }
 
+  function payloadHasTextFormat(payload) {
+    return Boolean(payload?.text?.format && typeof payload.text.format === "object");
+  }
+
   function payloadHasServiceTier(payload) {
     const tier = String(payload?.service_tier || "").trim().toLowerCase();
     return tier === "default" || tier === "flex" || tier === "priority";
+  }
+
+  function payloadHasInclude(payload) {
+    return Array.isArray(payload?.include) && payload.include.length > 0;
+  }
+
+  function payloadHasPromptCache(payload) {
+    return Boolean(String(payload?.prompt_cache_key || "").trim() || String(payload?.prompt_cache_retention || "").trim());
+  }
+
+  function payloadHasSafetyIdentifier(payload) {
+    return Boolean(String(payload?.safety_identifier || "").trim());
+  }
+
+  function payloadHasTruncation(payload) {
+    const mode = String(payload?.truncation || "").trim().toLowerCase();
+    return mode === "auto" || mode === "disabled";
   }
 
   function withoutReasoning(payload) {
@@ -362,6 +488,45 @@ function createAgentRuntimeTransportInternal(ctx) {
     const next = { ...payload };
     if (text && Object.keys(text).length) next.text = text;
     else delete next.text;
+    return next;
+  }
+
+  function withoutTextFormat(payload) {
+    if (!payloadHasTextFormat(payload)) return payload;
+    const text = payload?.text && typeof payload.text === "object" ? { ...payload.text } : null;
+    if (text) delete text.format;
+    const next = { ...payload };
+    if (text && Object.keys(text).length) next.text = text;
+    else delete next.text;
+    return next;
+  }
+
+  function withoutInclude(payload) {
+    if (!payloadHasInclude(payload)) return payload;
+    const next = { ...payload };
+    delete next.include;
+    return next;
+  }
+
+  function withoutPromptCache(payload) {
+    if (!payloadHasPromptCache(payload)) return payload;
+    const next = { ...payload };
+    delete next.prompt_cache_key;
+    delete next.prompt_cache_retention;
+    return next;
+  }
+
+  function withoutSafetyIdentifier(payload) {
+    if (!payloadHasSafetyIdentifier(payload)) return payload;
+    const next = { ...payload };
+    delete next.safety_identifier;
+    return next;
+  }
+
+  function withoutTruncation(payload) {
+    if (!payloadHasTruncation(payload)) return payload;
+    const next = { ...payload };
+    delete next.truncation;
     return next;
   }
 
@@ -431,6 +596,44 @@ function createAgentRuntimeTransportInternal(ctx) {
     return text.includes("text") && text.includes("verbosity");
   }
 
+  function isTextFormatUnsupportedError(err) {
+    const text = String(err?.message || "").toLowerCase();
+    if (!text || !isUnsupportedText(text)) return false;
+    if (text.includes("text.format")) return true;
+    if (text.includes("json_schema")) return true;
+    if (text.includes("response_format")) return true;
+    return text.includes("text") && text.includes("format");
+  }
+
+  function isIncludeUnsupportedError(err) {
+    const text = String(err?.message || "").toLowerCase();
+    if (!text || !isUnsupportedText(text)) return false;
+    if (text.includes("include")) return true;
+    return false;
+  }
+
+  function isPromptCacheUnsupportedError(err) {
+    const text = String(err?.message || "").toLowerCase();
+    if (!text || !isUnsupportedText(text)) return false;
+    if (text.includes("prompt_cache_key")) return true;
+    if (text.includes("prompt_cache_retention")) return true;
+    return text.includes("prompt cache");
+  }
+
+  function isSafetyIdentifierUnsupportedError(err) {
+    const text = String(err?.message || "").toLowerCase();
+    if (!text || !isUnsupportedText(text)) return false;
+    if (text.includes("safety_identifier")) return true;
+    return text.includes("safety identifier");
+  }
+
+  function isTruncationUnsupportedError(err) {
+    const text = String(err?.message || "").toLowerCase();
+    if (!text || !isUnsupportedText(text)) return false;
+    if (text.includes("truncation")) return true;
+    return false;
+  }
+
   function isServiceTierUnsupportedError(err) {
     const text = String(err?.message || "").toLowerCase();
     if (!text || !isUnsupportedText(text)) return false;
@@ -459,6 +662,16 @@ function createAgentRuntimeTransportInternal(ctx) {
     const afterTier = String(after?.service_tier || "").trim().toLowerCase();
     const beforeVerbosity = String(before?.text?.verbosity || "").trim().toLowerCase();
     const afterVerbosity = String(after?.text?.verbosity || "").trim().toLowerCase();
+    const beforeTextFormat = before?.text?.format ? "on" : "off";
+    const afterTextFormat = after?.text?.format ? "on" : "off";
+    const beforeInclude = Array.isArray(before?.include) ? before.include.length : 0;
+    const afterInclude = Array.isArray(after?.include) ? after.include.length : 0;
+    const beforePromptCache = (before?.prompt_cache_key || before?.prompt_cache_retention) ? "on" : "off";
+    const afterPromptCache = (after?.prompt_cache_key || after?.prompt_cache_retention) ? "on" : "off";
+    const beforeSafety = before?.safety_identifier ? "on" : "off";
+    const afterSafety = after?.safety_identifier ? "on" : "off";
+    const beforeTruncation = String(before?.truncation || "").trim().toLowerCase();
+    const afterTruncation = String(after?.truncation || "").trim().toLowerCase();
     const meta = {};
     if (beforeEffort !== afterEffort) {
       meta.reasoning_effort_from = beforeEffort || null;
@@ -480,6 +693,26 @@ function createAgentRuntimeTransportInternal(ctx) {
       meta.text_verbosity_from = beforeVerbosity || null;
       meta.text_verbosity_to = afterVerbosity || null;
     }
+    if (beforeTextFormat !== afterTextFormat) {
+      meta.text_format_from = beforeTextFormat;
+      meta.text_format_to = afterTextFormat;
+    }
+    if (beforeInclude !== afterInclude) {
+      meta.include_from = beforeInclude;
+      meta.include_to = afterInclude;
+    }
+    if (beforePromptCache !== afterPromptCache) {
+      meta.prompt_cache_from = beforePromptCache;
+      meta.prompt_cache_to = afterPromptCache;
+    }
+    if (beforeSafety !== afterSafety) {
+      meta.safety_identifier_from = beforeSafety;
+      meta.safety_identifier_to = afterSafety;
+    }
+    if (beforeTruncation !== afterTruncation) {
+      meta.truncation_from = beforeTruncation || null;
+      meta.truncation_to = afterTruncation || null;
+    }
     return meta;
   }
 
@@ -493,6 +726,9 @@ function createAgentRuntimeTransportInternal(ctx) {
   }
 
   async function callWithPreferredTransport(payload, options = {}) {
+    if (payload?.background === true) {
+      return jsonTransport.callOpenAiResponsesJson(payload, options);
+    }
     const preferStream = app.ai.streaming !== false;
     if (!preferStream) return jsonTransport.callOpenAiResponsesJson(payload, options);
 
@@ -535,8 +771,18 @@ function createAgentRuntimeTransportInternal(ctx) {
       currentPayload = withKnownEffortCompatibility(
         withKnownSummaryCompatibility(
           withKnownTextVerbosityCompatibility(
-            withKnownServiceTierCompatibility(
-              withoutKnownUnsupportedTools(payload),
+            withKnownTextFormatCompatibility(
+              withKnownIncludeCompatibility(
+                withKnownPromptCacheCompatibility(
+                  withKnownSafetyIdentifierCompatibility(
+                    withKnownTruncationCompatibility(
+                      withKnownServiceTierCompatibility(
+                        withoutKnownUnsupportedTools(payload),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -573,6 +819,26 @@ function createAgentRuntimeTransportInternal(ctx) {
           fallbackMessage = nextTier === "default"
             ? "service_tier reset to default"
             : "service_tier disabled for this model";
+        } else if (payloadHasTextFormat(currentPayload) && isTextFormatUnsupportedError(err)) {
+          nextPayload = withoutTextFormat(currentPayload);
+          if (compatEnabled) rememberTextFormatCompat(currentPayload, "off");
+          fallbackMessage = "text.format disabled for this model";
+        } else if (payloadHasInclude(currentPayload) && isIncludeUnsupportedError(err)) {
+          nextPayload = withoutInclude(currentPayload);
+          if (compatEnabled) rememberIncludeCompat(currentPayload, "off");
+          fallbackMessage = "include disabled for this model";
+        } else if (payloadHasPromptCache(currentPayload) && isPromptCacheUnsupportedError(err)) {
+          nextPayload = withoutPromptCache(currentPayload);
+          if (compatEnabled) rememberPromptCacheCompat(currentPayload, "off");
+          fallbackMessage = "prompt_cache disabled for this model";
+        } else if (payloadHasSafetyIdentifier(currentPayload) && isSafetyIdentifierUnsupportedError(err)) {
+          nextPayload = withoutSafetyIdentifier(currentPayload);
+          if (compatEnabled) rememberSafetyIdentifierCompat(currentPayload, "off");
+          fallbackMessage = "safety_identifier disabled for this model";
+        } else if (payloadHasTruncation(currentPayload) && isTruncationUnsupportedError(err)) {
+          nextPayload = withoutTruncation(currentPayload);
+          if (compatEnabled) rememberTruncationCompat(currentPayload, "off");
+          fallbackMessage = "truncation disabled for this model";
         } else if (payloadHasReasoningSummary(currentPayload) && isReasoningSummaryUnsupportedError(err)) {
           nextPayload = withLessSpecificReasoningSummary(currentPayload) || withoutReasoningSummary(currentPayload);
           if (compatEnabled) {
