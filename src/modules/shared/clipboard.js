@@ -6,21 +6,37 @@ export class ClipboardModule {
     this._document = documentRef;
   }
 
-  async copyText(text) {
-    try {
-      if (this._window.navigator?.clipboard?.writeText) {
-        await this._window.navigator.clipboard.writeText(text);
-        return;
-      }
-    } catch {}
-
+  _copyTextLegacy(text) {
+    if (typeof this._document.execCommand !== "function") {
+      throw new Error("copy legacy API unavailable");
+    }
     const ta = this._document.createElement("textarea");
-    ta.value = text;
+    ta.value = String(text ?? "");
     ta.style.position = "fixed";
     ta.style.left = "-9999px";
     this._document.body.appendChild(ta);
+    ta.focus();
     ta.select();
-    this._document.execCommand("copy");
-    this._document.body.removeChild(ta);
+    ta.setSelectionRange(0, ta.value.length);
+    let copied = false;
+    try {
+      copied = Boolean(this._document.execCommand("copy"));
+    } finally {
+      this._document.body.removeChild(ta);
+    }
+    if (!copied) throw new Error("copy legacy API failed");
+  }
+
+  async copyText(text) {
+    const value = String(text ?? "");
+    try {
+      this._copyTextLegacy(value);
+      return;
+    } catch {}
+    if (this._window.navigator?.clipboard?.writeText) {
+      await this._window.navigator.clipboard.writeText(value);
+      return;
+    }
+    throw new Error("copy API unavailable");
   }
 }

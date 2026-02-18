@@ -13,6 +13,7 @@ export class AppJournalCompositionModule {
     projectMutationModule,
     appFormattingModule,
     appIdentityModule,
+    toast,
   }) {
     if (!app) throw new Error("AppJournalCompositionModule.compose requires app");
     if (!projectMutationModule) throw new Error("AppJournalCompositionModule.compose requires projectMutationModule");
@@ -43,6 +44,7 @@ export class AppJournalCompositionModule {
     return new AiJournalModule({
       app,
       dom: this._dom,
+      toast: typeof toast === "function" ? toast : undefined,
       config: {
         AI_MODELS: aiModels,
         DEFAULT_AI_MODEL: defaultAiModel,

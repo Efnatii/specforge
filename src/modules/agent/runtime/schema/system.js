@@ -13,25 +13,51 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
     return allowed.includes(fb) ? fb : allowed[0];
   };
 
+  function getRuntimeAwareOption(key, fallback = undefined) {
+    const runtimeOverrides = app?.ai?.runtimeProfile?.overrides;
+    if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
+      return runtimeOverrides[key];
+    }
+    const value = app?.ai?.options?.[key];
+    return value === undefined ? fallback : value;
+  }
+
+  function resolveRuntimeTaskProfileInfo() {
+    const modeRaw = String(app?.ai?.options?.taskProfile || "auto").trim().toLowerCase();
+    const mode = modeRaw === "auto" || modeRaw === "balanced" || modeRaw === "bulk" || modeRaw === "accurate" || modeRaw === "research" || modeRaw === "fast" || modeRaw === "custom"
+      ? modeRaw
+      : "auto";
+    const runtime = app?.ai?.runtimeProfile || null;
+    const selected = normalizeEnum(
+      runtime?.selected || (mode === "auto" ? "balanced" : mode),
+      ["balanced", "bulk", "accurate", "research", "fast", "custom"],
+      "balanced",
+    );
+    const reasonRaw = String(runtime?.reason || (mode === "auto" ? "auto_default" : "manual_profile")).trim();
+    const reason = reasonRaw || "manual_profile";
+    return { mode, selected, reason };
+  }
+
   function buildRuntimeProfileInstructions() {
-    const options = app?.ai?.options || {};
-    const serviceTier = normalizeEnum(options.serviceTier, ["flex", "standard", "priority"], "standard");
-    const depth = normalizeEnum(options.reasoningDepth, ["fast", "balanced", "deep"], "balanced");
-    const verify = normalizeEnum(options.reasoningVerify, ["off", "basic", "strict"], "basic");
-    const summaryMode = normalizeEnum(options.reasoningSummary, ["off", "auto", "concise", "detailed"], "auto");
-    const clarify = normalizeEnum(options.reasoningClarify, ["never", "minimal", "normal"], "minimal");
-    const toolsMode = normalizeEnum(options.toolsMode, ["none", "auto", "prefer", "require"], "auto");
-    const brevity = normalizeEnum(options.brevityMode, ["short", "normal", "detailed"], "normal");
-    const output = normalizeEnum(options.outputMode, ["plain", "bullets", "json"], "bullets");
-    const riskyActions = normalizeEnum(options.riskyActionsMode, ["confirm", "allow_if_asked", "never"], "confirm");
-    const style = normalizeEnum(options.styleMode, ["clean", "verbose"], "clean");
-    const citations = normalizeEnum(options.citationsMode, ["off", "on"], "off");
-    const reasoningMaxTokensRaw = Number(options.reasoningMaxTokens);
+    const profileInfo = resolveRuntimeTaskProfileInfo();
+    const serviceTier = normalizeEnum(getRuntimeAwareOption("serviceTier", "standard"), ["flex", "standard", "priority"], "standard");
+    const depth = normalizeEnum(getRuntimeAwareOption("reasoningDepth", "balanced"), ["fast", "balanced", "deep"], "balanced");
+    const verify = normalizeEnum(getRuntimeAwareOption("reasoningVerify", "basic"), ["off", "basic", "strict"], "basic");
+    const summaryMode = normalizeEnum(getRuntimeAwareOption("reasoningSummary", "auto"), ["off", "auto", "concise", "detailed"], "auto");
+    const clarify = normalizeEnum(getRuntimeAwareOption("reasoningClarify", "never"), ["never", "minimal", "normal"], "never");
+    const toolsMode = normalizeEnum(getRuntimeAwareOption("toolsMode", "auto"), ["none", "auto", "prefer", "require"], "auto");
+    const brevity = normalizeEnum(getRuntimeAwareOption("brevityMode", "normal"), ["short", "normal", "detailed"], "normal");
+    const output = normalizeEnum(getRuntimeAwareOption("outputMode", "bullets"), ["plain", "bullets", "json"], "bullets");
+    const riskyActions = normalizeEnum(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked"), ["confirm", "allow_if_asked", "never"], "allow_if_asked");
+    const style = normalizeEnum(getRuntimeAwareOption("styleMode", "clean"), ["clean", "verbose"], "clean");
+    const citations = normalizeEnum(getRuntimeAwareOption("citationsMode", "off"), ["off", "on"], "off");
+    const reasoningMaxTokensRaw = Number(getRuntimeAwareOption("reasoningMaxTokens", 0));
     const reasoningMaxTokens = Number.isFinite(reasoningMaxTokensRaw) && reasoningMaxTokensRaw > 0
       ? Math.max(1, Math.round(reasoningMaxTokensRaw))
       : 0;
 
     const lines = [];
+    lines.push(`Task profile: MODE=${profileInfo.mode}; SELECTED=${profileInfo.selected}; REASON=${profileInfo.reason}.`);
     lines.push(`Runtime profile: SERVICE_TIER=${serviceTier}; DEPTH=${depth}; VERIFY=${verify}; SUMMARY=${summaryMode}; CLARIFY=${clarify}; TOOLS=${toolsMode}; BREVITY=${brevity}; OUTPUT=${output}; RISKY_ACTIONS=${riskyActions}; STYLE=${style}; CITATIONS=${citations}; REASONING_TOKENS=${reasoningMaxTokens > 0 ? reasoningMaxTokens : "auto"}.`);
 
     if (depth === "fast") lines.push("Depth policy: return quickly, minimal branching and short internal analysis.");
@@ -80,13 +106,45 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
     return lines.join(" ");
   }
 
+  function buildElectricalBomInstructions() {
+    const lines = [];
+    lines.push("Electrical BOM mode: apply these rules when the task is about electrical switchboards, BOM/specification, breakers, RCD/RCBO, contactors, relays, busbars, terminals, enclosure IP, or cabinet equipment.");
+    lines.push("If the task is unrelated to electrical equipment specification, ignore this mode.");
+    lines.push("Priority order is strict: (1) safety and compatibility, (2) user requirements/brands/suppliers, (3) optimization/unification/cost.");
+    lines.push("Never invent SKUs/articles, prices, stock, exact dimensions, short-circuit currents, or exact technical characteristics.");
+    lines.push("Do not cite exact clause numbers from standards unless the user provided the source text/link; if not provided, state only generic normative requirement.");
+    lines.push("Do not replace a specification task with plain narrative: always return a BOM table, even when preliminary.");
+    lines.push("If required data is missing, state НЕТ ДАННЫХ, keep status preliminary, and add a concrete missing-data request list.");
+    lines.push("Do not expose full internal reasoning; show only result tables, short technical rationale for disputed choices, and risks/questions/assumptions.");
+    lines.push("Use deterministic workflow: parse and normalize units -> classify feeders -> select protection -> check accessories compatibility -> complete cabinet composition -> unify -> deduplicate -> final validation.");
+    lines.push("Protection selection rules: choose In with safe margin versus design current; require Icu/Ics >= Ikz at installation point; require Ue/Ui and pole count compatibility. If Ikz is missing, do not finalize breaking capacity.");
+    lines.push("Accessory rules: accessory series/frame/voltage must match base device exactly. Cross-series mismatch is prohibited.");
+    lines.push("Cabinet completeness check: include enclosure/mounting/DIN, N/PE bars, busbar holders, terminals, wiring accessories, marking, cable entry hardware, and required consumables where relevant.");
+    lines.push("Data provenance is mandatory per position: Source and Confidence (HIGH/MEDIUM/LOW). LOW confidence must be listed in risks.");
+    lines.push("If user provided source rows, keep Ref traceability; replacements must be marked REPLACED with short reason.");
+    lines.push("If assumptions are unavoidable: prefix with ПРЕДПОЛОЖЕНИЕ, set Confidence=LOW, keep assumptions minimal and safe; never assume SKU/article.");
+    lines.push("If requirements conflict, provide Variant A and Variant B with trade-offs and explicitly ask user to choose.");
+    lines.push("Before final answer, run mandatory checks and report status: OK / НЕТ ДАННЫХ / ПРОБЛЕМА for each check.");
+    lines.push("Mandatory checks: Icu/Ics vs Ikz, network pole/neutral compatibility, coil/release voltage compatibility, accessory frame compatibility, N/PE and terminal sufficiency, duplicate consolidation, and listing all НЕИЗВЕСТНО items in risks.");
+    lines.push("For electrical BOM tasks, output format must be strict and copyable to Excel:");
+    lines.push("Section 1: brief summary (3-7 lines).");
+    lines.push("Section 2: main BOM table in TSV with exact column order:");
+    lines.push("№	Группа	Наименование	Производитель	Серия/Модель	Артикул	Кол-во	Ед.	Ключевые параметры	Примечание	Источник	Уверенность	Ref");
+    lines.push("Section 3: validation checks and warnings. If any critical issue exists, print STOP: требуется уточнение.");
+    lines.push("Section 4: missing data requests with why each is needed.");
+    lines.push("For unknown article use НЕИЗВЕСТНО. Units: шт, м, компл.");
+    lines.push("Allowed group dictionary: Корпус; Ввод; Секционирование; Отходящие линии; АВР; Управление/Релейка; Шины; Клеммы; Монтаж; Маркировка; Расходники; Документация.");
+    return lines.join(" ");
+  }
+
   function agentSystemPrompt() {
-    const clarifyMode = normalizeEnum(app?.ai?.options?.reasoningClarify, ["never", "minimal", "normal"], "minimal");
-    const riskyMode = normalizeEnum(app?.ai?.options?.riskyActionsMode, ["confirm", "allow_if_asked", "never"], "confirm");
+    const clarifyMode = normalizeEnum(getRuntimeAwareOption("reasoningClarify", "never"), ["never", "minimal", "normal"], "never");
+    const riskyMode = normalizeEnum(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked"), ["confirm", "allow_if_asked", "never"], "allow_if_asked");
     const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
     const selectedRangeInstruction = "If the user asks about selected cells or a highlighted range, call get_selection first and use its result.";
     const attachmentInstruction = "If attached files exist, use file_search first. For exact excerpts, call list_attachments and read_attachment.";
     const runtimeProfileInstruction = buildRuntimeProfileInstructions();
+    const electricalBomInstruction = buildElectricalBomInstructions();
     return [
       "Ты AI-агент внутри SpecForge.",
       "Ты можешь читать и изменять таблицы и состояние проекта через tools. Для таблиц используй list_sheets, set_active_sheet, read_range, find_cells, write_cells, write_matrix, copy_range, fill_range, replace_in_range, clear_range, clear_sheet_overrides, get_selection.",
@@ -120,6 +178,7 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
       selectedRangeInstruction,
       attachmentInstruction,
       runtimeProfileInstruction,
+      electricalBomInstruction,
     ].join(" ");
   }
 

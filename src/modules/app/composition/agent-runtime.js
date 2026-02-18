@@ -146,6 +146,7 @@ export class AppAgentRuntimeCompositionModule {
       normalizeAgentPrompt,
       buildAgentInput,
       runOpenAiAgentTurn,
+      cancelOpenAiResponse,
       sanitizeAgentOutputText,
     } = agentRuntimeModule;
 
@@ -170,6 +171,7 @@ export class AppAgentRuntimeCompositionModule {
       nextAgentTurnId,
       buildAgentInput,
       runOpenAiAgentTurn,
+      cancelOpenAiResponse,
       sanitizeAgentOutputText,
     });
 

@@ -11,14 +11,87 @@ const REASONING_EFFORT_ORDER = ["low", "medium", "high", "xhigh"];
 const WEB_SEARCH_CONTEXT_SIZE_ORDER = ["low", "medium", "high"];
 const REASONING_DEPTH_ORDER = ["fast", "balanced", "deep"];
 const REASONING_VERIFY_ORDER = ["off", "basic", "strict"];
-const REASONING_SUMMARY_ORDER = ["off", "auto", "concise", "detailed"];
+const REASONING_SUMMARY_ORDER = ["auto", "concise", "detailed", "off"];
 const REASONING_CLARIFY_ORDER = ["never", "minimal", "normal"];
-const TOOLS_MODE_ORDER = ["none", "auto", "prefer", "require"];
+const TOOLS_MODE_ORDER = ["auto", "prefer", "require", "none"];
 const BREVITY_MODE_ORDER = ["short", "normal", "detailed"];
 const OUTPUT_MODE_ORDER = ["plain", "bullets", "json"];
-const RISKY_ACTIONS_MODE_ORDER = ["confirm", "allow_if_asked", "never"];
+const RISKY_ACTIONS_MODE_ORDER = ["allow_if_asked", "confirm", "never"];
 const STYLE_MODE_ORDER = ["clean", "verbose"];
 const CITATIONS_MODE_ORDER = ["off", "on"];
+const TASK_PROFILE_ORDER = ["auto", "balanced", "bulk", "accurate", "research", "fast", "custom"];
+const TASK_PROFILE_PRESETS = {
+  fast: {
+    reasoningEffort: "low",
+    reasoningDepth: "fast",
+    reasoningVerify: "basic",
+    reasoningSummary: "off",
+    reasoningClarify: "never",
+    toolsMode: "auto",
+    brevityMode: "short",
+    outputMode: "bullets",
+    riskyActionsMode: "allow_if_asked",
+    styleMode: "clean",
+    citationsMode: "off",
+    reasoningMaxTokens: 0,
+  },
+  balanced: {
+    reasoningEffort: "medium",
+    reasoningDepth: "balanced",
+    reasoningVerify: "basic",
+    reasoningSummary: "auto",
+    reasoningClarify: "never",
+    toolsMode: "auto",
+    brevityMode: "normal",
+    outputMode: "bullets",
+    riskyActionsMode: "allow_if_asked",
+    styleMode: "clean",
+    citationsMode: "off",
+    reasoningMaxTokens: 0,
+  },
+  bulk: {
+    reasoningEffort: "medium",
+    reasoningDepth: "balanced",
+    reasoningVerify: "basic",
+    reasoningSummary: "concise",
+    reasoningClarify: "never",
+    toolsMode: "require",
+    brevityMode: "short",
+    outputMode: "bullets",
+    riskyActionsMode: "allow_if_asked",
+    styleMode: "clean",
+    citationsMode: "off",
+    reasoningMaxTokens: 0,
+  },
+  accurate: {
+    reasoningEffort: "high",
+    reasoningDepth: "deep",
+    reasoningVerify: "strict",
+    reasoningSummary: "detailed",
+    reasoningClarify: "never",
+    toolsMode: "prefer",
+    brevityMode: "detailed",
+    outputMode: "bullets",
+    riskyActionsMode: "confirm",
+    styleMode: "clean",
+    citationsMode: "on",
+    reasoningMaxTokens: 0,
+  },
+  research: {
+    reasoningEffort: "high",
+    reasoningDepth: "deep",
+    reasoningVerify: "strict",
+    reasoningSummary: "concise",
+    reasoningClarify: "never",
+    toolsMode: "prefer",
+    brevityMode: "normal",
+    outputMode: "bullets",
+    riskyActionsMode: "allow_if_asked",
+    styleMode: "clean",
+    citationsMode: "on",
+    reasoningMaxTokens: 0,
+  },
+};
 
 export class AgentAttachmentModule {
   constructor({
@@ -160,11 +233,59 @@ export class AgentAttachmentModule {
     const target = e?.target || null;
     const webField = String(target?.dataset?.webSearchConfig || "");
     const reasoningField = String(target?.dataset?.reasoningConfig || "");
+    const reasoningEffortRank = (value) => {
+      const normalized = this._normalizeReasoningEffort(value, "medium");
+      const idx = REASONING_EFFORT_ORDER.indexOf(normalized);
+      return idx >= 0 ? idx : 0;
+    };
+    const requiredEffortByDepthVerify = () => {
+      const depth = this._normalizeReasoningDepth(this._app.ai.options.reasoningDepth || "balanced", "balanced");
+      const verify = this._normalizeReasoningVerify(this._app.ai.options.reasoningVerify || "basic", "basic");
+      if (depth === "deep" && verify === "strict") return "xhigh";
+      if (depth === "deep" || verify === "strict") return "high";
+      return "";
+    };
+    const applyReasoningDependencies = () => {
+      let changed = false;
+
+      const minEffort = requiredEffortByDepthVerify();
+      if (minEffort) {
+        const currentEffort = this._normalizeReasoningEffort(this._app.ai.options.reasoningEffort || "medium", "medium");
+        if (reasoningEffortRank(currentEffort) < reasoningEffortRank(minEffort)) {
+          this._app.ai.options.reasoningEffort = minEffort;
+          this._addChangesJournal("ai.option", `reasoningEffort=${minEffort} (авто: зависит от depth/verify)`);
+          changed = true;
+        }
+      }
+
+      const risky = this._normalizeRiskyActionsMode(this._app.ai.options.riskyActionsMode || "allow_if_asked", "allow_if_asked");
+      if (risky === "never") {
+        const clarify = this._normalizeReasoningClarify(this._app.ai.options.reasoningClarify || "never", "never");
+        if (clarify !== "never") {
+          this._app.ai.options.reasoningClarify = "never";
+          this._addChangesJournal("ai.option", "reasoningClarify=never (авто: riskyActionsMode=never)");
+          changed = true;
+        }
+        this._app.ai.pendingQuestion = null;
+      }
+
+      return changed;
+    };
+    const markTaskProfileCustom = () => {
+      const currentProfile = this._normalizeTaskProfile(this._app.ai.options.taskProfile || "auto", "auto");
+      if (currentProfile === "custom") return false;
+      this._app.ai.options.taskProfile = "custom";
+      this._addChangesJournal("ai.option", "taskProfile=custom");
+      return true;
+    };
     const updateReasoningOption = (key, value, journalKey = key) => {
       if (this._app.ai.options[key] === value) return false;
       this._app.ai.options[key] = value;
-      this._saveAiOptions();
+      if (key !== "taskProfile") markTaskProfileCustom();
       this._addChangesJournal("ai.option", `${journalKey}=${value}`);
+      applyReasoningDependencies();
+      this._app.ai.runtimeProfile = null;
+      this._saveAiOptions();
       return true;
     };
 
@@ -196,6 +317,25 @@ export class AgentAttachmentModule {
       this._renderAiUi();
       return;
     }
+    if (reasoningField === "taskProfile") {
+      const next = this._normalizeTaskProfile(target.value, this._app.ai.options.taskProfile || "auto");
+      const changed = this._app.ai.options.taskProfile !== next;
+      this._app.ai.options.taskProfile = next;
+      if (next !== "auto" && next !== "custom") {
+        const preset = this._taskProfilePreset(next);
+        if (preset) {
+          for (const [key, value] of Object.entries(preset)) {
+            this._app.ai.options[key] = value;
+          }
+        }
+      }
+      applyReasoningDependencies();
+      this._app.ai.runtimeProfile = null;
+      this._saveAiOptions();
+      if (changed) this._addChangesJournal("ai.option", `taskProfile=${next}`);
+      this._renderAiUi();
+      return;
+    }
     if (reasoningField === "depth") {
       const next = this._normalizeReasoningDepth(target.value, this._app.ai.options.reasoningDepth || "balanced");
       updateReasoningOption("reasoningDepth", next, "reasoningDepth");
@@ -215,7 +355,7 @@ export class AgentAttachmentModule {
       return;
     }
     if (reasoningField === "clarify") {
-      const next = this._normalizeReasoningClarify(target.value, this._app.ai.options.reasoningClarify || "minimal");
+      const next = this._normalizeReasoningClarify(target.value, this._app.ai.options.reasoningClarify || "never");
       updateReasoningOption("reasoningClarify", next, "reasoningClarify");
       if (next === "never") this._app.ai.pendingQuestion = null;
       this._renderAiUi();
@@ -240,7 +380,7 @@ export class AgentAttachmentModule {
       return;
     }
     if (reasoningField === "riskyActionsMode") {
-      const next = this._normalizeRiskyActionsMode(target.value, this._app.ai.options.riskyActionsMode || "confirm");
+      const next = this._normalizeRiskyActionsMode(target.value, this._app.ai.options.riskyActionsMode || "allow_if_asked");
       updateReasoningOption("riskyActionsMode", next, "riskyActionsMode");
       if (next === "never") this._app.ai.pendingQuestion = null;
       this._renderAiUi();
@@ -261,6 +401,17 @@ export class AgentAttachmentModule {
     if (reasoningField === "maxTokens") {
       const next = this._normalizeReasoningMaxTokens(target.value, this._app.ai.options.reasoningMaxTokens || 0);
       updateReasoningOption("reasoningMaxTokens", next, "reasoningMaxTokens");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "compatCache") {
+      const raw = String(target.value || "").trim().toLowerCase();
+      const next = raw !== "off";
+      if (this._app.ai.options.compatCache !== next) {
+        this._app.ai.options.compatCache = next;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `compatCache=${next ? "on" : "off"}`);
+      }
       this._renderAiUi();
       return;
     }
@@ -327,7 +478,7 @@ export class AgentAttachmentModule {
     return this._normalizeEnum(value, REASONING_SUMMARY_ORDER, fallback);
   }
 
-  _normalizeReasoningClarify(value, fallback = "minimal") {
+  _normalizeReasoningClarify(value, fallback = "never") {
     return this._normalizeEnum(value, REASONING_CLARIFY_ORDER, fallback);
   }
 
@@ -343,7 +494,7 @@ export class AgentAttachmentModule {
     return this._normalizeEnum(value, OUTPUT_MODE_ORDER, fallback);
   }
 
-  _normalizeRiskyActionsMode(value, fallback = "confirm") {
+  _normalizeRiskyActionsMode(value, fallback = "allow_if_asked") {
     return this._normalizeEnum(value, RISKY_ACTIONS_MODE_ORDER, fallback);
   }
 
@@ -353,6 +504,17 @@ export class AgentAttachmentModule {
 
   _normalizeCitationsMode(value, fallback = "off") {
     return this._normalizeEnum(value, CITATIONS_MODE_ORDER, fallback);
+  }
+
+  _normalizeTaskProfile(value, fallback = "auto") {
+    return this._normalizeEnum(value, TASK_PROFILE_ORDER, fallback);
+  }
+
+  _taskProfilePreset(profile) {
+    const key = this._normalizeTaskProfile(profile, "balanced");
+    const preset = TASK_PROFILE_PRESETS[key];
+    if (!preset) return null;
+    return { ...preset };
   }
 
   _normalizeReasoningMaxTokens(value, fallback = 0) {

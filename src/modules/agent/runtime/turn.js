@@ -25,6 +25,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     num,
     isActionableAgentPrompt,
     estimateExpectedMutationCount,
+    resolveTaskProfile,
     buildAgentResponsesPayload,
     callOpenAiResponses,
     agentSystemPrompt,
@@ -59,6 +60,7 @@ function createAgentRuntimeTurnInternal(ctx) {
   if (typeof num !== "function") throw new Error("AgentRuntimeTurnModule requires deps.num()");
   if (typeof isActionableAgentPrompt !== "function") throw new Error("AgentRuntimeTurnModule requires deps.isActionableAgentPrompt()");
   if (typeof estimateExpectedMutationCount !== "function") throw new Error("AgentRuntimeTurnModule requires deps.estimateExpectedMutationCount()");
+  if (typeof resolveTaskProfile !== "function") throw new Error("AgentRuntimeTurnModule requires deps.resolveTaskProfile()");
   if (typeof buildAgentResponsesPayload !== "function") throw new Error("AgentRuntimeTurnModule requires deps.buildAgentResponsesPayload()");
   if (typeof callOpenAiResponses !== "function") throw new Error("AgentRuntimeTurnModule requires deps.callOpenAiResponses()");
   if (typeof agentSystemPrompt !== "function") throw new Error("AgentRuntimeTurnModule requires deps.agentSystemPrompt()");
@@ -77,6 +79,18 @@ function createAgentRuntimeTurnInternal(ctx) {
   if (typeof prepareToolResources !== "function") throw new Error("AgentRuntimeTurnModule requires deps.prepareToolResources()");
 
   const TOOL_IO_TEXT_LIMIT = 320;
+
+  function makeCanceledError() {
+    const e = new Error("request canceled by user");
+    e.canceled = true;
+    return e;
+  }
+
+  function throwIfCanceled() {
+    if (app.ai.cancelRequested || app.ai.taskState === "cancel_requested" || app.ai.taskState === "cancelled") {
+      throw makeCanceledError();
+    }
+  }
 
   function compactToolIoText(value, maxLen = TOOL_IO_TEXT_LIMIT) {
     let raw = "";
@@ -120,32 +134,6 @@ function createAgentRuntimeTurnInternal(ctx) {
     return out;
   }
 
-  function extractReasoningItemsForInput(response) {
-    const out = [];
-    const src = Array.isArray(response?.output) ? response.output : [];
-    for (const item of src) {
-      if (String(item?.type || "") !== "reasoning") continue;
-      const id = String(item?.id || "").trim();
-      if (!id) continue;
-      const summary = Array.isArray(item?.summary)
-        ? item.summary
-          .map((part) => {
-            const text = String(part?.text || "").trim();
-            if (!text) return null;
-            return { type: "summary_text", text };
-          })
-          .filter(Boolean)
-        : [];
-      if (!summary.length) continue;
-      const row = { type: "reasoning", id };
-      row.summary = summary;
-      const encrypted = String(item?.encrypted_content || "").trim();
-      if (encrypted) row.encrypted_content = encrypted;
-      out.push(row);
-    }
-    return out;
-  }
-
   function hasBuiltInToolUsage(response) {
     const src = Array.isArray(response?.output) ? response.output : [];
     for (const item of src) {
@@ -167,11 +155,14 @@ function createAgentRuntimeTurnInternal(ctx) {
   }
 
   async function runOpenAiAgentTurn(userInput, rawUserText = "", options = {}) {
+    throwIfCanceled();
     const modelId = currentAiModelMeta().id;
-    const input = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
+    const userMessageInput = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
     const userText = String(options?.rawUserText || rawUserText || "").trim();
     const turnId = String(options?.turnId || app.ai.turnId || "");
-    const toolsModeRaw = String(app?.ai?.options?.toolsMode || "auto").trim().toLowerCase();
+    app.ai.runtimeProfile = resolveTaskProfile(userText, app?.ai?.options?.taskProfile);
+    const runtimeToolsMode = app?.ai?.runtimeProfile?.overrides?.toolsMode;
+    const toolsModeRaw = String(runtimeToolsMode ?? app?.ai?.options?.toolsMode ?? "auto").trim().toLowerCase();
     const toolsMode = toolsModeRaw === "none" || toolsModeRaw === "auto" || toolsModeRaw === "prefer" || toolsModeRaw === "require"
       ? toolsModeRaw
       : "auto";
@@ -195,8 +186,10 @@ function createAgentRuntimeTurnInternal(ctx) {
     let roundsUsed = 0;
 
     if (!toolsDisabled) {
+      throwIfCanceled();
       try {
         await prepareToolResources({ turnId });
+        throwIfCanceled();
       } catch (err) {
         if (err?.no_fallback) throw err;
         const hasAttachments = Array.isArray(app?.ai?.attachments) && app.ai.attachments.length > 0;
@@ -210,10 +203,27 @@ function createAgentRuntimeTurnInternal(ctx) {
       }
     }
 
+    const initialPreviousResponseId = String(options?.previousResponseId || "").trim();
+    const previousToolOutputsRaw = Array.isArray(options?.previousToolOutputs)
+      ? options.previousToolOutputs
+      : [];
+    const previousToolOutputs = previousToolOutputsRaw
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        type: String(item.type || ""),
+        call_id: String(item.call_id || ""),
+        output: String(item.output || ""),
+      }))
+      .filter((item) => item.type === "function_call_output" && item.call_id && item.output);
+    const initialInput = initialPreviousResponseId && previousToolOutputs.length
+      ? [...previousToolOutputs, ...userMessageInput]
+      : userMessageInput;
+    throwIfCanceled();
     let response = await callOpenAiResponses(buildAgentResponsesPayload({
       model: modelId,
       instructions: agentSystemPrompt(),
-      input,
+      previousResponseId: initialPreviousResponseId,
+      input: initialInput,
     }), {
       turnId,
       onDelta: options?.onStreamDelta,
@@ -223,6 +233,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     updateAgentTurnWebEvidence(turnCtx, response);
 
     for (let i = 0; i < AGENT_MAX_TOOL_ROUNDS; i += 1) {
+      throwIfCanceled();
       roundsUsed = i + 1;
       const calls = extractAgentFunctionCalls(response);
       if (!calls.length) {
@@ -270,6 +281,7 @@ function createAgentRuntimeTurnInternal(ctx) {
             onDelta: options?.onStreamDelta,
             onEvent: options?.onStreamEvent,
           });
+          throwIfCanceled();
           app.ai.streamResponseId = String(response?.id || app.ai.streamResponseId || "");
           updateAgentTurnWebEvidence(turnCtx, response);
           continue;
@@ -301,6 +313,7 @@ function createAgentRuntimeTurnInternal(ctx) {
       let pauseForUser = null;
       let skippedAfterPause = 0;
       for (const call of calls) {
+        throwIfCanceled();
         if (pauseForUser) {
           skippedAfterPause += 1;
           continue;
@@ -332,6 +345,7 @@ function createAgentRuntimeTurnInternal(ctx) {
           },
         });
         const result = normalizeToolResult(call.name, await executeAgentTool(call.name, args, turnCtx));
+        throwIfCanceled();
         const resultSummary = summarizeToolOutput(result);
         const resultText = `${call.name}: ${result.ok ? "ok" : "error"} => ${compactToolIoText(resultSummary)}`;
         addExternalJournal("tool.result", resultText, {
@@ -382,6 +396,12 @@ function createAgentRuntimeTurnInternal(ctx) {
       }
 
       if (pauseForUser) {
+        const pending = app?.ai?.pendingQuestion;
+        if (pending && typeof pending === "object") {
+          pending.response_id = String(response?.id || pending.response_id || "");
+          pending.request_id = String(response?.__request_id || app.ai.currentRequestId || pending.request_id || "");
+          pending.tool_outputs = outputs.slice();
+        }
         if (skippedAfterPause > 0) {
           addTableJournal("agent.pause", `Остановлено: ожидается ответ пользователя (пропущено вызовов: ${skippedAfterPause})`, {
             turn_id: turnId,
@@ -393,15 +413,21 @@ function createAgentRuntimeTurnInternal(ctx) {
         return sanitizeAgentOutputText(waitMsg);
       }
 
+      throwIfCanceled();
       response = await callOpenAiResponses(buildAgentResponsesPayload({
         model: modelId,
         previousResponseId: response.id,
-        input: [...extractReasoningItemsForInput(response), ...outputs],
+        // Per OpenAI docs, reasoning context should be preserved either by:
+        // 1) previous_response_id, or 2) manual replay of prior output items in input.
+        // This path uses previous_response_id, so we only send fresh function_call_output.
+        // Re-sending prior reasoning items here can trigger duplicate item-id errors.
+        input: outputs,
       }), {
         turnId,
         onDelta: options?.onStreamDelta,
         onEvent: options?.onStreamEvent,
       });
+      throwIfCanceled();
       app.ai.streamResponseId = String(response?.id || app.ai.streamResponseId || "");
       updateAgentTurnWebEvidence(turnCtx, response);
     }

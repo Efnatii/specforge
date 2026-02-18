@@ -18,6 +18,15 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
   const positionSchemaFacade = new AgentRuntimePositionToolSchemaModule({});
   const stateSchemaFacade = new AgentRuntimeStateToolSchemaModule({});
 
+  function getRuntimeAwareOption(key, fallback = undefined) {
+    const runtimeOverrides = app?.ai?.runtimeProfile?.overrides;
+    if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
+      return runtimeOverrides[key];
+    }
+    const value = app?.ai?.options?.[key];
+    return value === undefined ? fallback : value;
+  }
+
   function verificationParam() {
     return {
       type: "object",
@@ -78,28 +87,28 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
     return "auto";
   }
 
-  function normalizeClarifyMode(value, fallback = "minimal") {
+  function normalizeClarifyMode(value, fallback = "never") {
     const raw = String(value || "").trim().toLowerCase();
     if (raw === "never" || raw === "minimal" || raw === "normal") return raw;
     const fb = String(fallback || "").trim().toLowerCase();
     if (fb === "never" || fb === "minimal" || fb === "normal") return fb;
-    return "minimal";
+    return "never";
   }
 
-  function normalizeRiskyActionsMode(value, fallback = "confirm") {
+  function normalizeRiskyActionsMode(value, fallback = "allow_if_asked") {
     const raw = String(value || "").trim().toLowerCase();
     if (raw === "confirm" || raw === "allow_if_asked" || raw === "never") return raw;
     const fb = String(fallback || "").trim().toLowerCase();
     if (fb === "confirm" || fb === "allow_if_asked" || fb === "never") return fb;
-    return "confirm";
+    return "allow_if_asked";
   }
 
   function agentToolsSpec() {
     const verifySchema = verificationParam();
-    const toolsMode = normalizeToolsMode(app?.ai?.options?.toolsMode, "auto");
+    const toolsMode = normalizeToolsMode(getRuntimeAwareOption("toolsMode", "auto"), "auto");
     if (toolsMode === "none") return [];
-    const clarifyMode = normalizeClarifyMode(app?.ai?.options?.reasoningClarify, "minimal");
-    const riskyMode = normalizeRiskyActionsMode(app?.ai?.options?.riskyActionsMode, "confirm");
+    const clarifyMode = normalizeClarifyMode(getRuntimeAwareOption("reasoningClarify", "never"), "never");
+    const riskyMode = normalizeRiskyActionsMode(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked"), "allow_if_asked");
     const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
     const tools = [
       ...sheetSchemaFacade.buildSheetNavigationTools(),

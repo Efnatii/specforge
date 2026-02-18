@@ -140,16 +140,25 @@ function createAgentStateToolsInternal(ctx) {
     return null;
   }
 
+  function getRuntimeAwareOption(key, fallback = undefined) {
+    const runtimeOverrides = app?.ai?.runtimeProfile?.overrides;
+    if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
+      return runtimeOverrides[key];
+    }
+    const value = app?.ai?.options?.[key];
+    return value === undefined ? fallback : value;
+  }
+
   async function tryExecute(name, args, turnCtx = null) {
     if (name === "ask_user_question") {
-      const clarifyModeRaw = String(app?.ai?.options?.reasoningClarify || "minimal").trim().toLowerCase();
+      const clarifyModeRaw = String(getRuntimeAwareOption("reasoningClarify", "never")).trim().toLowerCase();
       const clarifyMode = clarifyModeRaw === "never" || clarifyModeRaw === "minimal" || clarifyModeRaw === "normal"
         ? clarifyModeRaw
-        : "minimal";
-      const riskyModeRaw = String(app?.ai?.options?.riskyActionsMode || "confirm").trim().toLowerCase();
+        : "never";
+      const riskyModeRaw = String(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked")).trim().toLowerCase();
       const riskyMode = riskyModeRaw === "confirm" || riskyModeRaw === "allow_if_asked" || riskyModeRaw === "never"
         ? riskyModeRaw
-        : "confirm";
+        : "allow_if_asked";
       const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
       if (!allowQuestions) {
         addTableJournal("ask_user_question", `Ошибка: вопросы пользователю запрещены настройкой (clarify=${clarifyMode}, risky=${riskyMode})`);

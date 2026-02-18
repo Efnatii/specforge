@@ -15,7 +15,7 @@ function isGpt5Family(modelId) {
 }
 
 function parseGpt5Minor(modelId) {
-  const m = modelId.match(/^gpt-5(?:\.(\d+))?(?:[.-]|$)/);
+  const m = String(modelId || "").match(/^gpt-5(?:\.(\d+))?(?:[.-]|$)/);
   if (!m) return null;
   if (!m[1]) return 0;
   const n = Number.parseInt(m[1], 10);
@@ -44,32 +44,24 @@ function modelReasoningCapabilities(modelIdRaw) {
     };
   }
 
-  const gpt5Minor = parseGpt5Minor(modelId);
-  const isGpt5Pro = /^gpt-5(?:\.\d+)?-pro(?:[.-]|$)/.test(modelId) || /^gpt-5-pro(?:[.-]|$)/.test(modelId);
-  const supportsNoneEffort = gpt5 && gpt5Minor !== null && gpt5Minor >= 1;
-  const supportsMinimalEffort = gpt5 && gpt5Minor !== null && gpt5Minor >= 2;
-  const supportsXhighEffort = /^gpt-5\.2(?:[.-]|$)/.test(modelId) || /^gpt-5\.1-codex-max(?:[.-]|$)/.test(modelId);
+  let effortValues = ["low", "medium", "high"];
+  const gpt5Minor = gpt5 ? parseGpt5Minor(modelId) : null;
+  if (gpt5) {
+    // Keep explicit variants first; generic branches below cover newer gpt-5.x models.
+    if (/^gpt-5\.2-pro(?:[.-]|$)/.test(modelId)) effortValues = ["medium", "high", "xhigh"];
+    else if (/^gpt-5-pro(?:[.-]|$)/.test(modelId)) effortValues = ["high"];
+    else if (/^gpt-5\.2-codex(?:[.-]|$)/.test(modelId)) effortValues = ["low", "medium", "high", "xhigh"];
+    else if (/^gpt-5\.1-codex-max(?:[.-]|$)/.test(modelId)) effortValues = ["none", "medium", "high", "xhigh"];
+    else if (gpt5Minor !== null && gpt5Minor >= 2) effortValues = ["none", "low", "medium", "high", "xhigh"];
+    else if (gpt5Minor !== null && gpt5Minor >= 1) effortValues = ["none", "low", "medium", "high"];
+    else effortValues = ["minimal", "low", "medium", "high"];
+  }
 
-  const effortValues = isGpt5Pro
-    ? ["high"]
-    : [
-      ...(supportsNoneEffort ? ["none"] : []),
-      ...(supportsMinimalEffort ? ["minimal"] : []),
-      "low",
-      "medium",
-      "high",
-      ...(supportsXhighEffort ? ["xhigh"] : []),
-    ];
-
-  const supportsConciseSummary = computerUse
+  const summaryValues = computerUse
     || (gpt5 && gpt5Minor !== null && gpt5Minor >= 2)
-    || oFamily;
-
-  const summaryValues = [
-    "auto",
-    ...(supportsConciseSummary ? ["concise"] : []),
-    "detailed",
-  ];
+    || oFamily
+    ? ["auto", "concise", "detailed"]
+    : ["auto", "detailed"];
 
   return {
     supportsReasoning: true,
@@ -83,10 +75,54 @@ function normalizeReasoningEffortForModel(value, capabilities) {
   const allowed = Array.isArray(capabilities?.effortValues) ? capabilities.effortValues : [];
   if (!allowed.length) return "medium";
   if (allowed.includes(effort)) return effort;
+  if (effort === "none" && allowed.includes("minimal")) return "minimal";
   if ((effort === "none" || effort === "minimal") && allowed.includes("low")) return "low";
   if (effort === "xhigh" && allowed.includes("high")) return "high";
   if (allowed.includes("medium")) return "medium";
   return allowed[0];
+}
+
+function reasoningEffortRank(value) {
+  const effort = String(value || "").trim().toLowerCase();
+  if (effort === "none") return 0;
+  if (effort === "minimal") return 1;
+  if (effort === "low") return 2;
+  if (effort === "medium") return 3;
+  if (effort === "high") return 4;
+  if (effort === "xhigh") return 5;
+  return -1;
+}
+
+function maxReasoningEffort(aRaw, bRaw) {
+  const a = String(aRaw || "").trim().toLowerCase();
+  const b = String(bRaw || "").trim().toLowerCase();
+  return reasoningEffortRank(b) > reasoningEffortRank(a) ? b : a;
+}
+
+function normalizeReasoningDepthOption(value, fallback = "balanced") {
+  const mode = String(value || "").trim().toLowerCase();
+  if (mode === "fast" || mode === "balanced" || mode === "deep") return mode;
+  const fb = String(fallback || "").trim().toLowerCase();
+  if (fb === "fast" || fb === "balanced" || fb === "deep") return fb;
+  return "balanced";
+}
+
+function normalizeReasoningVerifyOption(value, fallback = "basic") {
+  const mode = String(value || "").trim().toLowerCase();
+  if (mode === "off" || mode === "basic" || mode === "strict") return mode;
+  const fb = String(fallback || "").trim().toLowerCase();
+  if (fb === "off" || fb === "basic" || fb === "strict") return fb;
+  return "basic";
+}
+
+function apiEffortFloorByDepthAndVerify(depthRaw, verifyRaw, capabilities) {
+  const depth = normalizeReasoningDepthOption(depthRaw, "balanced");
+  const verify = normalizeReasoningVerifyOption(verifyRaw, "basic");
+  let target = "";
+  if (depth === "deep" && verify === "strict") target = "xhigh";
+  else if (depth === "deep" || verify === "strict") target = "high";
+  if (!target) return "";
+  return normalizeReasoningEffortForModel(target, capabilities);
 }
 
 function normalizeReasoningSummaryForModel(value, capabilities) {
@@ -95,7 +131,7 @@ function normalizeReasoningSummaryForModel(value, capabilities) {
   const allowed = Array.isArray(capabilities?.summaryValues) ? capabilities.summaryValues : [];
   if (!allowed.length) return "off";
   if (allowed.includes(mode)) return mode;
-  if (mode === "concise" && allowed.includes("detailed")) return "detailed";
+  if ((mode === "concise" || mode === "detailed") && allowed.includes("auto")) return "auto";
   if (allowed.includes("auto")) return "auto";
   return allowed[0];
 }
@@ -246,6 +282,7 @@ export class AgentRuntimeModule {
         num,
         isActionableAgentPrompt: promptModule.isActionableAgentPrompt,
         estimateExpectedMutationCount: policyModule.estimateExpectedMutationCount,
+        resolveTaskProfile: policyModule.resolveTaskProfile,
         buildAgentResponsesPayload: this.buildAgentResponsesPayload,
         callOpenAiResponses: responsesModule.callOpenAiResponses,
         agentSystemPrompt: this._toolSpecModule.agentSystemPrompt,
@@ -293,6 +330,8 @@ export class AgentRuntimeModule {
     this.callOpenAiResponses = responsesModule.callOpenAiResponses;
     this.callOpenAiResponsesJson = responsesModule.callOpenAiResponsesJson;
     this.callOpenAiResponsesStream = responsesModule.callOpenAiResponsesStream;
+    this.cancelOpenAiResponse = responsesModule.cancelOpenAiResponse;
+    this.compactOpenAiResponse = responsesModule.compactOpenAiResponse;
     this.parseSseEvent = responsesModule.parseSseEvent;
     this.extractAgentFunctionCalls = responsesModule.extractAgentFunctionCalls;
     this.extractAgentText = responsesModule.extractAgentText;
@@ -600,15 +639,31 @@ export class AgentRuntimeModule {
       return Math.max(1, Math.round(n));
     };
     const model = String(options?.model || this._app.ai.model || "");
+    const runtimeOverrides = this._app?.ai?.runtimeProfile?.overrides;
+    const getRuntimeAwareOption = (key, fallback = undefined) => {
+      if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
+        return runtimeOverrides[key];
+      }
+      const value = this._app?.ai?.options?.[key];
+      return value === undefined ? fallback : value;
+    };
     const reasoningCapabilities = modelReasoningCapabilities(model);
-    const reasoningEnabled = this._app?.ai?.options?.reasoning !== false && reasoningCapabilities.supportsReasoning;
-    const reasoningEffort = normalizeReasoningEffortForModel(this._app?.ai?.options?.reasoningEffort, reasoningCapabilities);
-    const reasoningSummary = normalizeReasoningSummaryForModel(this._app?.ai?.options?.reasoningSummary, reasoningCapabilities);
-    const textVerbosity = normalizeTextVerbosity(this._app?.ai?.options?.brevityMode, model);
-    const serviceTier = toResponsesServiceTier(this._app?.ai?.options?.serviceTier);
-    const toolsMode = normalizeToolsMode(this._app?.ai?.options?.toolsMode);
-    const reasoningMaxTokens = normalizeReasoningMaxTokens(this._app?.ai?.options?.reasoningMaxTokens);
-    const tools = toolsMode === "none" ? [] : this._toolSpecModule.agentToolsSpec();
+    const reasoningEnabled = getRuntimeAwareOption("reasoning", true) !== false && reasoningCapabilities.supportsReasoning;
+    const reasoningDepth = normalizeReasoningDepthOption(getRuntimeAwareOption("reasoningDepth", "balanced"), "balanced");
+    const reasoningVerify = normalizeReasoningVerifyOption(getRuntimeAwareOption("reasoningVerify", "basic"), "basic");
+    let reasoningEffort = normalizeReasoningEffortForModel(getRuntimeAwareOption("reasoningEffort", "medium"), reasoningCapabilities);
+    const apiEffortFloor = apiEffortFloorByDepthAndVerify(reasoningDepth, reasoningVerify, reasoningCapabilities);
+    if (apiEffortFloor) reasoningEffort = maxReasoningEffort(reasoningEffort, apiEffortFloor);
+    const reasoningSummary = normalizeReasoningSummaryForModel(getRuntimeAwareOption("reasoningSummary", "auto"), reasoningCapabilities);
+    const textVerbosity = normalizeTextVerbosity(getRuntimeAwareOption("brevityMode", "normal"), model);
+    const serviceTier = toResponsesServiceTier(getRuntimeAwareOption("serviceTier", "standard"));
+    const toolsMode = normalizeToolsMode(getRuntimeAwareOption("toolsMode", "auto"));
+    const reasoningMaxTokens = normalizeReasoningMaxTokens(getRuntimeAwareOption("reasoningMaxTokens", 0));
+    const toolsRaw = toolsMode === "none" ? [] : this._toolSpecModule.agentToolsSpec();
+    const supportsComputerUse = isComputerUsePreviewModel(model);
+    const tools = supportsComputerUse
+      ? toolsRaw
+      : toolsRaw.filter((tool) => String(tool?.type || "") !== "computer_use_preview");
     const toolChoice = toolsMode === "none"
       ? "none"
       : toolsMode === "require"

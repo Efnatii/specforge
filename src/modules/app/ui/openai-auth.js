@@ -231,6 +231,17 @@ export class OpenAiAuthModule {
     this._app.ai.streamEntryId = "";
     this._app.ai.streamDeltaHasPending = false;
     this._app.ai.lastStreamBuffer = "";
+    this._app.ai.backgroundResponseId = "";
+    this._app.ai.backgroundActive = false;
+    this._app.ai.backgroundPollCount = 0;
+    this._app.ai.cancelApiRequestedFor = "";
+    this._app.ai.pendingCancelResponseIds = [];
+    this._app.ai.cancelRequested = false;
+    this._app.ai.activeRequestAbort = null;
+    this._app.ai.conversationId = "";
+    this._app.ai.lastCompletedResponseId = "";
+    this._app.ai.lastCompactedResponseId = "";
+    this._app.ai.serviceTierActual = "";
     this._addExternalJournal("auth", "Ключ OpenAI отключен");
     this._addChangesJournal("auth.disconnect", "manual");
     this._saveOpenAiApiKey();
@@ -265,3 +276,4 @@ export class OpenAiAuthModule {
     }
   }
 }
+

@@ -46,6 +46,8 @@ function createAgentRuntimeResponsesInternal(ctx) {
     callOpenAiResponses: transportFacade.callOpenAiResponses,
     callOpenAiResponsesJson: transportFacade.callOpenAiResponsesJson,
     callOpenAiResponsesStream: transportFacade.callOpenAiResponsesStream,
+    cancelOpenAiResponse: transportFacade.cancelOpenAiResponse,
+    compactOpenAiResponse: transportFacade.compactOpenAiResponse,
     parseSseEvent: parseFacade.parseSseEvent,
     extractAgentFunctionCalls: parseFacade.extractAgentFunctionCalls,
     extractAgentText: parseFacade.extractAgentText,

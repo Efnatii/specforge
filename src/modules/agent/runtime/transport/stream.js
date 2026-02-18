@@ -28,6 +28,41 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
 
   const fetch = fetchFn || ((...args) => globalThis.fetch(...args));
 
+  function compactText(text, maxLen = 800) {
+    return String(text || "").replace(/\s+/g, " ").trim().slice(0, maxLen);
+  }
+
+  function setActiveAbort(abortFn) {
+    app.ai.activeRequestAbort = typeof abortFn === "function" ? abortFn : null;
+  }
+
+  function clearActiveAbort(currentAbortFn) {
+    if (!currentAbortFn) {
+      app.ai.activeRequestAbort = null;
+      return;
+    }
+    if (app.ai.activeRequestAbort === currentAbortFn) app.ai.activeRequestAbort = null;
+  }
+
+  function isAbortError(err) {
+    const name = String(err?.name || "").toLowerCase();
+    const msg = String(err?.message || "").toLowerCase();
+    const reason = String(err?.reason || err?.cause || "").toLowerCase();
+    return name === "aborterror"
+      || msg.includes("abort")
+      || msg.includes("cancel")
+      || reason.includes("abort")
+      || reason.includes("cancel");
+  }
+
+  function throwIfCanceled() {
+    if (app.ai.cancelRequested || app.ai.taskState === "cancel_requested" || app.ai.taskState === "cancelled") {
+      const e = new Error("request canceled by user");
+      e.canceled = true;
+      throw e;
+    }
+  }
+
   async function callOpenAiResponsesStream(payload, options = {}) {
     const startedAt = Date.now();
     const model = String(payload?.model || app.ai.model || "");
@@ -40,6 +75,8 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     const turnId = options?.turnId || app.ai.turnId || "";
     app.ai.currentRequestId = requestId;
     const timeoutMs = Math.max(30000, num(options?.timeout_ms, 180000));
+    const requestedServiceTier = String(payload?.service_tier || "default");
+    const lowBandwidthMode = app?.ai?.options?.lowBandwidthMode === true;
 
     addExternalJournal("request.start", `${isContinuation ? "continue" : "start"} model=${model} tools=${toolsCount} reasoning=${reasoningEffort}`, {
       turn_id: turnId,
@@ -53,13 +90,26 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         continuation_has_tools: continuationHasTools,
         reasoning_effort: reasoningEffort,
         reasoning_summary: reasoningSummary || null,
+        service_tier_requested: requestedServiceTier,
+        low_bandwidth_mode: lowBandwidthMode,
       },
     });
 
     const controller = new AbortController();
+    const abortFn = (reason = "user_cancel") => {
+      try {
+        controller.abort(reason);
+      } catch {}
+    };
+    setActiveAbort(abortFn);
     const timer = setTimeout(() => controller.abort("timeout"), timeoutMs);
     let res = null;
     try {
+    try {
+      const requestPayload = { ...payload, stream: true };
+      if (lowBandwidthMode) {
+        requestPayload.stream_options = { include_obfuscation: false };
+      }
       res = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {
@@ -67,11 +117,16 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
           Accept: "text/event-stream",
           Authorization: `Bearer ${app.ai.apiKey}`,
         },
-        body: JSON.stringify({ ...payload, stream: true }),
+        body: JSON.stringify(requestPayload),
         signal: controller.signal,
       });
     } catch (err) {
       clearTimeout(timer);
+      if (isAbortError(err)) {
+        const e = new Error("request canceled by user");
+        e.canceled = true;
+        throw e;
+      }
       throw new Error(`stream transport failed: ${String(err?.message || err)}`);
     }
 
@@ -83,7 +138,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
       clearTimeout(timer);
       const body = await res.text();
       const ms = Date.now() - startedAt;
-      const shortBody = String(body || "").replace(/\s+/g, " ").trim().slice(0, 800);
+      const shortBody = compactText(body);
       addExternalJournal("request.error", `HTTP ${res.status} /v1/responses (stream)`, {
         level: "error",
         status: "error",
@@ -120,8 +175,23 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         response_id: String(parsed?.id || ""),
         duration_ms: ms,
         status: "completed",
-        meta: { output_count: outCount, model, stream_fallback: "content_type" },
+        meta: {
+          output_count: outCount,
+          model,
+          stream_fallback: "content_type",
+          service_tier_requested: requestedServiceTier,
+          service_tier_actual: String(parsed?.service_tier || "") || null,
+          low_bandwidth_mode: lowBandwidthMode,
+        },
       });
+      app.ai.serviceTierActual = String(parsed?.service_tier || "");
+      if (parsed?.conversation) {
+        const convId = typeof parsed.conversation === "string"
+          ? parsed.conversation
+          : String(parsed?.conversation?.id || "");
+        if (convId) app.ai.conversationId = convId;
+      }
+      if (parsed?.id) app.ai.lastCompletedResponseId = String(parsed.id);
       parsed.__request_id = reqId;
       app.ai.currentRequestId = reqId;
       return parsed;
@@ -138,13 +208,16 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
 
     try {
       while (true) {
+        throwIfCanceled();
         const step = await reader.read();
         if (step.done) break;
+        throwIfCanceled();
         buf += decoder.decode(step.value, { stream: true });
         buf = buf.replace(/\r\n/g, "\n");
 
         let sepIdx = buf.indexOf("\n\n");
         while (sepIdx >= 0) {
+          throwIfCanceled();
           const rawEvent = buf.slice(0, sepIdx);
           buf = buf.slice(sepIdx + 2);
           sepIdx = buf.indexOf("\n\n");
@@ -216,6 +289,15 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
 
     const ms = Date.now() - startedAt;
     const outCount = Array.isArray(completed?.output) ? completed.output.length : 0;
+    const actualServiceTier = String(completed?.service_tier || "");
+    app.ai.serviceTierActual = actualServiceTier;
+    if (completed?.conversation) {
+      const convId = typeof completed.conversation === "string"
+        ? completed.conversation
+        : String(completed?.conversation?.id || "");
+      if (convId) app.ai.conversationId = convId;
+    }
+    if (completed?.id) app.ai.lastCompletedResponseId = String(completed.id);
     addExternalJournal("request.complete", `HTTP 200 /v1/responses (stream), output=${outCount}`, {
       turn_id: turnId,
       request_id: reqId,
@@ -228,6 +310,9 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         stream: true,
         delta_count: deltaCounter,
         delta_chars: deltaChars,
+        service_tier_requested: requestedServiceTier,
+        service_tier_actual: actualServiceTier || null,
+        low_bandwidth_mode: lowBandwidthMode,
       },
     });
 
@@ -244,6 +329,25 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     completed.__request_id = reqId;
     app.ai.currentRequestId = reqId;
     return completed;
+  } catch (err) {
+    const canceled = Boolean(err?.canceled || isAbortError(err));
+    if (canceled) {
+      const cancelErr = err?.canceled
+        ? err
+        : Object.assign(new Error("request canceled by user"), { canceled: true });
+      addExternalJournal("request.cancelled", "request canceled by user", {
+        level: "warning",
+        status: "error",
+        turn_id: turnId,
+        request_id: requestId,
+        response_id: String(app.ai.streamResponseId || ""),
+      });
+      throw cancelErr;
+    }
+    throw err;
+  } finally {
+    clearActiveAbort(abortFn);
+  }
   }
 
   return { callOpenAiResponsesStream };

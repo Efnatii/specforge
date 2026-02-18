@@ -42,6 +42,7 @@ export class AppCompositionModule {
       projectMutationModule: core.projectMutationModule,
       appFormattingModule: core.appFormattingModule,
       appIdentityModule: core.appIdentityModule,
+      toast: (text) => core.toastModule.show(text),
     });
 
     const uiBase = new AppUiBaseCompositionModule({

@@ -16,6 +16,140 @@ function createAgentRuntimePolicyInternal(ctx) {
   if (!(AI_INCOMPLETE_RESPONSE_RE instanceof RegExp)) throw new Error("AgentRuntimePolicyModule requires config.AI_INCOMPLETE_RESPONSE_RE");
   if (typeof num !== "function") throw new Error("AgentRuntimePolicyModule requires deps.num()");
 
+  const TASK_PROFILE_ORDER = ["auto", "balanced", "bulk", "accurate", "research", "fast", "custom"];
+  const TASK_PROFILE_PRESETS = {
+    fast: {
+      reasoningEffort: "low",
+      reasoningDepth: "fast",
+      reasoningVerify: "basic",
+      reasoningSummary: "off",
+      reasoningClarify: "never",
+      toolsMode: "auto",
+      brevityMode: "short",
+      outputMode: "bullets",
+      riskyActionsMode: "allow_if_asked",
+      styleMode: "clean",
+      citationsMode: "off",
+      reasoningMaxTokens: 0,
+    },
+    balanced: {
+      reasoningEffort: "medium",
+      reasoningDepth: "balanced",
+      reasoningVerify: "basic",
+      reasoningSummary: "auto",
+      reasoningClarify: "never",
+      toolsMode: "auto",
+      brevityMode: "normal",
+      outputMode: "bullets",
+      riskyActionsMode: "allow_if_asked",
+      styleMode: "clean",
+      citationsMode: "off",
+      reasoningMaxTokens: 0,
+    },
+    bulk: {
+      reasoningEffort: "medium",
+      reasoningDepth: "balanced",
+      reasoningVerify: "basic",
+      reasoningSummary: "concise",
+      reasoningClarify: "never",
+      toolsMode: "require",
+      brevityMode: "short",
+      outputMode: "bullets",
+      riskyActionsMode: "allow_if_asked",
+      styleMode: "clean",
+      citationsMode: "off",
+      reasoningMaxTokens: 0,
+    },
+    accurate: {
+      reasoningEffort: "high",
+      reasoningDepth: "deep",
+      reasoningVerify: "strict",
+      reasoningSummary: "detailed",
+      reasoningClarify: "never",
+      toolsMode: "prefer",
+      brevityMode: "detailed",
+      outputMode: "bullets",
+      riskyActionsMode: "confirm",
+      styleMode: "clean",
+      citationsMode: "on",
+      reasoningMaxTokens: 0,
+    },
+    research: {
+      reasoningEffort: "high",
+      reasoningDepth: "deep",
+      reasoningVerify: "strict",
+      reasoningSummary: "concise",
+      reasoningClarify: "never",
+      toolsMode: "prefer",
+      brevityMode: "normal",
+      outputMode: "bullets",
+      riskyActionsMode: "allow_if_asked",
+      styleMode: "clean",
+      citationsMode: "on",
+      reasoningMaxTokens: 0,
+    },
+  };
+
+  function normalizeTaskProfile(value, fallback = "auto") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (TASK_PROFILE_ORDER.includes(raw)) return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    return TASK_PROFILE_ORDER.includes(fb) ? fb : "auto";
+  }
+
+  function getTaskProfilePreset(profile) {
+    const key = normalizeTaskProfile(profile, "balanced");
+    const preset = TASK_PROFILE_PRESETS[key];
+    if (!preset) return null;
+    return { ...preset };
+  }
+
+  function inferAutoTaskProfile(taskTextRaw) {
+    const src = String(taskTextRaw || "").toLowerCase();
+    if (!src) return { selected: "balanced", reason: "empty_request" };
+
+    const bulkScopeRe = /(\b(all|every|each)\b[\s\S]{0,48}\b(item|items|article|articles|position|positions|row|rows|sku|skus)\b|(\u0432\u0441\u0435|\u043a\u0430\u0436\u0434\w*)[\s\S]{0,48}(\u0430\u0440\u0442\u0438\u043a\u0443\u043b|\u043f\u043e\u0437\u0438\u0446|\u0441\u0442\u0440\u043e\u043a|\u0442\u043e\u0432\u0430\u0440|\u044d\u043b\u0435\u043c\u0435\u043d\u0442|sku))/i;
+    if (/(bulk|batch|import|\u0438\u043c\u043f\u043e\u0440\u0442|\u043c\u0430\u0441\u0441\u043e\u0432|\u043f\u0430\u043a\u0435\u0442\u043d)/i.test(src) || bulkScopeRe.test(src)) {
+      return { selected: "bulk", reason: "bulk_keywords" };
+    }
+    if (/(analy|analysis|review|audit|compare|debug|bug|\u0430\u043d\u0430\u043b\u0438\u0437|\u0441\u0440\u0430\u0432\u043d|\u043f\u0440\u043e\u0432\u0435\u0440|\u0430\u0443\u0434\u0438\u0442|\u043e\u0431\u0437\u043e\u0440)/i.test(src)) {
+      return { selected: "accurate", reason: "analysis_keywords" };
+    }
+    if (/(research|search|source|citation|cite|web|internet|\u043f\u043e\u0438\u0441\u043a|\u0438\u0441\u0441\u043b\u0435\u0434|\u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a|\u0441\u0441\u044b\u043b|\u0432\u0435\u0431|\u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442)/i.test(src)) {
+      return { selected: "research", reason: "research_keywords" };
+    }
+    if (/(quick|fast|brief|short|\u0431\u044b\u0441\u0442\u0440|\u043a\u0440\u0430\u0442\u043a|\u043a\u043e\u0440\u043e\u0442\u043a)/i.test(src)) {
+      return { selected: "fast", reason: "speed_keywords" };
+    }
+    return { selected: "balanced", reason: "default" };
+  }
+
+  function resolveTaskProfile(taskTextRaw = "", profileRaw = null) {
+    const mode = normalizeTaskProfile(profileRaw ?? app?.ai?.options?.taskProfile, "auto");
+    if (mode === "custom") {
+      return { mode, selected: "custom", reason: "manual_custom", overrides: null };
+    }
+    if (mode !== "auto") {
+      return { mode, selected: mode, reason: "manual_profile", overrides: getTaskProfilePreset(mode) };
+    }
+    const inferred = inferAutoTaskProfile(taskTextRaw);
+    return {
+      mode: "auto",
+      selected: inferred.selected,
+      reason: inferred.reason,
+      overrides: getTaskProfilePreset(inferred.selected),
+    };
+  }
+
+  function getEffectiveAiOption(key, fallback = "") {
+    const runtimeOverrides = app?.ai?.runtimeProfile?.overrides;
+    if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
+      return runtimeOverrides[key];
+    }
+    const value = app?.ai?.options?.[key];
+    return value === undefined ? fallback : value;
+  }
+
   function estimateExpectedMutationCount(text, hasMutationIntent) {
     if (!hasMutationIntent) return 0;
     const src = String(text || "").toLowerCase();
@@ -25,8 +159,19 @@ function createAgentRuntimePolicyInternal(ctx) {
     if (/(добав|insert|append|позиц|материал|автомат)/i.test(src)) count += 1;
     if (/(измени|обнов|поменя|замени|удали|update|set|write|delete|replace|увелич|уменьш)/i.test(src)) count = Math.max(count, 1);
 
+    const bulkAllRequested = /(\ball\b|\bevery\b|\beach\b|все|всех|всю|всей|весь|кажд)/i.test(src);
+    const bulkByArticles = /((all|все|кажд)[^.!?\n]{0,64}(article|sku|item|position|артикул|позиц))/i.test(src);
+    if (bulkAllRequested) count = Math.max(count, 50);
+    if (bulkByArticles) count = Math.max(count, 200);
+
+    const explicitAmountMatch = src.match(/(?:до|минимум|не\s+менее|at\s+least)?\s*(\d{2,4})\s*(?:item|items|sku|article|position|positions|позиц|артикул)/i);
+    if (explicitAmountMatch) {
+      const explicitAmount = Number.parseInt(explicitAmountMatch[1], 10);
+      if (Number.isFinite(explicitAmount)) count = Math.max(count, explicitAmount);
+    }
+
     if (count <= 0) return 1;
-    return Math.min(3, count);
+    return Math.min(500, Math.max(1, count));
   }
 
   function looksLikePseudoToolText(text) {
@@ -43,14 +188,14 @@ function createAgentRuntimePolicyInternal(ctx) {
     const src = String(text || "").trim();
     if (!src) return true;
     if (looksLikePseudoToolText(src)) return true;
-    const clarifyModeRaw = String(app?.ai?.options?.reasoningClarify || "minimal").trim().toLowerCase();
+    const clarifyModeRaw = String(getEffectiveAiOption("reasoningClarify", "never")).trim().toLowerCase();
     const clarifyMode = clarifyModeRaw === "never" || clarifyModeRaw === "minimal" || clarifyModeRaw === "normal"
       ? clarifyModeRaw
-      : "minimal";
-    const riskyModeRaw = String(app?.ai?.options?.riskyActionsMode || "confirm").trim().toLowerCase();
+      : "never";
+    const riskyModeRaw = String(getEffectiveAiOption("riskyActionsMode", "allow_if_asked")).trim().toLowerCase();
     const riskyMode = riskyModeRaw === "confirm" || riskyModeRaw === "allow_if_asked" || riskyModeRaw === "never"
       ? riskyModeRaw
-      : "confirm";
+      : "allow_if_asked";
     const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
     if (!allowQuestions && AI_INCOMPLETE_RESPONSE_RE.test(src)) return true;
     if (/^(выполняю|приступаю|подождите|начинаю|calling|running|i'?ll run)/i.test(src)) return true;
@@ -202,6 +347,10 @@ function createAgentRuntimePolicyInternal(ctx) {
 
   return {
     estimateExpectedMutationCount,
+    normalizeTaskProfile,
+    getTaskProfilePreset,
+    inferAutoTaskProfile,
+    resolveTaskProfile,
     looksLikePseudoToolText,
     isAgentTextIncomplete,
     shouldForceAgentContinuation,

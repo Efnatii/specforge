@@ -68,6 +68,7 @@ export const DOM_ID_SELECTORS = {
   agentQuestionChoices: "agentQuestionChoices",
   agentPrompt: "agentPromptInput",
   btnAgentSend: "btnAgentSend",
+  btnAgentCancel: "btnAgentCancel",
   agentAttachmentInput: "agentAttachmentInput",
 };
 

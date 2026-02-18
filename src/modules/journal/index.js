@@ -10,6 +10,7 @@ function createAiJournalInternal(ctx) {
     dom,
     windowRef,
     localStorageRef,
+    toast: toastFn,
     config,
     helpers,
   } = ctx;
@@ -48,6 +49,7 @@ function createAiJournalInternal(ctx) {
 
   const win = windowRef || globalThis.window;
   const storage = localStorageRef || globalThis.localStorage;
+  const toast = typeof toastFn === "function" ? toastFn : () => {};
   const journalRenderState = {
     timer: 0,
     kinds: new Set(),
@@ -56,14 +58,15 @@ function createAiJournalInternal(ctx) {
   const WEB_SEARCH_CONTEXT_SIZE_ORDER = ["low", "medium", "high"];
   const REASONING_DEPTH_ORDER = ["fast", "balanced", "deep"];
   const REASONING_VERIFY_ORDER = ["off", "basic", "strict"];
-  const REASONING_SUMMARY_ORDER = ["off", "auto", "concise", "detailed"];
+  const REASONING_SUMMARY_ORDER = ["auto", "concise", "detailed", "off"];
   const REASONING_CLARIFY_ORDER = ["never", "minimal", "normal"];
-  const TOOLS_MODE_ORDER = ["none", "auto", "prefer", "require"];
+  const TOOLS_MODE_ORDER = ["auto", "prefer", "require", "none"];
   const BREVITY_MODE_ORDER = ["short", "normal", "detailed"];
   const OUTPUT_MODE_ORDER = ["plain", "bullets", "json"];
-  const RISKY_ACTIONS_MODE_ORDER = ["confirm", "allow_if_asked", "never"];
+  const RISKY_ACTIONS_MODE_ORDER = ["allow_if_asked", "confirm", "never"];
   const STYLE_MODE_ORDER = ["clean", "verbose"];
   const CITATIONS_MODE_ORDER = ["off", "on"];
+  const TASK_PROFILE_ORDER = ["auto", "balanced", "bulk", "accurate", "research", "fast", "custom"];
   const SERVICE_TIER_ORDER = ["flex", "standard", "priority"];
   const SERVICE_TIER_LABELS = {
     flex: "FLEX",
@@ -82,6 +85,15 @@ function createAiJournalInternal(ctx) {
     medium: "Средний",
     high: "Высокий",
     xhigh: "Максимальный",
+  };
+  const TASK_PROFILE_LABELS = {
+    auto: "Авто (по задаче)",
+    balanced: "Сбалансированный",
+    bulk: "Массовый импорт",
+    accurate: "Точность",
+    research: "Исследование",
+    fast: "Быстрый",
+    custom: "Пользовательский",
   };
   ensureJournalUiState();
 
@@ -154,7 +166,7 @@ function reasoningSummaryLabel(value) {
 }
 
 function reasoningClarifyLabel(value) {
-  const mode = normalizeReasoningClarify(value, "minimal");
+  const mode = normalizeReasoningClarify(value, "never");
   if (mode === "never") return "Никогда";
   if (mode === "normal") return "Обычный";
   return "Минимальный";
@@ -166,6 +178,10 @@ function reasoningToolsModeLabel(value) {
   if (mode === "prefer") return "Предпочитать";
   if (mode === "require") return "Обязательно";
   return "Авто";
+}
+function taskProfileLabel(value) {
+  const key = normalizeTaskProfile(value, "auto");
+  return TASK_PROFILE_LABELS[key] || key;
 }
 
 function normalizeServiceTier(value, fallback = "standard") {
@@ -195,7 +211,7 @@ function normalizeReasoningSummary(value, fallback = "auto") {
   return normalizeEnum(value, REASONING_SUMMARY_ORDER, fallback);
 }
 
-function normalizeReasoningClarify(value, fallback = "minimal") {
+function normalizeReasoningClarify(value, fallback = "never") {
   return normalizeEnum(value, REASONING_CLARIFY_ORDER, fallback);
 }
 
@@ -211,7 +227,7 @@ function normalizeOutputMode(value, fallback = "bullets") {
   return normalizeEnum(value, OUTPUT_MODE_ORDER, fallback);
 }
 
-function normalizeRiskyActionsMode(value, fallback = "confirm") {
+function normalizeRiskyActionsMode(value, fallback = "allow_if_asked") {
   return normalizeEnum(value, RISKY_ACTIONS_MODE_ORDER, fallback);
 }
 
@@ -221,6 +237,9 @@ function normalizeStyleMode(value, fallback = "clean") {
 
 function normalizeCitationsMode(value, fallback = "off") {
   return normalizeEnum(value, CITATIONS_MODE_ORDER, fallback);
+}
+function normalizeTaskProfile(value, fallback = "auto") {
+  return normalizeEnum(value, TASK_PROFILE_ORDER, fallback);
 }
 
 function normalizeReasoningMaxTokens(value, fallback = 0) {
@@ -249,19 +268,20 @@ function loadAiSettings() {
     const raw = storage.getItem(STORAGE_KEYS.agentOptions);
     if (raw) {
       const parsed = JSON.parse(raw);
-      for (const k of ["webSearch", "reasoning"]) {
+      for (const k of ["webSearch", "reasoning", "compatCache"]) {
         if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
       }
+      app.ai.options.taskProfile = normalizeTaskProfile(parsed.taskProfile, app.ai.options.taskProfile || "auto");
       app.ai.options.serviceTier = normalizeServiceTier(parsed.serviceTier, app.ai.options.serviceTier || "standard");
       app.ai.options.reasoningEffort = normalizeReasoningEffort(parsed.reasoningEffort, app.ai.options.reasoningEffort || "medium");
       app.ai.options.reasoningDepth = normalizeReasoningDepth(parsed.reasoningDepth, app.ai.options.reasoningDepth || "balanced");
       app.ai.options.reasoningVerify = normalizeReasoningVerify(parsed.reasoningVerify, app.ai.options.reasoningVerify || "basic");
       app.ai.options.reasoningSummary = normalizeReasoningSummary(parsed.reasoningSummary, app.ai.options.reasoningSummary || "auto");
-      app.ai.options.reasoningClarify = normalizeReasoningClarify(parsed.reasoningClarify, app.ai.options.reasoningClarify || "minimal");
+      app.ai.options.reasoningClarify = normalizeReasoningClarify(parsed.reasoningClarify, app.ai.options.reasoningClarify || "never");
       app.ai.options.toolsMode = normalizeToolsMode(parsed.toolsMode, app.ai.options.toolsMode || "auto");
       app.ai.options.brevityMode = normalizeBrevityMode(parsed.brevityMode, app.ai.options.brevityMode || "normal");
       app.ai.options.outputMode = normalizeOutputMode(parsed.outputMode, app.ai.options.outputMode || "bullets");
-      app.ai.options.riskyActionsMode = normalizeRiskyActionsMode(parsed.riskyActionsMode, app.ai.options.riskyActionsMode || "confirm");
+      app.ai.options.riskyActionsMode = normalizeRiskyActionsMode(parsed.riskyActionsMode, app.ai.options.riskyActionsMode || "allow_if_asked");
       app.ai.options.styleMode = normalizeStyleMode(parsed.styleMode, app.ai.options.styleMode || "clean");
       app.ai.options.citationsMode = normalizeCitationsMode(parsed.citationsMode, app.ai.options.citationsMode || "off");
       app.ai.options.reasoningMaxTokens = normalizeReasoningMaxTokens(parsed.reasoningMaxTokens, app.ai.options.reasoningMaxTokens || 0);
@@ -334,8 +354,29 @@ function renderAiUi() {
   }
 
   const hasLockedQuestion = hasLockedQuestionOptions();
-  if (dom.btnAgentSend) dom.btnAgentSend.disabled = !app.ai.connected || app.ai.sending || hasLockedQuestion;
+  if (dom.btnAgentSend) {
+    const isCancelMode = Boolean(app.ai.sending);
+    const title = isCancelMode
+      ? "\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435"
+      : "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c";
+    dom.btnAgentSend.disabled = isCancelMode
+      ? false
+      : (!app.ai.connected || hasLockedQuestion);
+    dom.btnAgentSend.title = title;
+    dom.btnAgentSend.setAttribute("aria-label", title);
+    const mode = isCancelMode ? "cancel" : "send";
+    if (dom.btnAgentSend.dataset.mode !== mode) {
+      dom.btnAgentSend.dataset.mode = mode;
+      dom.btnAgentSend.innerHTML = isCancelMode
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 4l-5 16-3-6-8-2zM12 14l8-10" /></svg>';
+    }
+  }
   if (dom.agentPrompt) dom.agentPrompt.disabled = !app.ai.connected || app.ai.sending || hasLockedQuestion;
+  if (dom.btnAgentCancel) {
+    dom.btnAgentCancel.hidden = true;
+    dom.btnAgentCancel.disabled = true;
+  }
 
   renderSidebarMode();
   renderJournalViewMode();
@@ -397,20 +438,23 @@ function renderAgentChips() {
   }
 
   if (app.ai.options.reasoning !== false) {
+    const taskProfile = normalizeTaskProfile(app.ai.options.taskProfile, "auto");
     const effort = normalizeReasoningEffort(app.ai.options.reasoningEffort, "medium");
     const depth = normalizeReasoningDepth(app.ai.options.reasoningDepth, "balanced");
     const verify = normalizeReasoningVerify(app.ai.options.reasoningVerify, "basic");
     const summaryMode = normalizeReasoningSummary(app.ai.options.reasoningSummary, "auto");
-    const clarify = normalizeReasoningClarify(app.ai.options.reasoningClarify, "minimal");
+    const clarify = normalizeReasoningClarify(app.ai.options.reasoningClarify, "never");
     const toolsMode = normalizeToolsMode(app.ai.options.toolsMode, "auto");
     const brevityMode = normalizeBrevityMode(app.ai.options.brevityMode, "normal");
     const outputMode = normalizeOutputMode(app.ai.options.outputMode, "bullets");
-    const riskyActionsMode = normalizeRiskyActionsMode(app.ai.options.riskyActionsMode, "confirm");
+    const riskyActionsMode = normalizeRiskyActionsMode(app.ai.options.riskyActionsMode, "allow_if_asked");
     const styleMode = normalizeStyleMode(app.ai.options.styleMode, "clean");
     const citationsMode = normalizeCitationsMode(app.ai.options.citationsMode, "off");
     const reasoningMaxTokens = normalizeReasoningMaxTokens(app.ai.options.reasoningMaxTokens, 0);
+    const compatCache = app.ai.options.compatCache !== false;
 
     const effortLabel = reasoningEffortLabel(effort);
+    const taskProfileLabelText = taskProfileLabel(taskProfile);
     const depthLabel = reasoningDepthLabel(depth);
     const verifyLabel = reasoningVerifyLabel(verify);
     const summaryLabel = reasoningSummaryLabel(summaryMode);
@@ -427,7 +471,7 @@ function renderAgentChips() {
     parts.push(`<div class="${wrapCls}" data-reasoning-wrap>
       <button type="button" class="${chipCls}" data-ai-chip-option="reasoningSettings" title="Настройки размышлений" aria-label="Настройки размышлений">
         <b>Размышления</b>
-        <span>${esc(effortLabel)}</span>
+        <span>${esc(taskProfileLabelText)}</span>
         ${gearIcon}
       </button>
       <div class="agent-reasoning-popover" data-reasoning-popover role="dialog" aria-label="Настройки размышлений">
@@ -435,6 +479,18 @@ function renderAgentChips() {
           <strong>Размышления</strong>
           <button type="button" class="agent-web-search-close" data-reasoning-action="close" aria-label="Закрыть настройки">x</button>
         </div>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Авто: профиль выбирается по типу задачи. Сбалансированный: универсальный режим по умолчанию. Массовый импорт: короче ответ, минимум уточнений, инструменты по возможности обязательны для пакетных действий. Точность: максимальная глубина и строгая проверка, больше времени. Исследование: глубокий анализ с упором на проверку через инструменты и ссылки. Быстрый: минимальное усилие и глубина ради скорости. Пользовательский: используются ваши ручные настройки без автоподбора.">Профиль</span>
+          <select data-reasoning-config="taskProfile">
+            <option value="auto"${selectedAttr(taskProfile, "auto")}>Авто (по задаче)</option>
+            <option value="balanced"${selectedAttr(taskProfile, "balanced")}>Сбалансированный</option>
+            <option value="bulk"${selectedAttr(taskProfile, "bulk")}>Массовый импорт</option>
+            <option value="accurate"${selectedAttr(taskProfile, "accurate")}>Точность</option>
+            <option value="research"${selectedAttr(taskProfile, "research")}>Исследование</option>
+            <option value="fast"${selectedAttr(taskProfile, "fast")}>Быстрый</option>
+            <option value="custom"${selectedAttr(taskProfile, "custom")}>Пользовательский</option>
+          </select>
+        </label>
         <label class="agent-web-search-row">
           <span data-tooltip="Низкое: быстрый ответ, минимум анализа и проверок. Среднее: сбалансированный режим по умолчанию. Высокое: больше сравнений вариантов и самопроверок. Максимальное: максимально тщательная проработка, больше времени и затрат.">Усилие</span>
           <select data-reasoning-config="effort">
@@ -463,10 +519,10 @@ function renderAgentChips() {
         <label class="agent-web-search-row">
           <span data-tooltip="Выключена: без сводки рассуждений. Авто: уровень сводки выбирается автоматически. Краткая: только ключевые выводы. Подробная: расширенная сводка шагов и выводов.">Сводка</span>
           <select data-reasoning-config="summaryMode">
-            <option value="off"${selectedAttr(summaryMode, "off")}>Выключена</option>
             <option value="auto"${selectedAttr(summaryMode, "auto")}>Авто</option>
             <option value="concise"${selectedAttr(summaryMode, "concise")}>Краткая</option>
             <option value="detailed"${selectedAttr(summaryMode, "detailed")}>Подробная</option>
+            <option value="off"${selectedAttr(summaryMode, "off")}>Выключена</option>
           </select>
         </label>
         <label class="agent-web-search-row">
@@ -480,10 +536,10 @@ function renderAgentChips() {
         <label class="agent-web-search-row">
           <span data-tooltip="Не использовать: отвечать без инструментов. Авто: использовать инструменты по необходимости. Предпочитать: чаще обращаться к инструментам для проверки фактов. Обязательно: по возможности решать через инструменты, а не предположения.">Инструменты</span>
           <select data-reasoning-config="toolsMode">
-            <option value="none"${selectedAttr(toolsMode, "none")}>Не использовать</option>
             <option value="auto"${selectedAttr(toolsMode, "auto")}>Авто</option>
             <option value="prefer"${selectedAttr(toolsMode, "prefer")}>Предпочитать</option>
             <option value="require"${selectedAttr(toolsMode, "require")}>Обязательно</option>
+            <option value="none"${selectedAttr(toolsMode, "none")}>Не использовать</option>
           </select>
         </label>
         <label class="agent-web-search-row">
@@ -505,8 +561,8 @@ function renderAgentChips() {
         <label class="agent-web-search-row">
           <span data-tooltip="Подтверждать: перед рискованными/необратимыми действиями просить явное подтверждение; вопросы разрешены. Только по явной просьбе: не запрашивать отдельное подтверждение, выполнять рискованные шаги только когда пользователь прямо попросил; вопросы разрешены, их частота задаётся опцией Уточнения. Никогда: полностью запретить вопросы пользователю и вызов ask_user_question.">Риски</span>
           <select data-reasoning-config="riskyActionsMode">
-            <option value="confirm"${selectedAttr(riskyActionsMode, "confirm")}>Подтверждать</option>
             <option value="allow_if_asked"${selectedAttr(riskyActionsMode, "allow_if_asked")}>Только по явной просьбе</option>
+            <option value="confirm"${selectedAttr(riskyActionsMode, "confirm")}>Подтверждать</option>
             <option value="never"${selectedAttr(riskyActionsMode, "never")}>Никогда</option>
           </select>
         </label>
@@ -528,7 +584,14 @@ function renderAgentChips() {
           <span data-tooltip="0: лимит выбирается автоматически моделью. Положительное число: жесткий верхний предел длины ответа в токенах. Больше лимит — потенциально длиннее и детальнее ответ, но выше стоимость и время.">Токены</span>
           <input type="number" min="0" step="1" value="${reasoningMaxTokens}" data-reasoning-config="maxTokens" />
         </label>
-        <div class="agent-web-search-summary" data-reasoning-config="summary">включено, усилие=${esc(effortLabel)}, глубина=${esc(depthLabel)}, проверка=${esc(verifyLabel)}, сводка=${esc(summaryLabel)}, уточнения=${esc(clarifyLabel)}, инструменты=${esc(toolsLabel)}, токены=${esc(reasoningMaxTokens || "авто")}</div>
+        <label class="agent-web-search-row">
+          <span data-tooltip="При включении рантайм запоминает совместимые фолбэки параметров для модели и применяет их в следующих запросах.">Кэш совместимости</span>
+          <select data-reasoning-config="compatCache">
+            <option value="on"${compatCache ? " selected" : ""}>Вкл</option>
+            <option value="off"${compatCache ? "" : " selected"}>Выкл</option>
+          </select>
+        </label>
+        <div class="agent-web-search-summary" data-reasoning-config="summary">включено, профиль=${esc(taskProfileLabelText)}, усилие=${esc(effortLabel)}, глубина=${esc(depthLabel)}, проверка=${esc(verifyLabel)}, сводка=${esc(summaryLabel)}, уточнения=${esc(clarifyLabel)}, инструменты=${esc(toolsLabel)}, токены=${esc(reasoningMaxTokens || "авто")}, кэш совместимости=${esc(compatCache ? "вкл" : "выкл")}</div>
       </div>
     </div>`);
   }
@@ -551,6 +614,7 @@ function renderAgentContextIcons() {
     }
     if (key === "reasoning") {
       const enabled = app.ai.options.reasoning !== false;
+      const taskProfile = normalizeTaskProfile(app.ai.options.taskProfile, "auto");
       const effort = normalizeReasoningEffort(app.ai.options.reasoningEffort, "medium");
       const depth = normalizeReasoningDepth(app.ai.options.reasoningDepth, "balanced");
       const verify = normalizeReasoningVerify(app.ai.options.reasoningVerify, "basic");
@@ -559,9 +623,10 @@ function renderAgentContextIcons() {
       const depthLabel = reasoningDepthLabel(depth);
       const verifyLabel = reasoningVerifyLabel(verify);
       const summaryLabel = reasoningSummaryLabel(summaryMode);
+      const profileLabel = taskProfileLabel(taskProfile);
       btn.classList.toggle("is-selected", enabled);
       btn.dataset.effort = effort;
-      const title = `Размышления: ${enabled ? "включены" : "выключены"}, усилие — ${effortLabel}, глубина — ${depthLabel}, проверка — ${verifyLabel}, сводка — ${summaryLabel}`;
+      const title = `Размышления: ${enabled ? "включены" : "выключены"}, профиль — ${profileLabel}, усилие — ${effortLabel}, глубина — ${depthLabel}, проверка — ${verifyLabel}, сводка — ${summaryLabel}`;
       btn.title = title;
       btn.setAttribute("aria-label", `${title}. Нажмите для переключения.`);
       const badge = btn.querySelector("[data-ai-effort-badge]");
@@ -1420,28 +1485,45 @@ function formatJournalTextForCopy(textRaw) {
   return out.join("").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-async function copyText(text) {
-  try {
-    if (win.navigator?.clipboard?.writeText) {
-      await win.navigator.clipboard.writeText(text);
-      return;
-    }
-  } catch {}
-
+function copyTextLegacy(text) {
+  if (!win.document || typeof win.document.execCommand !== "function") {
+    throw new Error("copy legacy API unavailable");
+  }
   const ta = win.document.createElement("textarea");
-  ta.value = text;
+  ta.value = String(text ?? "");
   ta.style.position = "fixed";
   ta.style.left = "-9999px";
   win.document.body.appendChild(ta);
+  ta.focus();
   ta.select();
-  win.document.execCommand("copy");
-  win.document.body.removeChild(ta);
+  ta.setSelectionRange(0, ta.value.length);
+  let copied = false;
+  try {
+    copied = Boolean(win.document.execCommand("copy"));
+  } finally {
+    win.document.body.removeChild(ta);
+  }
+  if (!copied) throw new Error("copy legacy API failed");
+}
+
+async function copyText(text) {
+  const value = String(text ?? "");
+  try {
+    copyTextLegacy(value);
+    return;
+  } catch {}
+  if (win.navigator?.clipboard?.writeText) {
+    await win.navigator.clipboard.writeText(value);
+    return;
+  }
+  throw new Error("copy API unavailable");
 }
 
 async function copyJournal(kind) {
   const cfg = journalConfig(kind);
   if (!cfg) return;
-  if (!cfg.items.length) {
+  const items = Array.isArray(cfg.items) ? cfg.items : [];
+  if (!items.length) {
     toast("Журнал пуст");
     return;
   }
@@ -1463,7 +1545,10 @@ function formatAllJournalsForCopy() {
 
 async function copyAllJournals() {
   const kinds = ["chat", "table", "external", "changes"];
-  const total = kinds.reduce((acc, kind) => acc + (journalConfig(kind)?.items.length || 0), 0);
+  const total = kinds.reduce((acc, kind) => {
+    const items = journalConfig(kind)?.items;
+    return acc + (Array.isArray(items) ? items.length : 0);
+  }, 0);
   if (!total) {
     toast("Все журналы пусты");
     return;

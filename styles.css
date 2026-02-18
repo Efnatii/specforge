@@ -711,19 +711,22 @@ body.sidebar-resizing * {
 .agent-input-row {
   margin-top: 6px;
   display: grid;
-  grid-template-columns: 1fr 32px;
+  grid-template-columns: minmax(0, 1fr) 32px;
   gap: 6px;
-  align-items: stretch;
+  align-items: end;
 }
 
 .agent-action-btn {
   width: 32px;
-  height: auto;
+  height: 32px;
+  align-self: end;
 }
 
 #agentPromptInput {
   border: 1px solid #2e2e2e;
   background: #fff;
+  width: 100%;
+  box-sizing: border-box;
   min-height: 56px;
   max-height: 140px;
   resize: vertical;
@@ -1609,8 +1612,13 @@ body.sidebar-resizing * {
   }
 
   .agent-input-row {
-    grid-template-columns: 1fr 30px;
+    grid-template-columns: minmax(0, 1fr) 30px;
     gap: 4px;
+  }
+
+  .agent-action-btn {
+    width: 30px;
+    height: 30px;
   }
 
   .agent-journal-item {

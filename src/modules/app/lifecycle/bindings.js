@@ -145,7 +145,9 @@ export class AppBindingsModule {
       };
     }
     if (this._dom.btnCopyAllJournals) {
-      this._dom.btnCopyAllJournals.onclick = () => {
+      this._dom.btnCopyAllJournals.onclick = (e) => {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
         void this._copyAllJournals();
       };
     }
@@ -209,8 +211,48 @@ export class AppBindingsModule {
       this._dom.agentContextIcons.onchange = (e) => this._agentAttachmentApi.onAgentContextIconsChange(e);
     }
     this._dom.btnAgentSend.onclick = () => {
+      if (this._app.ai.sending) {
+        void this._agentPromptApi.cancelAgentPrompt();
+        return;
+      }
       void this._agentPromptApi.sendAgentPrompt();
     };
+    if (this._dom.btnAgentCancel) {
+      this._dom.btnAgentCancel.onclick = () => {
+        void this._agentPromptApi.cancelAgentPrompt();
+      };
+      this._dom.btnAgentCancel.hidden = true;
+    }
+    const autoCancelActiveTurn = (source, keepalive = false) => {
+      if (!this._app.ai.sending || this._app.ai.cancelRequested) return;
+      void this._agentPromptApi.cancelAgentPrompt({
+        source,
+        keepalive,
+        silent: true,
+        deferWhenOffline: true,
+      });
+    };
+    this._window.addEventListener("pagehide", () => {
+      autoCancelActiveTurn("pagehide_auto", true);
+    });
+    this._window.addEventListener("beforeunload", () => {
+      autoCancelActiveTurn("beforeunload_auto", true);
+    });
+    this._window.addEventListener("offline", () => {
+      autoCancelActiveTurn("offline_auto", false);
+    });
+    this._window.addEventListener("error", () => {
+      autoCancelActiveTurn("window_error_auto", true);
+    });
+    this._window.addEventListener("unhandledrejection", () => {
+      autoCancelActiveTurn("unhandledrejection_auto", true);
+    });
+    this._window.addEventListener("online", () => {
+      void this._agentPromptApi.flushPendingCancelRequests("online");
+    });
+    this._window.setTimeout(() => {
+      void this._agentPromptApi.flushPendingCancelRequests("startup");
+    }, 0);
     if (this._dom.agentQuestionFrame) {
       this._dom.agentQuestionFrame.onclick = (e) => {
         void this._agentPromptApi.onAgentQuestionFrameClick(e);
