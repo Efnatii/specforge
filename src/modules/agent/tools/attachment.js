@@ -20,6 +20,20 @@ const RISKY_ACTIONS_MODE_ORDER = ["allow_if_asked", "confirm", "never"];
 const STYLE_MODE_ORDER = ["clean", "verbose"];
 const CITATIONS_MODE_ORDER = ["off", "on"];
 const TASK_PROFILE_ORDER = ["auto", "fast", "balanced", "bulk", "longrun", "price_search", "proposal", "source_audit", "accurate", "research", "spec_strict", "custom"];
+const NO_REASONING_PROFILE_ORDER = ["quick", "standard", "concise", "detailed", "json", "sources", "cautious", "tool_free", "custom"];
+const NO_REASONING_PROFILE_ALIASES = {
+  auto: "standard",
+  fast: "quick",
+  balanced: "standard",
+  bulk: "concise",
+  longrun: "detailed",
+  price_search: "sources",
+  proposal: "json",
+  source_audit: "sources",
+  accurate: "cautious",
+  research: "sources",
+  spec_strict: "json",
+};
 const OPTIONAL_TEXT_MODE_ORDER = ["auto", "off", "custom"];
 const BACKGROUND_MODE_ORDER = ["off", "auto", "on"];
 const COMPACT_MODE_ORDER = ["off", "auto", "on"];
@@ -397,6 +411,104 @@ const TASK_PROFILE_PRESETS = {
   },
 };
 
+const NO_REASONING_PROFILE_BASE_PRESET = {
+  toolsMode: "auto",
+  brevityMode: "normal",
+  outputMode: "bullets",
+  riskyActionsMode: "allow_if_asked",
+  styleMode: "clean",
+  citationsMode: "off",
+  reasoningMaxTokens: 0,
+  compatCache: true,
+  promptCacheKeyMode: "auto",
+  promptCacheKey: "",
+  promptCacheRetentionMode: "auto",
+  promptCacheRetention: "default",
+  safetyIdentifierMode: "auto",
+  safetyIdentifier: "",
+  safeTruncationAuto: true,
+  backgroundMode: "off",
+  backgroundTokenThreshold: 12000,
+  compactMode: "off",
+  compactThresholdTokens: 90000,
+  compactTurnThreshold: 45,
+  useConversationState: false,
+  structuredSpecOutput: false,
+  metadataEnabled: true,
+  metadataPromptVersionMode: "auto",
+  metadataPromptVersion: "v1",
+  metadataFrontendBuildMode: "auto",
+  metadataFrontendBuild: "",
+  includeSourcesMode: "off",
+  lowBandwidthMode: false,
+};
+
+const NO_REASONING_PROFILE_PRESETS = {
+  quick: {
+    ...NO_REASONING_PROFILE_BASE_PRESET,
+    brevityMode: "short",
+    outputMode: "plain",
+    promptCacheKeyMode: "off",
+    promptCacheRetentionMode: "off",
+    safetyIdentifierMode: "off",
+    safeTruncationAuto: false,
+    metadataEnabled: false,
+    lowBandwidthMode: true,
+  },
+  standard: {
+    ...NO_REASONING_PROFILE_BASE_PRESET,
+  },
+  concise: {
+    ...NO_REASONING_PROFILE_BASE_PRESET,
+    brevityMode: "short",
+    outputMode: "bullets",
+    reasoningMaxTokens: 4000,
+  },
+  detailed: {
+    ...NO_REASONING_PROFILE_BASE_PRESET,
+    brevityMode: "detailed",
+    styleMode: "verbose",
+    reasoningMaxTokens: 12000,
+    backgroundMode: "auto",
+    compactMode: "auto",
+    compactThresholdTokens: 70000,
+    compactTurnThreshold: 35,
+    useConversationState: true,
+  },
+  json: {
+    ...NO_REASONING_PROFILE_BASE_PRESET,
+    toolsMode: "prefer",
+    outputMode: "json",
+    structuredSpecOutput: true,
+    reasoningMaxTokens: 8000,
+  },
+  sources: {
+    ...NO_REASONING_PROFILE_BASE_PRESET,
+    toolsMode: "require",
+    citationsMode: "on",
+    includeSourcesMode: "on",
+    reasoningMaxTokens: 10000,
+  },
+  cautious: {
+    ...NO_REASONING_PROFILE_BASE_PRESET,
+    toolsMode: "prefer",
+    riskyActionsMode: "confirm",
+    citationsMode: "on",
+    includeSourcesMode: "auto",
+  },
+  tool_free: {
+    ...NO_REASONING_PROFILE_BASE_PRESET,
+    toolsMode: "none",
+    outputMode: "plain",
+    citationsMode: "off",
+    includeSourcesMode: "off",
+    promptCacheKeyMode: "off",
+    promptCacheRetentionMode: "off",
+    safetyIdentifierMode: "off",
+    lowBandwidthMode: true,
+  },
+};
+
 export class AgentAttachmentModule {
   constructor({
     app,
@@ -488,6 +600,8 @@ export class AgentAttachmentModule {
     if (!target || typeof target.closest !== "function") return;
     if (target.closest("[data-web-search-wrap]")) return;
     if (target.closest("[data-reasoning-wrap]")) return;
+    const activeInlineEditor = globalThis?.document?.activeElement?.closest?.("[data-inline-custom-editor]");
+    if (activeInlineEditor) return;
     this._app.ai.webSearchPopoverOpen = false;
     this._app.ai.reasoningPopoverOpen = false;
     this._renderAiUi();
@@ -517,7 +631,30 @@ export class AgentAttachmentModule {
       const current = this._app.ai.options.reasoning !== false;
       const next = !current;
       this._app.ai.options.reasoning = next;
-      if (!next) this._app.ai.reasoningPopoverOpen = false;
+      if (!next) {
+        this._app.ai.reasoningPopoverOpen = false;
+        const profile = this._normalizeNoReasoningProfile(this._app.ai.options.noReasoningProfile || "standard", "standard");
+        if (profile !== "custom") {
+          const preset = this._noReasoningProfilePreset(profile);
+          if (preset) {
+            for (const [key, value] of Object.entries(preset)) {
+              this._app.ai.options[key] = value;
+            }
+          }
+        }
+      } else {
+        const profile = this._normalizeTaskProfile(this._app.ai.options.taskProfile || "auto", "auto");
+        if (profile !== "auto" && profile !== "custom") {
+          const preset = this._taskProfilePreset(profile);
+          if (preset) {
+            for (const [key, value] of Object.entries(preset)) {
+              if (key === "serviceTier") continue;
+              this._app.ai.options[key] = value;
+            }
+          }
+        }
+      }
+      this._app.ai.runtimeProfile = null;
       this._saveAiOptions();
       this._addChangesJournal("ai.option", `reasoning=${next ? "on" : "off"}`);
       this._renderAiUi();
@@ -622,7 +759,7 @@ export class AgentAttachmentModule {
       const useConversationState = this._normalizeBooleanSelect(this._app.ai.options.useConversationState, false);
       if (triggerKey === "useConversationState" && !useConversationState && compactMode === "on") {
         setOption("compactMode", "auto", "авто: useConversationState=off");
-      } else if (compactMode === "on" && !useConversationState) {
+      } else if (triggerKey === "compactMode" && compactMode === "on" && !useConversationState) {
         setOption("useConversationState", true, "авто: compactMode=on");
       }
 
@@ -645,13 +782,125 @@ export class AgentAttachmentModule {
       this._addChangesJournal("ai.option", "taskProfile=custom");
       return true;
     };
-    const promptForCustomValue = (title, currentValue = "", hint = "") => {
-      const promptFn = globalThis?.window?.prompt || globalThis?.prompt;
-      if (typeof promptFn !== "function") return { canceled: true, value: String(currentValue || "") };
-      const message = hint ? `${title}\n${hint}` : title;
-      const entered = promptFn(message, String(currentValue || ""));
-      if (entered === null) return { canceled: true, value: String(currentValue || "") };
-      return { canceled: false, value: String(entered || "") };
+    const markNoReasoningProfileCustom = () => {
+      const currentProfile = this._normalizeNoReasoningProfile(this._app.ai.options.noReasoningProfile || "standard", "standard");
+      if (currentProfile === "custom") return false;
+      this._app.ai.options.noReasoningProfile = "custom";
+      this._addChangesJournal("ai.option", "noReasoningProfile=custom");
+      return true;
+    };
+    const markActiveProfileCustom = () => {
+      const reasoningEnabled = this._app.ai.options.reasoning !== false;
+      if (reasoningEnabled) return markTaskProfileCustom();
+      return markNoReasoningProfileCustom();
+    };
+    const openInlineCustomModeEditor = ({
+      modeField,
+      valueField,
+      initialValue = "",
+      placeholder = "",
+      parseValue = null,
+      valueJournal = "",
+      markProfileCustom = true,
+    }) => {
+      const selectEl = String(target?.dataset?.reasoningConfig || "") === String(modeField || "")
+        ? target
+        : this._dom.agentChips?.querySelector?.(`[data-reasoning-config="${String(modeField || "")}"]`);
+      if (!selectEl || String(selectEl.tagName || "").toUpperCase() !== "SELECT") return false;
+      const row = selectEl.closest(".agent-web-search-row");
+      if (!row) return false;
+      if (row.querySelector(`[data-inline-custom-editor="${String(modeField || "")}"]`)) return true;
+
+      const doc = globalThis?.document;
+      if (!doc || typeof doc.createElement !== "function") return false;
+
+      const editor = doc.createElement("input");
+      editor.type = "text";
+      editor.value = String(initialValue || "");
+      editor.placeholder = String(placeholder || "");
+      editor.dataset.inlineCustomEditor = String(modeField || "");
+      const width = Math.max(118, Math.round(selectEl.getBoundingClientRect?.().width || selectEl.offsetWidth || 118));
+      editor.style.width = `${width}px`;
+
+      selectEl.hidden = true;
+      row.appendChild(editor);
+
+      let finalized = false;
+      const cleanup = () => {
+        if (finalized) return;
+        finalized = true;
+        if (editor.parentElement) editor.parentElement.removeChild(editor);
+        selectEl.hidden = false;
+      };
+      const cancel = () => {
+        cleanup();
+        this._renderAiUi();
+      };
+      const commit = () => {
+        const parser = typeof parseValue === "function"
+          ? parseValue
+          : ((raw) => ({ ok: true, value: String(raw || "").trim() }));
+        const parsed = parser(editor.value);
+        if (!parsed || parsed.ok === false) {
+          const msg = String(parsed?.error || "Некорректное значение");
+          if (msg) this._toast(msg);
+          editor.focus();
+          if (typeof editor.select === "function") editor.select();
+          return;
+        }
+        const nextValue = parsed.value;
+        let changed = false;
+        if (this._app.ai.options[valueField] !== nextValue) {
+          this._app.ai.options[valueField] = nextValue;
+          changed = true;
+          if (typeof valueJournal === "function") {
+            const msg = String(valueJournal(nextValue) || "");
+            if (msg) this._addChangesJournal("ai.option", msg);
+          } else if (valueJournal) {
+            this._addChangesJournal("ai.option", `${String(valueJournal)}=${nextValue}`);
+          }
+        }
+        if (this._app.ai.options[modeField] !== "custom") {
+          this._app.ai.options[modeField] = "custom";
+          changed = true;
+          this._addChangesJournal("ai.option", `${String(modeField)}=custom`);
+        }
+        if (changed) {
+          if (markProfileCustom) markActiveProfileCustom();
+          this._app.ai.runtimeProfile = null;
+          this._saveAiOptions();
+        }
+        cleanup();
+        this._renderAiUi();
+      };
+
+      editor.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit();
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancel();
+        }
+      });
+      editor.addEventListener("blur", () => {
+        if (finalized) return;
+        commit();
+      });
+
+      if (typeof globalThis?.requestAnimationFrame === "function") {
+        globalThis.requestAnimationFrame(() => {
+          editor.focus();
+          if (typeof editor.select === "function") editor.select();
+        });
+      } else {
+        editor.focus();
+        if (typeof editor.select === "function") editor.select();
+      }
+
+      return true;
     };
     const updateReasoningOption = (key, value, journalKey = key, dependencyTrigger = key) => {
       if (this._app.ai.options[key] === value) return false;
@@ -663,7 +912,7 @@ export class AgentAttachmentModule {
       };
       const dependencyKey = triggerAliases[String(dependencyTrigger || key)] || dependencyTrigger || key;
       this._app.ai.options[key] = value;
-      if (key !== "taskProfile") markTaskProfileCustom();
+      if (key !== "taskProfile" && key !== "noReasoningProfile") markActiveProfileCustom();
       this._addChangesJournal("ai.option", `${journalKey}=${value}`);
       applyReasoningDependencies(dependencyKey);
       this._app.ai.runtimeProfile = null;
@@ -707,6 +956,7 @@ export class AgentAttachmentModule {
         const preset = this._taskProfilePreset(next);
         if (preset) {
           for (const [key, value] of Object.entries(preset)) {
+            if (key === "serviceTier") continue;
             this._app.ai.options[key] = value;
           }
         }
@@ -715,6 +965,24 @@ export class AgentAttachmentModule {
       this._app.ai.runtimeProfile = null;
       this._saveAiOptions();
       if (changed) this._addChangesJournal("ai.option", `taskProfile=${next}`);
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "noReasoningProfile") {
+      const next = this._normalizeNoReasoningProfile(target.value, this._app.ai.options.noReasoningProfile || "standard");
+      const changed = this._app.ai.options.noReasoningProfile !== next;
+      this._app.ai.options.noReasoningProfile = next;
+      if (next !== "custom") {
+        const preset = this._noReasoningProfilePreset(next);
+        if (preset) {
+          for (const [key, value] of Object.entries(preset)) {
+            this._app.ai.options[key] = value;
+          }
+        }
+      }
+      this._app.ai.runtimeProfile = null;
+      this._saveAiOptions();
+      if (changed) this._addChangesJournal("ai.option", `noReasoningProfile=${next}`);
       this._renderAiUi();
       return;
     }
@@ -791,7 +1059,6 @@ export class AgentAttachmentModule {
       const next = raw !== "off";
       if (this._app.ai.options.compatCache !== next) {
         this._app.ai.options.compatCache = next;
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `compatCache=${next ? "on" : "off"}`);
@@ -803,36 +1070,27 @@ export class AgentAttachmentModule {
     if (reasoningField === "promptCacheKeyMode") {
       const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.promptCacheKeyMode || "auto", "auto");
       const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.promptCacheKeyMode || "auto");
-      let changed = false;
       if (next === "custom") {
-        const current = this._normalizePromptCacheKey(this._app.ai.options.promptCacheKey || "", "");
-        const asked = promptForCustomValue(
-          "Ключ кэша промпта",
-          current,
-          "Введите ключ prompt_cache_key (пример: specforge_v2_batch_prices).",
-        );
-        if (asked.canceled) {
-          this._renderAiUi();
-          return;
-        }
-        const custom = this._normalizePromptCacheKey(asked.value, "");
-        if (!custom) {
-          this._toast("Ключ кэша не задан");
-          this._renderAiUi();
-          return;
-        }
-        if (this._app.ai.options.promptCacheKey !== custom) {
-          this._app.ai.options.promptCacheKey = custom;
-          this._addChangesJournal("ai.option", "promptCacheKey=set");
-          changed = true;
-        }
+        openInlineCustomModeEditor({
+          modeField: "promptCacheKeyMode",
+          valueField: "promptCacheKey",
+          initialValue: this._normalizePromptCacheKey(this._app.ai.options.promptCacheKey || "", ""),
+          placeholder: "specforge_v2_batch_prices",
+          parseValue: (raw) => {
+            const value = this._normalizePromptCacheKey(raw, "");
+            if (!value) return { ok: false, error: "Ключ кэша не задан" };
+            return { ok: true, value };
+          },
+          valueJournal: (value) => `promptCacheKey=${value ? "set" : "empty"}`,
+        });
+        return;
       }
+      let changed = false;
       if (this._app.ai.options.promptCacheKeyMode !== next) {
         this._app.ai.options.promptCacheKeyMode = next;
         changed = true;
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         if (prevMode !== next) this._addChangesJournal("ai.option", `promptCacheKeyMode=${next}`);
@@ -840,7 +1098,6 @@ export class AgentAttachmentModule {
       this._renderAiUi();
       return;
     }
-
     if (reasoningField === "promptCacheKey") {
       const next = this._normalizePromptCacheKey(target.value, "");
       let changed = false;
@@ -854,7 +1111,6 @@ export class AgentAttachmentModule {
         this._addChangesJournal("ai.option", "promptCacheKeyMode=custom (авто: введено значение)");
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `promptCacheKey=${next ? "set" : "empty"}`);
@@ -866,36 +1122,30 @@ export class AgentAttachmentModule {
     if (reasoningField === "promptCacheRetentionMode") {
       const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.promptCacheRetentionMode || "auto", "auto");
       const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.promptCacheRetentionMode || "auto");
-      let changed = false;
       if (next === "custom") {
-        const current = this._normalizePromptCacheRetention(this._app.ai.options.promptCacheRetention || "", "24h");
-        const asked = promptForCustomValue(
-          "Удержание кэша промпта",
-          current,
-          "Введите prompt_cache_retention: 24h или in-memory.",
-        );
-        if (asked.canceled) {
-          this._renderAiUi();
-          return;
-        }
-        const custom = this._normalizePromptCacheRetention(asked.value, "default");
-        if (custom !== "24h" && custom !== "in-memory" && custom !== "default") {
-          this._toast("Допустимо: 24h, in-memory или default");
-          this._renderAiUi();
-          return;
-        }
-        if (this._app.ai.options.promptCacheRetention !== custom) {
-          this._app.ai.options.promptCacheRetention = custom;
-          changed = true;
-          this._addChangesJournal("ai.option", `promptCacheRetention=${custom}`);
-        }
+        openInlineCustomModeEditor({
+          modeField: "promptCacheRetentionMode",
+          valueField: "promptCacheRetention",
+          initialValue: this._normalizePromptCacheRetention(this._app.ai.options.promptCacheRetention || "", "default"),
+          placeholder: "24h | in-memory | default",
+          parseValue: (raw) => {
+            const src = String(raw || "").trim().toLowerCase().replace(/_/g, "-");
+            if (src && src !== "24h" && src !== "in-memory" && src !== "default") {
+              return { ok: false, error: "Допустимо: 24h, in-memory или default" };
+            }
+            const value = this._normalizePromptCacheRetention(src, "default");
+            return { ok: true, value };
+          },
+          valueJournal: "promptCacheRetention",
+        });
+        return;
       }
+      let changed = false;
       if (this._app.ai.options.promptCacheRetentionMode !== next) {
         this._app.ai.options.promptCacheRetentionMode = next;
         changed = true;
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         if (prevMode !== next) this._addChangesJournal("ai.option", `promptCacheRetentionMode=${next}`);
@@ -903,7 +1153,6 @@ export class AgentAttachmentModule {
       this._renderAiUi();
       return;
     }
-
     if (reasoningField === "promptCacheRetention") {
       const next = this._normalizePromptCacheRetention(target.value, this._app.ai.options.promptCacheRetention || "default");
       let changed = false;
@@ -917,7 +1166,6 @@ export class AgentAttachmentModule {
         this._addChangesJournal("ai.option", "promptCacheRetentionMode=custom (авто: введено значение)");
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `promptCacheRetention=${next}`);
@@ -929,36 +1177,27 @@ export class AgentAttachmentModule {
     if (reasoningField === "safetyIdentifierMode") {
       const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.safetyIdentifierMode || "auto", "auto");
       const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.safetyIdentifierMode || "auto");
-      let changed = false;
       if (next === "custom") {
-        const current = this._normalizeSafetyIdentifier(this._app.ai.options.safetyIdentifier || "", "");
-        const asked = promptForCustomValue(
-          "Идентификатор безопасности",
-          current,
-          "Введите safety_identifier (пример: user_42_task_15).",
-        );
-        if (asked.canceled) {
-          this._renderAiUi();
-          return;
-        }
-        const custom = this._normalizeSafetyIdentifier(asked.value, "");
-        if (!custom) {
-          this._toast("Идентификатор безопасности не задан");
-          this._renderAiUi();
-          return;
-        }
-        if (this._app.ai.options.safetyIdentifier !== custom) {
-          this._app.ai.options.safetyIdentifier = custom;
-          this._addChangesJournal("ai.option", "safetyIdentifier=set");
-          changed = true;
-        }
+        openInlineCustomModeEditor({
+          modeField: "safetyIdentifierMode",
+          valueField: "safetyIdentifier",
+          initialValue: this._normalizeSafetyIdentifier(this._app.ai.options.safetyIdentifier || "", ""),
+          placeholder: "user_42_task_15",
+          parseValue: (raw) => {
+            const value = this._normalizeSafetyIdentifier(raw, "");
+            if (!value) return { ok: false, error: "Идентификатор безопасности не задан" };
+            return { ok: true, value };
+          },
+          valueJournal: (value) => `safetyIdentifier=${value ? "set" : "empty"}`,
+        });
+        return;
       }
+      let changed = false;
       if (this._app.ai.options.safetyIdentifierMode !== next) {
         this._app.ai.options.safetyIdentifierMode = next;
         changed = true;
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         if (prevMode !== next) this._addChangesJournal("ai.option", `safetyIdentifierMode=${next}`);
@@ -966,7 +1205,6 @@ export class AgentAttachmentModule {
       this._renderAiUi();
       return;
     }
-
     if (reasoningField === "safetyIdentifier") {
       const next = this._normalizeSafetyIdentifier(target.value, "");
       let changed = false;
@@ -980,7 +1218,6 @@ export class AgentAttachmentModule {
         this._addChangesJournal("ai.option", "safetyIdentifierMode=custom (авто: введено значение)");
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `safetyIdentifier=${next ? "set" : "empty"}`);
@@ -993,7 +1230,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.safeTruncationAuto === true);
       if (this._app.ai.options.safeTruncationAuto !== next) {
         this._app.ai.options.safeTruncationAuto = next;
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `safeTruncationAuto=${next ? "on" : "off"}`);
@@ -1006,7 +1242,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeBackgroundMode(target.value, this._app.ai.options.backgroundMode || "auto");
       if (this._app.ai.options.backgroundMode !== next) {
         this._app.ai.options.backgroundMode = next;
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `backgroundMode=${next}`);
@@ -1019,7 +1254,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeTokenThreshold(target.value, this._app.ai.options.backgroundTokenThreshold || 12000, 2000, 2000000);
       if (this._app.ai.options.backgroundTokenThreshold !== next) {
         this._app.ai.options.backgroundTokenThreshold = next;
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `backgroundTokenThreshold=${next}`);
@@ -1032,7 +1266,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeCompactMode(target.value, this._app.ai.options.compactMode || "off");
       if (this._app.ai.options.compactMode !== next) {
         this._app.ai.options.compactMode = next;
-        markTaskProfileCustom();
         applyReasoningDependencies("compactMode");
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
@@ -1046,7 +1279,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeTokenThreshold(target.value, this._app.ai.options.compactThresholdTokens || 90000, 1000, 4000000);
       if (this._app.ai.options.compactThresholdTokens !== next) {
         this._app.ai.options.compactThresholdTokens = next;
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `compactThresholdTokens=${next}`);
@@ -1059,7 +1291,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeTurnThreshold(target.value, this._app.ai.options.compactTurnThreshold || 45, 1, 10000);
       if (this._app.ai.options.compactTurnThreshold !== next) {
         this._app.ai.options.compactTurnThreshold = next;
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `compactTurnThreshold=${next}`);
@@ -1072,7 +1303,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.useConversationState === true);
       if (this._app.ai.options.useConversationState !== next) {
         this._app.ai.options.useConversationState = next;
-        markTaskProfileCustom();
         applyReasoningDependencies("useConversationState");
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
@@ -1086,7 +1316,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.structuredSpecOutput === true);
       if (this._app.ai.options.structuredSpecOutput !== next) {
         this._app.ai.options.structuredSpecOutput = next;
-        markTaskProfileCustom();
         applyReasoningDependencies("structuredSpecOutput");
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
@@ -1100,7 +1329,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.metadataEnabled !== false);
       if (this._app.ai.options.metadataEnabled !== next) {
         this._app.ai.options.metadataEnabled = next;
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `metadataEnabled=${next ? "on" : "off"}`);
@@ -1112,36 +1340,27 @@ export class AgentAttachmentModule {
     if (reasoningField === "metadataPromptVersionMode") {
       const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.metadataPromptVersionMode || "auto", "auto");
       const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.metadataPromptVersionMode || "auto");
-      let changed = false;
       if (next === "custom") {
-        const current = this._normalizeMetadataTag(this._app.ai.options.metadataPromptVersion || "", "v1");
-        const asked = promptForCustomValue(
-          "Версия промпта (metadata.prompt_version)",
-          current,
-          "Введите тег версии (пример: spec-2026-02).",
-        );
-        if (asked.canceled) {
-          this._renderAiUi();
-          return;
-        }
-        const custom = this._normalizeMetadataTag(asked.value, "");
-        if (!custom) {
-          this._toast("Версия промпта не задана");
-          this._renderAiUi();
-          return;
-        }
-        if (this._app.ai.options.metadataPromptVersion !== custom) {
-          this._app.ai.options.metadataPromptVersion = custom;
-          changed = true;
-          this._addChangesJournal("ai.option", `metadataPromptVersion=${custom}`);
-        }
+        openInlineCustomModeEditor({
+          modeField: "metadataPromptVersionMode",
+          valueField: "metadataPromptVersion",
+          initialValue: this._normalizeMetadataTag(this._app.ai.options.metadataPromptVersion || "", "v1"),
+          placeholder: "spec-2026-02",
+          parseValue: (raw) => {
+            const value = this._normalizeMetadataTag(raw, "");
+            if (!value) return { ok: false, error: "Версия промпта не задана" };
+            return { ok: true, value };
+          },
+          valueJournal: "metadataPromptVersion",
+        });
+        return;
       }
+      let changed = false;
       if (this._app.ai.options.metadataPromptVersionMode !== next) {
         this._app.ai.options.metadataPromptVersionMode = next;
         changed = true;
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         if (prevMode !== next) this._addChangesJournal("ai.option", `metadataPromptVersionMode=${next}`);
@@ -1149,7 +1368,6 @@ export class AgentAttachmentModule {
       this._renderAiUi();
       return;
     }
-
     if (reasoningField === "metadataPromptVersion") {
       const next = this._normalizeMetadataTag(target.value, this._app.ai.options.metadataPromptVersion || "v1");
       let changed = false;
@@ -1163,7 +1381,6 @@ export class AgentAttachmentModule {
         this._addChangesJournal("ai.option", "metadataPromptVersionMode=custom (авто: введено значение)");
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `metadataPromptVersion=${next}`);
@@ -1175,36 +1392,27 @@ export class AgentAttachmentModule {
     if (reasoningField === "metadataFrontendBuildMode") {
       const prevMode = this._normalizeOptionalTextMode(this._app.ai.options.metadataFrontendBuildMode || "auto", "auto");
       const next = this._normalizeOptionalTextMode(target.value, this._app.ai.options.metadataFrontendBuildMode || "auto");
-      let changed = false;
       if (next === "custom") {
-        const current = this._normalizeMetadataTag(this._app.ai.options.metadataFrontendBuild || "", "");
-        const asked = promptForCustomValue(
-          "Сборка фронтенда (metadata.frontend_build)",
-          current,
-          "Введите тег сборки (пример: build-2026.02.18).",
-        );
-        if (asked.canceled) {
-          this._renderAiUi();
-          return;
-        }
-        const custom = this._normalizeMetadataTag(asked.value, "");
-        if (!custom) {
-          this._toast("Сборка фронтенда не задана");
-          this._renderAiUi();
-          return;
-        }
-        if (this._app.ai.options.metadataFrontendBuild !== custom) {
-          this._app.ai.options.metadataFrontendBuild = custom;
-          changed = true;
-          this._addChangesJournal("ai.option", `metadataFrontendBuild=${custom}`);
-        }
+        openInlineCustomModeEditor({
+          modeField: "metadataFrontendBuildMode",
+          valueField: "metadataFrontendBuild",
+          initialValue: this._normalizeMetadataTag(this._app.ai.options.metadataFrontendBuild || "", ""),
+          placeholder: "build-2026.02.18",
+          parseValue: (raw) => {
+            const value = this._normalizeMetadataTag(raw, "");
+            if (!value) return { ok: false, error: "Сборка фронтенда не задана" };
+            return { ok: true, value };
+          },
+          valueJournal: (value) => `metadataFrontendBuild=${value || "empty"}`,
+        });
+        return;
       }
+      let changed = false;
       if (this._app.ai.options.metadataFrontendBuildMode !== next) {
         this._app.ai.options.metadataFrontendBuildMode = next;
         changed = true;
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         if (prevMode !== next) this._addChangesJournal("ai.option", `metadataFrontendBuildMode=${next}`);
@@ -1212,7 +1420,6 @@ export class AgentAttachmentModule {
       this._renderAiUi();
       return;
     }
-
     if (reasoningField === "metadataFrontendBuild") {
       const next = this._normalizeMetadataTag(target.value, this._app.ai.options.metadataFrontendBuild || "");
       let changed = false;
@@ -1226,7 +1433,6 @@ export class AgentAttachmentModule {
         this._addChangesJournal("ai.option", "metadataFrontendBuildMode=custom (авто: введено значение)");
       }
       if (changed) {
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `metadataFrontendBuild=${next || "empty"}`);
@@ -1239,7 +1445,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeIncludeSourcesMode(target.value, this._app.ai.options.includeSourcesMode || "off");
       if (this._app.ai.options.includeSourcesMode !== next) {
         this._app.ai.options.includeSourcesMode = next;
-        markTaskProfileCustom();
         applyReasoningDependencies("includeSourcesMode");
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
@@ -1253,7 +1458,6 @@ export class AgentAttachmentModule {
       const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.lowBandwidthMode === true);
       if (this._app.ai.options.lowBandwidthMode !== next) {
         this._app.ai.options.lowBandwidthMode = next;
-        markTaskProfileCustom();
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `lowBandwidthMode=${next ? "on" : "off"}`);
@@ -1356,9 +1560,27 @@ export class AgentAttachmentModule {
     return this._normalizeEnum(value, TASK_PROFILE_ORDER, fallback);
   }
 
+  _normalizeNoReasoningProfile(value, fallback = "standard") {
+    const raw = String(value || "").trim().toLowerCase();
+    const mapped = NO_REASONING_PROFILE_ALIASES[raw] || raw;
+    if (NO_REASONING_PROFILE_ORDER.includes(mapped)) return mapped;
+    const fbRaw = String(fallback || "").trim().toLowerCase();
+    const fbMapped = NO_REASONING_PROFILE_ALIASES[fbRaw] || fbRaw;
+    return NO_REASONING_PROFILE_ORDER.includes(fbMapped) ? fbMapped : "standard";
+  }
+
   _taskProfilePreset(profile) {
     const key = this._normalizeTaskProfile(profile, "balanced");
     const preset = TASK_PROFILE_PRESETS[key];
+    if (!preset) return null;
+    const out = { ...preset };
+    delete out.serviceTier;
+    return out;
+  }
+
+  _noReasoningProfilePreset(profile) {
+    const key = this._normalizeNoReasoningProfile(profile, "standard");
+    const preset = NO_REASONING_PROFILE_PRESETS[key];
     if (!preset) return null;
     return { ...preset };
   }

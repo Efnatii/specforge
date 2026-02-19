@@ -761,8 +761,90 @@ export class AgentRuntimeModule {
     const serviceTier = toResponsesServiceTier(getRuntimeAwareOption("serviceTier", "standard"));
     const toolsMode = normalizeToolsMode(getRuntimeAwareOption("toolsMode", "auto"));
     const reasoningMaxTokens = normalizeReasoningMaxTokens(getRuntimeAwareOption("reasoningMaxTokens", 0));
-    const runtimeSelectedProfile = String(this._app?.ai?.runtimeProfile?.selected || "").trim().toLowerCase();
-    const taskProfileMode = String(this._app?.ai?.options?.taskProfile || "auto").trim().toLowerCase();
+    const runtimeModeRaw = String(this._app?.ai?.runtimeProfile?.mode || "").trim().toLowerCase();
+    const runtimeSelectedProfileRaw = String(this._app?.ai?.runtimeProfile?.selected || "").trim().toLowerCase();
+    const taskProfileModeRaw = String(this._app?.ai?.options?.taskProfile || "auto").trim().toLowerCase();
+    const noReasoningProfileRaw = String(this._app?.ai?.options?.noReasoningProfile || "standard").trim().toLowerCase();
+    const noReasoningAliases = {
+      auto: "standard",
+      fast: "quick",
+      balanced: "standard",
+      bulk: "concise",
+      longrun: "detailed",
+      price_search: "sources",
+      proposal: "json",
+      source_audit: "sources",
+      accurate: "cautious",
+      research: "sources",
+      spec_strict: "json",
+    };
+    const noReasoningAllowed = new Set(["quick", "standard", "concise", "detailed", "json", "sources", "cautious", "tool_free", "custom"]);
+    const mappedNoReasoningProfile = noReasoningAliases[noReasoningProfileRaw] || noReasoningProfileRaw;
+    const noReasoningProfile = noReasoningAllowed.has(mappedNoReasoningProfile) ? mappedNoReasoningProfile : "standard";
+    const runtimeModeAllowed = new Set([
+      "auto",
+      "fast",
+      "balanced",
+      "bulk",
+      "longrun",
+      "price_search",
+      "proposal",
+      "source_audit",
+      "accurate",
+      "research",
+      "spec_strict",
+      "custom",
+      "no_reasoning",
+      "no_reasoning_custom",
+    ]);
+    const taskSelectedAllowed = new Set([
+      "fast",
+      "balanced",
+      "bulk",
+      "longrun",
+      "price_search",
+      "proposal",
+      "source_audit",
+      "accurate",
+      "research",
+      "spec_strict",
+      "custom",
+    ]);
+    const taskModeAllowed = new Set([
+      "auto",
+      "fast",
+      "balanced",
+      "bulk",
+      "longrun",
+      "price_search",
+      "proposal",
+      "source_audit",
+      "accurate",
+      "research",
+      "spec_strict",
+      "custom",
+    ]);
+    const runtimeMode = runtimeModeAllowed.has(runtimeModeRaw) ? runtimeModeRaw : "";
+    const taskProfileMode = taskModeAllowed.has(taskProfileModeRaw) ? taskProfileModeRaw : "auto";
+    const reasoningDisabledByOption = getRuntimeAwareOption("reasoning", true) === false;
+    const effectiveProfileMode = reasoningDisabledByOption
+      ? (
+          runtimeMode === "no_reasoning" || runtimeMode === "no_reasoning_custom"
+            ? runtimeMode
+            : (noReasoningProfile === "custom" ? "no_reasoning_custom" : "no_reasoning")
+        )
+      : (runtimeMode || taskProfileMode);
+    const runtimeSelectedProfileNoReasoning = noReasoningAliases[runtimeSelectedProfileRaw] || runtimeSelectedProfileRaw;
+    let runtimeSelectedProfile = (effectiveProfileMode === "no_reasoning" || effectiveProfileMode === "no_reasoning_custom")
+      ? (noReasoningAllowed.has(runtimeSelectedProfileNoReasoning) ? runtimeSelectedProfileNoReasoning : "")
+      : (taskSelectedAllowed.has(runtimeSelectedProfileRaw) ? runtimeSelectedProfileRaw : "");
+    if (!runtimeSelectedProfile) {
+      if (effectiveProfileMode === "no_reasoning" || effectiveProfileMode === "no_reasoning_custom") {
+        runtimeSelectedProfile = noReasoningProfile;
+      } else if (taskProfileMode !== "auto") {
+        runtimeSelectedProfile = taskProfileMode;
+      }
+    }
     const toolsRaw = toolsMode === "none" ? [] : this._toolSpecModule.agentToolsSpec();
     const supportsComputerUse = isComputerUsePreviewModel(model);
     const tools = supportsComputerUse
@@ -807,7 +889,7 @@ export class AgentRuntimeModule {
     const safeTruncationAuto = boolOption(getRuntimeAwareOption("safeTruncationAuto", false), false);
     if (hasComputerUse || safeTruncationAuto) payload.truncation = "auto";
 
-    const profileToken = normalizeTokenLike(runtimeSelectedProfile || taskProfileMode || "auto", "auto", 24) || "auto";
+    const profileToken = normalizeTokenLike(runtimeSelectedProfile || effectiveProfileMode || "auto", "auto", 24) || "auto";
     const modelToken = normalizeTokenLike(model || this._app?.ai?.model || "model", "model", 32) || "model";
     const turnToken = normalizeTokenLike(options?.turnId || this._app?.ai?.turnId || "turn", "turn", 24) || "turn";
     const autoPromptVersion = normalizeTokenLike(
@@ -925,7 +1007,7 @@ export class AgentRuntimeModule {
         if (!clean) return;
         metadata[key] = clean;
       };
-      pushMeta("profile_mode", taskProfileMode || "auto", 32);
+      pushMeta("profile_mode", effectiveProfileMode || "auto", 32);
       pushMeta("profile_selected", runtimeSelectedProfile || "", 32);
       pushMeta("depth", reasoningDepth, 16);
       pushMeta("verify", reasoningVerify, 16);
@@ -936,7 +1018,7 @@ export class AgentRuntimeModule {
       pushMeta("turn_id", options?.turnId || this._app.ai.turnId || "", 80);
       pushMeta("background", payload.background ? "on" : "off", 8);
       pushMeta("stream_mode", this._app.ai.streaming === false ? "json" : "stream", 12);
-      pushMeta("compat_cache", this._app?.ai?.options?.compatCache === false ? "off" : "on", 8);
+      pushMeta("compat_cache", boolOption(getRuntimeAwareOption("compatCache", true), true) ? "on" : "off", 8);
       pushMeta("resource_tier", resourceTier, 12);
       pushMeta("resource_score", String(resourceScore), 8);
       pushMeta("prompt_cache", promptCacheKey ? "on" : "off", 8);

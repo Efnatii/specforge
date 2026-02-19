@@ -1,4 +1,4 @@
-export class AgentRuntimePolicyModule {
+﻿export class AgentRuntimePolicyModule {
   constructor(ctx) {
     Object.assign(this, createAgentRuntimePolicyInternal(ctx));
   }
@@ -17,6 +17,20 @@ function createAgentRuntimePolicyInternal(ctx) {
   if (typeof num !== "function") throw new Error("AgentRuntimePolicyModule requires deps.num()");
 
   const TASK_PROFILE_ORDER = ["auto", "fast", "balanced", "bulk", "longrun", "price_search", "proposal", "source_audit", "accurate", "research", "spec_strict", "custom"];
+  const NO_REASONING_PROFILE_ORDER = ["quick", "standard", "concise", "detailed", "json", "sources", "cautious", "tool_free", "custom"];
+  const NO_REASONING_PROFILE_ALIASES = {
+    auto: "standard",
+    fast: "quick",
+    balanced: "standard",
+    bulk: "concise",
+    longrun: "detailed",
+    price_search: "sources",
+    proposal: "json",
+    source_audit: "sources",
+    accurate: "cautious",
+    research: "sources",
+    spec_strict: "json",
+  };
   const TASK_PROFILE_PRESETS = {
     fast: {
       serviceTier: "flex",
@@ -209,11 +223,11 @@ function createAgentRuntimePolicyInternal(ctx) {
       reasoningDepth: "deep",
       reasoningVerify: "strict",
       reasoningSummary: "detailed",
-      reasoningClarify: "minimal",
+      reasoningClarify: "never",
       toolsMode: "require",
       brevityMode: "detailed",
       outputMode: "json",
-      riskyActionsMode: "confirm",
+      riskyActionsMode: "allow_if_asked",
       styleMode: "clean",
       citationsMode: "on",
       reasoningMaxTokens: 24000,
@@ -390,6 +404,104 @@ function createAgentRuntimePolicyInternal(ctx) {
     },
   };
 
+  const NO_REASONING_PROFILE_BASE_PRESET = {
+    toolsMode: "auto",
+    brevityMode: "normal",
+    outputMode: "bullets",
+    riskyActionsMode: "allow_if_asked",
+    styleMode: "clean",
+    citationsMode: "off",
+    reasoningMaxTokens: 0,
+    compatCache: true,
+    promptCacheKeyMode: "auto",
+    promptCacheKey: "",
+    promptCacheRetentionMode: "auto",
+    promptCacheRetention: "default",
+    safetyIdentifierMode: "auto",
+    safetyIdentifier: "",
+    safeTruncationAuto: true,
+    backgroundMode: "off",
+    backgroundTokenThreshold: 12000,
+    compactMode: "off",
+    compactThresholdTokens: 90000,
+    compactTurnThreshold: 45,
+    useConversationState: false,
+    structuredSpecOutput: false,
+    metadataEnabled: true,
+    metadataPromptVersionMode: "auto",
+    metadataPromptVersion: "v1",
+    metadataFrontendBuildMode: "auto",
+    metadataFrontendBuild: "",
+    includeSourcesMode: "off",
+    lowBandwidthMode: false,
+  };
+
+  const NO_REASONING_PROFILE_PRESETS = {
+    quick: {
+      ...NO_REASONING_PROFILE_BASE_PRESET,
+      brevityMode: "short",
+      outputMode: "plain",
+      promptCacheKeyMode: "off",
+      promptCacheRetentionMode: "off",
+      safetyIdentifierMode: "off",
+      safeTruncationAuto: false,
+      metadataEnabled: false,
+      lowBandwidthMode: true,
+    },
+    standard: {
+      ...NO_REASONING_PROFILE_BASE_PRESET,
+    },
+    concise: {
+      ...NO_REASONING_PROFILE_BASE_PRESET,
+      brevityMode: "short",
+      outputMode: "bullets",
+      reasoningMaxTokens: 4000,
+    },
+    detailed: {
+      ...NO_REASONING_PROFILE_BASE_PRESET,
+      brevityMode: "detailed",
+      styleMode: "verbose",
+      reasoningMaxTokens: 12000,
+      backgroundMode: "auto",
+      compactMode: "auto",
+      compactThresholdTokens: 70000,
+      compactTurnThreshold: 35,
+      useConversationState: true,
+    },
+    json: {
+      ...NO_REASONING_PROFILE_BASE_PRESET,
+      toolsMode: "prefer",
+      outputMode: "json",
+      structuredSpecOutput: true,
+      reasoningMaxTokens: 8000,
+    },
+    sources: {
+      ...NO_REASONING_PROFILE_BASE_PRESET,
+      toolsMode: "require",
+      citationsMode: "on",
+      includeSourcesMode: "on",
+      reasoningMaxTokens: 10000,
+    },
+    cautious: {
+      ...NO_REASONING_PROFILE_BASE_PRESET,
+      toolsMode: "prefer",
+      riskyActionsMode: "confirm",
+      citationsMode: "on",
+      includeSourcesMode: "auto",
+    },
+    tool_free: {
+      ...NO_REASONING_PROFILE_BASE_PRESET,
+      toolsMode: "none",
+      outputMode: "plain",
+      citationsMode: "off",
+      includeSourcesMode: "off",
+      promptCacheKeyMode: "off",
+      promptCacheRetentionMode: "off",
+      safetyIdentifierMode: "off",
+      lowBandwidthMode: true,
+    },
+  };
+
   function normalizeTaskProfile(value, fallback = "auto") {
     const raw = String(value || "").trim().toLowerCase();
     if (TASK_PROFILE_ORDER.includes(raw)) return raw;
@@ -397,9 +509,27 @@ function createAgentRuntimePolicyInternal(ctx) {
     return TASK_PROFILE_ORDER.includes(fb) ? fb : "auto";
   }
 
+  function normalizeNoReasoningProfile(value, fallback = "standard") {
+    const raw = String(value || "").trim().toLowerCase();
+    const mapped = NO_REASONING_PROFILE_ALIASES[raw] || raw;
+    if (NO_REASONING_PROFILE_ORDER.includes(mapped)) return mapped;
+    const fbRaw = String(fallback || "").trim().toLowerCase();
+    const fbMapped = NO_REASONING_PROFILE_ALIASES[fbRaw] || fbRaw;
+    return NO_REASONING_PROFILE_ORDER.includes(fbMapped) ? fbMapped : "standard";
+  }
+
   function getTaskProfilePreset(profile) {
     const key = normalizeTaskProfile(profile, "balanced");
     const preset = TASK_PROFILE_PRESETS[key];
+    if (!preset) return null;
+    const out = { ...preset };
+    delete out.serviceTier;
+    return out;
+  }
+
+  function getNoReasoningProfilePreset(profile) {
+    const key = normalizeNoReasoningProfile(profile, "standard");
+    const preset = NO_REASONING_PROFILE_PRESETS[key];
     if (!preset) return null;
     return { ...preset };
   }
@@ -408,16 +538,16 @@ function createAgentRuntimePolicyInternal(ctx) {
     const src = String(taskTextRaw || "").toLowerCase();
     if (!src) return { selected: "balanced", reason: "empty_request" };
 
-    if (/(электрощ|щитов|щит|вру|грщ|автомат|авр|узо|rcd|rcbo|mccb|mcb|contactor|busbar|клемм|шкаф|bom|bill of materials|спецификац)/i.test(src)) {
+    if (/(СЌР»РµРєС‚СЂРѕС‰|С‰РёС‚РѕРІ|С‰РёС‚|РІСЂСѓ|РіСЂС‰|Р°РІС‚РѕРјР°С‚|Р°РІСЂ|СѓР·Рѕ|rcd|rcbo|mccb|mcb|contactor|busbar|РєР»РµРјРј|С€РєР°С„|bom|bill of materials|СЃРїРµС†РёС„РёРєР°С†)/i.test(src)) {
       return { selected: "spec_strict", reason: "electrical_spec_keywords" };
     }
-    if (/(коммерческ|кп\b|proposal|quotation|offer|технико-коммерческ)/i.test(src)) {
+    if (/(РєРѕРјРјРµСЂС‡РµСЃРє|РєРї\b|proposal|quotation|offer|С‚РµС…РЅРёРєРѕ-РєРѕРјРјРµСЂС‡РµСЃРє)/i.test(src)) {
       return { selected: "proposal", reason: "proposal_keywords" };
     }
-    if (/(поиск цен|прайс|цена|стоимост|supplier|поставщик|price search|price lookup|rfq|quote)/i.test(src)) {
+    if (/(РїРѕРёСЃРє С†РµРЅ|РїСЂР°Р№СЃ|С†РµРЅР°|СЃС‚РѕРёРјРѕСЃС‚|supplier|РїРѕСЃС‚Р°РІС‰РёРє|price search|price lookup|rfq|quote)/i.test(src)) {
       return { selected: "price_search", reason: "price_search_keywords" };
     }
-    if (/(исходник|source code|repository|repo|codebase|рефактор|code review|static analy|lint|test coverage|архитектур)/i.test(src)) {
+    if (/(РёСЃС…РѕРґРЅРёРє|source code|repository|repo|codebase|СЂРµС„Р°РєС‚РѕСЂ|code review|static analy|lint|test coverage|Р°СЂС…РёС‚РµРєС‚СѓСЂ)/i.test(src)) {
       return { selected: "source_audit", reason: "source_audit_keywords" };
     }
 
@@ -425,7 +555,7 @@ function createAgentRuntimePolicyInternal(ctx) {
     if (/(bulk|batch|import|\u0438\u043c\u043f\u043e\u0440\u0442|\u043c\u0430\u0441\u0441\u043e\u0432|\u043f\u0430\u043a\u0435\u0442\u043d)/i.test(src) || bulkScopeRe.test(src)) {
       return { selected: "bulk", reason: "bulk_keywords" };
     }
-    if (/(long running|длинн\w+\s+сесси|много шагов|долг\w+\s+диалог|много раундов|continuous)/i.test(src)) {
+    if (/(long running|РґР»РёРЅРЅ\w+\s+СЃРµСЃСЃРё|РјРЅРѕРіРѕ С€Р°РіРѕРІ|РґРѕР»Рі\w+\s+РґРёР°Р»РѕРі|РјРЅРѕРіРѕ СЂР°СѓРЅРґРѕРІ|continuous)/i.test(src)) {
       return { selected: "longrun", reason: "long_running_keywords" };
     }
     if (/(analy|analysis|review|audit|compare|debug|bug|\u0430\u043d\u0430\u043b\u0438\u0437|\u0441\u0440\u0430\u0432\u043d|\u043f\u0440\u043e\u0432\u0435\u0440|\u0430\u0443\u0434\u0438\u0442|\u043e\u0431\u0437\u043e\u0440)/i.test(src)) {
@@ -441,6 +571,18 @@ function createAgentRuntimePolicyInternal(ctx) {
   }
 
   function resolveTaskProfile(taskTextRaw = "", profileRaw = null) {
+    if (app?.ai?.options?.reasoning === false) {
+      const mode = normalizeNoReasoningProfile(app?.ai?.options?.noReasoningProfile, "standard");
+      if (mode === "custom") {
+        return { mode: "no_reasoning_custom", selected: "custom", reason: "manual_no_reasoning_custom", overrides: null };
+      }
+      return {
+        mode: "no_reasoning",
+        selected: mode,
+        reason: "manual_no_reasoning_profile",
+        overrides: getNoReasoningProfilePreset(mode),
+      };
+    }
     const mode = normalizeTaskProfile(profileRaw ?? app?.ai?.options?.taskProfile, "auto");
     if (mode === "custom") {
       return { mode, selected: "custom", reason: "manual_custom", overrides: null };
@@ -471,16 +613,16 @@ function createAgentRuntimePolicyInternal(ctx) {
     const src = String(text || "").toLowerCase();
     let count = 0;
 
-    if (/(созда|create|нов(ую|ая) сборк|new assembly)/i.test(src)) count += 1;
-    if (/(добав|insert|append|позиц|материал|автомат)/i.test(src)) count += 1;
-    if (/(измени|обнов|поменя|замени|удали|update|set|write|delete|replace|увелич|уменьш)/i.test(src)) count = Math.max(count, 1);
+    if (/(СЃРѕР·РґР°|create|РЅРѕРІ(СѓСЋ|Р°СЏ) СЃР±РѕСЂРє|new assembly)/i.test(src)) count += 1;
+    if (/(РґРѕР±Р°РІ|insert|append|РїРѕР·РёС†|РјР°С‚РµСЂРёР°Р»|Р°РІС‚РѕРјР°С‚)/i.test(src)) count += 1;
+    if (/(РёР·РјРµРЅРё|РѕР±РЅРѕРІ|РїРѕРјРµРЅСЏ|Р·Р°РјРµРЅРё|СѓРґР°Р»Рё|update|set|write|delete|replace|СѓРІРµР»РёС‡|СѓРјРµРЅСЊС€)/i.test(src)) count = Math.max(count, 1);
 
-    const bulkAllRequested = /(\ball\b|\bevery\b|\beach\b|все|всех|всю|всей|весь|кажд)/i.test(src);
-    const bulkByArticles = /((all|все|кажд)[^.!?\n]{0,64}(article|sku|item|position|артикул|позиц))/i.test(src);
+    const bulkAllRequested = /(\ball\b|\bevery\b|\beach\b|РІСЃРµ|РІСЃРµС…|РІСЃСЋ|РІСЃРµР№|РІРµСЃСЊ|РєР°Р¶Рґ)/i.test(src);
+    const bulkByArticles = /((all|РІСЃРµ|РєР°Р¶Рґ)[^.!?\n]{0,64}(article|sku|item|position|Р°СЂС‚РёРєСѓР»|РїРѕР·РёС†))/i.test(src);
     if (bulkAllRequested) count = Math.max(count, 50);
     if (bulkByArticles) count = Math.max(count, 200);
 
-    const explicitAmountMatch = src.match(/(?:до|минимум|не\s+менее|at\s+least)?\s*(\d{2,4})\s*(?:item|items|sku|article|position|positions|позиц|артикул)/i);
+    const explicitAmountMatch = src.match(/(?:РґРѕ|РјРёРЅРёРјСѓРј|РЅРµ\s+РјРµРЅРµРµ|at\s+least)?\s*(\d{2,4})\s*(?:item|items|sku|article|position|positions|РїРѕР·РёС†|Р°СЂС‚РёРєСѓР»)/i);
     if (explicitAmountMatch) {
       const explicitAmount = Number.parseInt(explicitAmountMatch[1], 10);
       if (Number.isFinite(explicitAmount)) count = Math.max(count, explicitAmount);
@@ -514,38 +656,50 @@ function createAgentRuntimePolicyInternal(ctx) {
       : "allow_if_asked";
     const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
     if (!allowQuestions && AI_INCOMPLETE_RESPONSE_RE.test(src)) return true;
-    if (/^(выполняю|приступаю|подождите|начинаю|calling|running|i'?ll run)/i.test(src)) return true;
+    if (/^(РІС‹РїРѕР»РЅСЏСЋ|РїСЂРёСЃС‚СѓРїР°СЋ|РїРѕРґРѕР¶РґРёС‚Рµ|РЅР°С‡РёРЅР°СЋ|calling|running|i'?ll run)/i.test(src)) return true;
     return false;
   }
 
   function shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text) {
+    if (looksLikePseudoToolText(text)) return true;
+    if (isAgentTextIncomplete(text)) return true;
     if (!intentToUseTools && num(toolStats?.totalToolCalls, 0) === 0) return false;
     if (num(toolStats?.totalToolCalls, 0) === 0) return true;
-    if (looksLikePseudoToolText(text)) return true;
     if (intentToMutate && toolStats.successfulMutations < expectedMutations) return true;
-    if (isAgentTextIncomplete(text)) return true;
     return false;
   }
 
   function buildAgentRetryReason(expectedMutations, toolStats, text) {
-    if (num(toolStats?.totalToolCalls, 0) === 0) return "модель не вызвала инструменты";
-    if (expectedMutations > 0 && toolStats.mutationCalls === 0) return "модель не вызвала инструменты изменения";
+    if (isAgentTextIncomplete(text)) return "РѕС‚РІРµС‚ РЅРµ Р·Р°РІРµСЂС€Р°РµС‚ Р·Р°РґР°С‡Сѓ";
+    if (num(toolStats?.totalToolCalls, 0) === 0) return "РјРѕРґРµР»СЊ РЅРµ РІС‹Р·РІР°Р»Р° РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹";
+    if (expectedMutations > 0 && toolStats.mutationCalls === 0) return "РјРѕРґРµР»СЊ РЅРµ РІС‹Р·РІР°Р»Р° РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ РёР·РјРµРЅРµРЅРёСЏ";
     if (toolStats.successfulMutations < expectedMutations) {
       const tail = toolStats.failedMutations.slice(-2).join("; ");
-      return tail ? `выполнено изменений ${toolStats.successfulMutations}/${expectedMutations}; ошибки: ${tail}` : `выполнено изменений ${toolStats.successfulMutations}/${expectedMutations}`;
+      return tail ? `РІС‹РїРѕР»РЅРµРЅРѕ РёР·РјРµРЅРµРЅРёР№ ${toolStats.successfulMutations}/${expectedMutations}; РѕС€РёР±РєРё: ${tail}` : `РІС‹РїРѕР»РЅРµРЅРѕ РёР·РјРµРЅРµРЅРёР№ ${toolStats.successfulMutations}/${expectedMutations}`;
     }
-    if (isAgentTextIncomplete(text)) return "ответ не завершает задачу";
-    return "задача не завершена";
+    return "Р·Р°РґР°С‡Р° РЅРµ Р·Р°РІРµСЂС€РµРЅР°";
   }
 
   function buildAgentContinuationInstruction(reason, forcedToolFollowup = false) {
     const phase = forcedToolFollowup ? "forced_tool_followup" : "auto_followup";
-    return `Фаза ${phase}. Причина автоповтора: ${reason}. Доведи запрос до конечного результата в этом же ходе через tools. Нельзя задавать вопросы, нельзя просить "продолжай", нельзя откладывать. Если сборка не найдена по assembly_id, используй актуальную выбранную/последнюю сборку или создай новую и продолжи. Для позиций обязателен verification: web_search (query + URL) или attachments. В финальном ответе дай 1-2 коротких предложения без JSON.`;
+    return `Phase ${phase}. Retry reason: ${reason}. Continue until the task is fully completed in this same turn. If tools are needed, call them now; if enough data is already available, provide the final completed answer immediately. Do not ask the user to continue, do not postpone work, and do not output tool-call JSON in plain text. Keep assumptions explicit when input data is missing and finish with a concrete result.`;
+  }
+
+  function finalOutputCharLimit() {
+    const brevity = String(getEffectiveAiOption("brevityMode", "normal")).trim().toLowerCase();
+    const style = String(getEffectiveAiOption("styleMode", "clean")).trim().toLowerCase();
+    const output = String(getEffectiveAiOption("outputMode", "bullets")).trim().toLowerCase();
+    let limit = 12000;
+    if (brevity === "short") limit = 4000;
+    else if (brevity === "detailed") limit = 26000;
+    if (style === "verbose") limit += 4000;
+    if (output === "json") limit = Math.max(limit, 32000);
+    return Math.max(1000, Math.min(64000, limit));
   }
 
   function sanitizeAgentOutputText(textRaw) {
     const src = String(textRaw || "").trim();
-    if (!src) return "Готово.";
+    if (!src) return "Р“РѕС‚РѕРІРѕ.";
 
     const parts = src
       .replace(/\r/g, "")
@@ -555,13 +709,14 @@ function createAgentRuntimePolicyInternal(ctx) {
       .filter((line) => !/^\[(json|tool)/i.test(line))
       .filter((line) => !/^\{[\s\S]*\}$/.test(line))
       .filter((line) => !/^if you want\b/i.test(line))
-      .filter((line) => !/^если нужно\b/i.test(line))
-      .filter((line) => !/^если хотите\b/i.test(line))
-      .filter((line) => !/^дальше могу\b/i.test(line));
+      .filter((line) => !/^РµСЃР»Рё РЅСѓР¶РЅРѕ\b/i.test(line))
+      .filter((line) => !/^РµСЃР»Рё С…РѕС‚РёС‚Рµ\b/i.test(line))
+      .filter((line) => !/^РґР°Р»СЊС€Рµ РјРѕРіСѓ\b/i.test(line));
 
     const clean = parts.join(" ").replace(/\s{2,}/g, " ").trim();
-    if (!clean) return "Готово.";
-    if (clean.length > 900) return `${clean.slice(0, 897)}...`;
+    if (!clean) return "Р“РѕС‚РѕРІРѕ.";
+    const maxLen = finalOutputCharLimit();
+    if (clean.length > maxLen) return `${clean.slice(0, Math.max(0, maxLen - 3))}...`;
     return clean;
   }
 
@@ -680,3 +835,4 @@ function createAgentRuntimePolicyInternal(ctx) {
     isMutationToolName,
   };
 }
+

@@ -65,6 +65,7 @@ export class AppCoreCompositionModule {
           serviceTier: "standard",
           reasoning: true,
           taskProfile: "auto",
+          noReasoningProfile: "standard",
           reasoningEffort: "medium",
           reasoningDepth: "balanced",
           reasoningVerify: "basic",

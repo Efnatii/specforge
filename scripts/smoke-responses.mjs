@@ -28,6 +28,7 @@ function defaultOptions() {
     webSearchContextSize: "high",
     reasoning: true,
     taskProfile: "auto",
+    noReasoningProfile: "standard",
     reasoningEffort: "medium",
     reasoningDepth: "balanced",
     reasoningVerify: "basic",
@@ -65,7 +66,7 @@ function defaultOptions() {
   };
 }
 
-function createRuntime({ options = {}, runtimeProfile = null, fetchFn, logsSink } = {}) {
+function createRuntime({ options = {}, runtimeProfile = null, fetchFn, logsSink, executeAgentTool } = {}) {
   const logs = logsSink || [];
   let uidCounter = 0;
   const app = {
@@ -126,7 +127,7 @@ function createRuntime({ options = {}, runtimeProfile = null, fetchFn, logsSink 
     colToName: () => "A",
     agentCellValueText: () => "",
     currentAiModelMeta: () => ({ id: app.ai.model }),
-    executeAgentTool: async () => ({ ok: true, applied: 0, warnings: [] }),
+    executeAgentTool: executeAgentTool || (async () => ({ ok: true, applied: 0, warnings: [] })),
     addExternalJournal: (event, message, meta = {}) => {
       logs.push({ event, message, meta });
     },
@@ -186,6 +187,56 @@ async function main() {
       allowBackground: true,
     });
     assert.equal(payload.background, undefined);
+  }
+
+  {
+    const { runtime, app } = createRuntime({
+      options: {
+        reasoning: false,
+        noReasoningProfile: "sources",
+      },
+    });
+    const payload = runtime.buildAgentResponsesPayload({
+      model: app.ai.model,
+      instructions: "sys",
+      input: [],
+      turnId: "t-no-reasoning",
+      taskText: "find sources",
+      allowBackground: true,
+    });
+    assert.equal(payload.reasoning, undefined);
+    assert.equal(String(payload.metadata?.profile_mode || ""), "no_reasoning");
+    assert.equal(String(payload.metadata?.profile_selected || ""), "sources");
+    const sys = runtime.agentSystemPrompt();
+    assert.ok(String(sys).includes("MODE=no_reasoning; SELECTED=sources"));
+  }
+
+  {
+    const { runtime, app } = createRuntime({
+      options: {
+        reasoning: false,
+        noReasoningProfile: "concise",
+        compatCache: true,
+      },
+      runtimeProfile: {
+        mode: "balanced",
+        selected: "price_search",
+        overrides: { compatCache: false },
+      },
+    });
+    const payload = runtime.buildAgentResponsesPayload({
+      model: app.ai.model,
+      instructions: "sys",
+      input: [],
+      turnId: "t-no-reasoning-stale-runtime",
+      taskText: "short answer",
+      allowBackground: true,
+    });
+    assert.equal(String(payload.metadata?.profile_mode || ""), "no_reasoning");
+    assert.equal(String(payload.metadata?.profile_selected || ""), "concise");
+    assert.equal(String(payload.metadata?.compat_cache || ""), "off");
+    const sys = runtime.agentSystemPrompt();
+    assert.ok(String(sys).includes("MODE=no_reasoning; SELECTED=concise"));
   }
 
   {
@@ -287,6 +338,63 @@ async function main() {
     assert.equal(String(autoPrice?.selected || ""), "price_search");
     const autoSpec = policy.resolveTaskProfile("собери спецификацию щита ВРУ", "auto");
     assert.equal(String(autoSpec?.selected || ""), "spec_strict");
+  }
+
+  {
+    const app = {
+      ai: {
+        options: {
+          taskProfile: "auto",
+          reasoning: false,
+          noReasoningProfile: "quick",
+        },
+        runtimeProfile: null,
+      },
+    };
+    const policy = new AgentRuntimePolicyModule({
+      app,
+      config: { AI_INCOMPLETE_RESPONSE_RE: /incomplete/i },
+      deps: { num: (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback) },
+    });
+    const noReasoning = policy.resolveTaskProfile("quick answer", "auto");
+    assert.equal(String(noReasoning?.mode || ""), "no_reasoning");
+    assert.equal(String(noReasoning?.selected || ""), "quick");
+    app.ai.options.noReasoningProfile = "custom";
+    const noReasoningCustom = policy.resolveTaskProfile("manual profile", "auto");
+    assert.equal(String(noReasoningCustom?.mode || ""), "no_reasoning_custom");
+    assert.equal(String(noReasoningCustom?.selected || ""), "custom");
+  }
+
+  {
+    const app = {
+      ai: {
+        options: {
+          ...defaultOptions(),
+          brevityMode: "normal",
+          styleMode: "clean",
+          outputMode: "bullets",
+        },
+        runtimeProfile: null,
+      },
+    };
+    const policy = new AgentRuntimePolicyModule({
+      app,
+      config: { AI_INCOMPLETE_RESPONSE_RE: /incomplete|продолж/i },
+      deps: { num: (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback) },
+    });
+    const shouldContinue = policy.shouldForceAgentContinuation(
+      false,
+      false,
+      0,
+      { totalToolCalls: 0, mutationCalls: 0, successfulMutations: 0, failedMutations: [] },
+      "выполняю задачу",
+    );
+    assert.equal(shouldContinue, true);
+    const longNormal = policy.sanitizeAgentOutputText("x".repeat(5000));
+    assert.ok(longNormal.length >= 4900);
+    app.ai.options.brevityMode = "short";
+    const longShort = policy.sanitizeAgentOutputText("x".repeat(7000));
+    assert.ok(longShort.length <= 4000);
   }
 
   {
@@ -427,6 +535,88 @@ async function main() {
   }
 
   {
+    const logs = [];
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      if (u !== "https://api.openai.com/v1/responses") {
+        return new Response("not found", { status: 404 });
+      }
+      const body = JSON.parse(String(init?.body || "{}"));
+      if (body?.stream === true) {
+        const e = new Error("timeout while streaming");
+        e.name = "AbortError";
+        throw e;
+      }
+      return new Response(
+        JSON.stringify({
+          id: "resp-json-fallback",
+          status: "completed",
+          output: [],
+          output_text: "fallback-ok",
+          usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const { runtime, app } = createRuntime({ fetchFn, logsSink: logs });
+    app.ai.streaming = true;
+    const payload = runtime.buildAgentResponsesPayload({
+      model: app.ai.model,
+      instructions: "sys",
+      input: [],
+      turnId: "t-timeout-fallback",
+      taskText: "long reasoning task",
+      allowBackground: false,
+    });
+    const out = await runtime.callOpenAiResponses(payload, { turnId: "t-timeout-fallback" });
+    assert.equal(String(out?.output_text || ""), "fallback-ok");
+    assert.ok(logs.some((x) => x.event === "request.timeout"));
+    assert.ok(logs.some((x) => x.event === "openai.stream.fallback"));
+  }
+
+  {
+    const postedBodies = [];
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url);
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        postedBodies.push(JSON.parse(String(init?.body || "{}")));
+        return new Response(
+          JSON.stringify({
+            id: "resp-stream-lowbw",
+            status: "completed",
+            output: [],
+            output_text: "ok",
+            usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    const { runtime, app } = createRuntime({
+      fetchFn,
+      options: { lowBandwidthMode: false },
+      runtimeProfile: { selected: "price_search", overrides: { lowBandwidthMode: true } },
+    });
+    app.ai.streaming = true;
+    const payload = runtime.buildAgentResponsesPayload({
+      model: app.ai.model,
+      instructions: "sys",
+      input: [],
+      turnId: "t-stream-lowbw",
+      taskText: "price lookup",
+      allowBackground: false,
+    });
+    const out = await runtime.callOpenAiResponses(payload, { turnId: "t-stream-lowbw" });
+    assert.equal(String(out?.id || ""), "resp-stream-lowbw");
+    assert.equal(postedBodies.length, 1);
+    assert.equal(Boolean(postedBodies[0]?.stream), true);
+    assert.equal(Boolean(postedBodies[0]?.stream_options?.include_obfuscation === false), true);
+  }
+
+  {
     const postedBodies = [];
     let postCounter = 0;
     const logs = [];
@@ -525,6 +715,150 @@ async function main() {
     assert.equal(app.ai.options.includeSourcesMode, "auto");
     fire("includeSourcesMode", "on");
     assert.equal(app.ai.options.citationsMode, "on");
+  }
+
+  {
+    const postedBodies = [];
+    let postCounter = 0;
+    const logs = [];
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        postCounter += 1;
+        const body = JSON.parse(String(init?.body || "{}"));
+        postedBodies.push(body);
+        if (postCounter === 1) {
+          return new Response(
+            JSON.stringify({
+              id: "resp-q-1",
+              status: "completed",
+              output: [
+                {
+                  type: "function_call",
+                  name: "ask_user_question",
+                  call_id: "call-q-1",
+                  arguments: JSON.stringify({
+                    question: "Need clarification?",
+                    options: ["A", "B"],
+                    allow_custom: true,
+                  }),
+                },
+              ],
+              output_text: "",
+              usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            id: "resp-q-2",
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                content: [{ type: "output_text", text: "done" }],
+              },
+            ],
+            output_text: "done",
+            usage: { input_tokens: 15, output_tokens: 5, total_tokens: 20 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const executeAgentTool = async (name) => {
+      if (String(name) === "ask_user_question") {
+        return {
+          ok: true,
+          applied: 0,
+          awaiting_user_input: true,
+          message: "need user input",
+        };
+      }
+      return { ok: true, applied: 1 };
+    };
+    const { runtime } = createRuntime({
+      fetchFn,
+      logsSink: logs,
+      executeAgentTool,
+      options: { taskProfile: "bulk" },
+    });
+    const out = await runtime.runOpenAiAgentTurn("Current user request:\nbulk change", "bulk change", {
+      turnId: "t-skip-question",
+    });
+    assert.equal(String(out || ""), "done");
+    assert.equal(postedBodies.length, 2);
+    assert.equal(hasFunctionCallOutput(postedBodies[1]?.input), true);
+    assert.ok(logs.some((x) => x.event === "tool.awaiting_user_input.ignored"));
+  }
+
+  {
+    const postedBodies = [];
+    let postCounter = 0;
+    const logs = [];
+    const sseEvent = (name, data) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        postCounter += 1;
+        const body = JSON.parse(String(init?.body || "{}"));
+        postedBodies.push(body);
+        if (postCounter === 1) {
+          const streamText = sseEvent("response.incomplete", {
+            response: {
+              id: "resp-inc-1",
+              status: "incomplete",
+              output: [
+                {
+                  type: "message",
+                  content: [{ type: "output_text", text: "partial result" }],
+                },
+              ],
+              output_text: "partial result",
+              incomplete_details: { reason: "max_output_tokens" },
+              usage: { input_tokens: 21, output_tokens: 6, total_tokens: 27 },
+            },
+          });
+          return new Response(streamText, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          });
+        }
+        const streamText = sseEvent("response.completed", {
+          response: {
+            id: "resp-inc-2",
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                content: [{ type: "output_text", text: "done" }],
+              },
+            ],
+            output_text: "done",
+            usage: { input_tokens: 18, output_tokens: 4, total_tokens: 22 },
+          },
+        });
+        return new Response(streamText, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    const { runtime, app } = createRuntime({ fetchFn, logsSink: logs });
+    app.ai.streaming = true;
+    const out = await runtime.runOpenAiAgentTurn("Current user request:\nfinish", "finish", {
+      turnId: "t-stream-incomplete",
+    });
+    assert.equal(String(out || ""), "done");
+    assert.equal(postedBodies.length, 2);
+    assert.equal(String(postedBodies[1]?.previous_response_id || ""), "resp-inc-1");
+    assert.ok(logs.some((x) => x.event === "request.incomplete"));
   }
 
   console.log("SMOKE_OK");

@@ -98,6 +98,39 @@ function createAgentRuntimeStateToolSchemaInternal(ctx) {
     ];
   }
 
+  function buildJournalTools() {
+    return [
+      {
+        type: "function",
+        name: "list_journal_entries",
+        description: "Read AI journal entries (table/changes/external/chat) for recovery and continuation audit",
+        parameters: {
+          type: "object",
+          properties: {
+            journal: {
+              type: "string",
+              enum: ["all", "table", "changes", "external", "chat"],
+              description: "Which journal to read",
+            },
+            turn_id: {
+              type: "string",
+              description: "Optional turn id filter (exact match)",
+            },
+            limit: {
+              type: "number",
+              description: "Max entries to return (1..1000), default 200",
+            },
+            include_meta: {
+              type: "boolean",
+              description: "Include compact meta payload for each entry",
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+    ];
+  }
+
   function buildStatePathTools(verificationParam) {
     return [
       {
@@ -134,6 +167,7 @@ function createAgentRuntimeStateToolSchemaInternal(ctx) {
     buildInteractionTools,
     buildSettingsTools,
     buildAttachmentTools,
+    buildJournalTools,
     buildStatePathTools,
   };
 }

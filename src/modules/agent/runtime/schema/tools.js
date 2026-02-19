@@ -114,6 +114,7 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
       ...sheetSchemaFacade.buildSheetNavigationTools(),
       ...(allowQuestions ? stateSchemaFacade.buildInteractionTools() : []),
       ...stateSchemaFacade.buildAttachmentTools(),
+      ...stateSchemaFacade.buildJournalTools(),
       ...assemblySchemaFacade.buildAssemblyCoreTools(),
       ...stateSchemaFacade.buildSettingsTools(),
       ...assemblySchemaFacade.buildAssemblyManagementTools(),

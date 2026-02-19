@@ -23,6 +23,7 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
   const fetch = fetchFn || ((...args) => globalThis.fetch(...args));
   const DEFAULT_BG_POLL_MS = 1300;
   const DEFAULT_BG_TIMEOUT_MS = 20 * 60 * 1000;
+  let preferredCompactEndpoint = "new";
 
   function compactText(text, maxLen = 800) {
     return String(text || "").replace(/\s+/g, " ").trim().slice(0, maxLen);
@@ -209,12 +210,22 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
         body: "{}",
       });
     };
+    const canFallbackByStatus = (status) => status === 400 || status === 404 || status === 405 || status === 422;
     try {
-      let endpointMode = "new";
-      let res = await callCompact(endpointMode);
-      if (!res.ok && (res.status === 400 || res.status === 404 || res.status === 405 || res.status === 422)) {
-        endpointMode = "legacy";
-        res = await callCompact(endpointMode);
+      const primaryMode = preferredCompactEndpoint === "legacy" ? "legacy" : "new";
+      const fallbackMode = primaryMode === "new" ? "legacy" : "new";
+
+      let endpointMode = primaryMode;
+      let res = await callCompact(primaryMode);
+      if (!res.ok && canFallbackByStatus(res.status)) {
+        const fallbackRes = await callCompact(fallbackMode);
+        if (fallbackRes.ok) {
+          res = fallbackRes;
+          endpointMode = fallbackMode;
+        } else if (!canFallbackByStatus(fallbackRes.status)) {
+          res = fallbackRes;
+          endpointMode = fallbackMode;
+        }
       }
       const ms = Date.now() - startedAt;
       if (res.status === 401 || res.status === 403) {
@@ -237,6 +248,7 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
         return null;
       }
       const parsed = await res.json();
+      preferredCompactEndpoint = endpointMode;
       addExternalJournal("responses.compact", "context compacted", {
         status: "completed",
         turn_id: turnId,

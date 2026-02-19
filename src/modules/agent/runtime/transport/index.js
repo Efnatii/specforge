@@ -134,8 +134,17 @@ function createAgentRuntimeTransportInternal(ctx) {
     return true;
   }
 
+  function getRuntimeAwareOption(key, fallback = undefined) {
+    const runtimeOverrides = app?.ai?.runtimeProfile?.overrides;
+    if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
+      return runtimeOverrides[key];
+    }
+    const value = app?.ai?.options?.[key];
+    return value === undefined ? fallback : value;
+  }
+
   function isCompatCacheEnabled() {
-    return app?.ai?.options?.compatCache !== false;
+    return getRuntimeAwareOption("compatCache", true) !== false;
   }
 
   function rememberUnsupportedTool(payload, toolTypeRaw) {
@@ -736,12 +745,15 @@ function createAgentRuntimeTransportInternal(ctx) {
       return await streamTransport.callOpenAiResponsesStream(payload, options);
     } catch (err) {
       // User cancellation (including AbortError from stream reader) should stop immediately.
+      const msg = String(err?.message || "").toLowerCase();
       const abortLike = Boolean(
         app.ai.cancelRequested
         || app.ai.taskState === "cancel_requested"
+        || app.ai.taskState === "cancelled"
         || err?.canceled
         || String(err?.name || "") === "AbortError"
-        || /abort|cancel/i.test(String(err?.message || "")),
+        || msg === "request canceled by user"
+        || msg === "request cancelled by user",
       );
       if (abortLike) {
         if (err?.canceled) throw err;

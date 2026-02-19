@@ -156,6 +156,12 @@ function createAgentRuntimeTurnInternal(ctx) {
     });
   }
 
+  function isResponseIncomplete(response) {
+    const status = String(response?.status || "").trim().toLowerCase();
+    if (status === "incomplete") return true;
+    return Boolean(response?.incomplete_details && typeof response.incomplete_details === "object");
+  }
+
   function getRuntimeAwareOption(key, fallback = undefined) {
     const runtimeOverrides = app?.ai?.runtimeProfile?.overrides;
     if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
@@ -181,6 +187,38 @@ function createAgentRuntimeTurnInternal(ctx) {
       return Math.max(min, Math.min(max, Math.round(fb)));
     }
     return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  function normalizeNonNegativeInt(value, fallback = 0, min = 0, max = 4000000) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) {
+      const fb = Number(fallback);
+      if (!Number.isFinite(fb) || fb < 0) return 0;
+      return Math.max(min, Math.min(max, Math.round(fb)));
+    }
+    return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  function normalizeClarifyMode(value, fallback = "never") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "never" || raw === "minimal" || raw === "normal") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "never" || fb === "minimal" || fb === "normal") return fb;
+    return "never";
+  }
+
+  function normalizeRiskyActionsMode(value, fallback = "allow_if_asked") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "confirm" || raw === "allow_if_asked" || raw === "never") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "confirm" || fb === "allow_if_asked" || fb === "never") return fb;
+    return "allow_if_asked";
+  }
+
+  function canAskUserQuestions() {
+    const clarify = normalizeClarifyMode(getRuntimeAwareOption("reasoningClarify", "never"), "never");
+    const risky = normalizeRiskyActionsMode(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked"), "allow_if_asked");
+    return clarify !== "never" && risky !== "never";
   }
 
   function extractResponseUsage(response) {
@@ -283,6 +321,9 @@ function createAgentRuntimeTurnInternal(ctx) {
     const userMessageInput = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
     const userText = String(options?.rawUserText || rawUserText || "").trim();
     const turnId = String(options?.turnId || app.ai.turnId || "");
+    const handoffDepth = normalizeNonNegativeInt(options?.handoffDepth, 0, 0, 8);
+    const cleanHandoffEnabled = getRuntimeAwareOption("cleanContextHandoff", true) !== false;
+    const maxCleanHandoffs = normalizeNonNegativeInt(getRuntimeAwareOption("cleanContextHandoffMax", 1), 1, 0, 8);
     app.ai.runtimeProfile = resolveTaskProfile(userText, app?.ai?.options?.taskProfile);
     const runtimeToolsMode = app?.ai?.runtimeProfile?.overrides?.toolsMode;
     const toolsModeRaw = String(runtimeToolsMode ?? app?.ai?.options?.toolsMode ?? "auto").trim().toLowerCase();
@@ -305,8 +346,289 @@ function createAgentRuntimeTurnInternal(ctx) {
       webSearchQueries: [],
       webSearchUrls: [],
     };
+    const progress = {
+      completedChecklist: [],
+      added: [],
+      updated: [],
+      deleted: [],
+      assemblyChanges: [],
+      failedTools: [],
+    };
     const startedAt = Date.now();
     let roundsUsed = 0;
+
+    const truncate = (value, maxLen = 180) => String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLen);
+    const pushUniqueLimited = (list, value, limit = 80) => {
+      const text = truncate(value, 240);
+      if (!text) return;
+      if (list.includes(text)) return;
+      if (list.length >= limit) return;
+      list.push(text);
+    };
+
+    const identifyToolTarget = (callName, args, result) => {
+      const article = truncate(args?.article || "", 96);
+      const name = truncate(args?.name || "", 120);
+      const assembly = truncate(args?.assembly_name || args?.full_name || "", 120);
+      const positionId = truncate(args?.position_id || "", 80);
+      const assemblyId = truncate(args?.assembly_id || result?.entity?.id || "", 80);
+      if (article) return article;
+      if (name) return name;
+      if (positionId) return `position:${positionId}`;
+      if (assemblyId && assembly) return `${assembly} (${assemblyId})`;
+      if (assembly) return assembly;
+      return callName;
+    };
+
+    const recordToolProgress = (callName, args, result) => {
+      const target = identifyToolTarget(callName, args, result);
+      const applied = Math.max(0, Number(result?.applied || 0));
+      const ok = Boolean(result?.ok);
+
+      if (ok && applied > 0) {
+        pushUniqueLimited(progress.completedChecklist, `${callName}: ${target}`, 240);
+      } else if (!ok) {
+        const err = truncate(result?.error || result?.message || "tool error", 180);
+        pushUniqueLimited(progress.failedTools, `${callName}: ${target}${err ? ` (${err})` : ""}`, 120);
+      }
+
+      if (!ok || applied <= 0) return;
+
+      if (
+        callName === "add_position"
+        || callName === "add_project_position"
+        || callName === "duplicate_position"
+      ) {
+        pushUniqueLimited(progress.added, `${target} via ${callName}`, 200);
+        return;
+      }
+      if (
+        callName === "update_position"
+        || callName === "update_project_position"
+        || callName === "set_state_value"
+        || callName === "write_cells"
+        || callName === "write_matrix"
+        || callName === "fill_range"
+        || callName === "replace_in_range"
+        || callName === "copy_range"
+      ) {
+        pushUniqueLimited(progress.updated, `${target} via ${callName}`, 200);
+        return;
+      }
+      if (
+        callName === "delete_position"
+        || callName === "delete_project_position"
+        || callName === "clear_range"
+        || callName === "clear_sheet_overrides"
+      ) {
+        pushUniqueLimited(progress.deleted, `${target} via ${callName}`, 200);
+        return;
+      }
+      if (
+        callName === "create_assembly"
+        || callName === "update_assembly"
+        || callName === "duplicate_assembly"
+        || callName === "delete_assembly"
+        || callName === "bulk_delete_assemblies"
+      ) {
+        pushUniqueLimited(progress.assemblyChanges, `${target} via ${callName}`, 120);
+      }
+    };
+
+    const buildCheckpointSnapshot = (trigger, response = null, reason = "") => {
+      const usage = extractResponseUsage(response);
+      const snapshot = {
+        version: "v1",
+        trigger: truncate(trigger, 64),
+        reason: truncate(reason, 220),
+        turn_id: turnId,
+        handoff_depth: handoffDepth,
+        user_request: truncate(userText, 1200),
+        model: truncate(modelId, 64),
+        elapsed_ms: Math.max(0, Date.now() - startedAt),
+        response_id: truncate(response?.id || app.ai.streamResponseId || "", 100),
+        response_status: truncate(response?.status || "", 32),
+        incomplete_details: compactForTool(response?.incomplete_details || null),
+        rounds_used: roundsUsed,
+        max_rounds: AGENT_MAX_TOOL_ROUNDS,
+        forced_retries: toolStats.forcedRetries,
+        max_forced_retries: AGENT_MAX_FORCED_RETRIES,
+        expected_mutations: expectedMutations,
+        successful_mutations: toolStats.successfulMutations,
+        total_tool_calls: toolStats.totalToolCalls,
+        usage: {
+          input_tokens: usage.inputTokens || 0,
+          output_tokens: usage.outputTokens || 0,
+          total_tokens: usage.totalTokens || 0,
+        },
+        web_evidence: {
+          used: Boolean(turnCtx.webSearchUsed),
+          queries: Array.isArray(turnCtx.webSearchQueries) ? turnCtx.webSearchQueries.slice(-20) : [],
+          urls: Array.isArray(turnCtx.webSearchUrls) ? turnCtx.webSearchUrls.slice(-40) : [],
+        },
+        completed_checklist: progress.completedChecklist.slice(0, 120),
+        added: progress.added.slice(0, 120),
+        updated: progress.updated.slice(0, 120),
+        deleted: progress.deleted.slice(0, 120),
+        assembly_changes: progress.assemblyChanges.slice(0, 80),
+        failed_tools: progress.failedTools.slice(-40),
+        mutation_failures: toolStats.failedMutations.slice(-20),
+      };
+      return snapshot;
+    };
+
+    const buildCheckpointText = (snapshot, forHandoff = false) => {
+      const lines = [];
+      lines.push(`Checkpoint v1 | trigger=${snapshot.trigger} | turn=${snapshot.turn_id}`);
+      if (snapshot.reason) lines.push(`Reason: ${snapshot.reason}`);
+      lines.push(`Request: ${snapshot.user_request}`);
+      lines.push(`Model: ${snapshot.model} | elapsed_ms=${snapshot.elapsed_ms}`);
+      lines.push(`Response: id=${snapshot.response_id || "-"} status=${snapshot.response_status || "-"}`);
+      lines.push(`Progress: tool_calls=${snapshot.total_tool_calls}, mutations=${snapshot.successful_mutations}/${snapshot.expected_mutations}, retries=${snapshot.forced_retries}/${snapshot.max_forced_retries}, rounds=${snapshot.rounds_used}/${snapshot.max_rounds}`);
+      lines.push(`Tokens: in=${snapshot.usage.input_tokens}, out=${snapshot.usage.output_tokens}, total=${snapshot.usage.total_tokens}`);
+      lines.push("");
+      lines.push("Completed checklist:");
+      if (snapshot.completed_checklist.length) {
+        for (let i = 0; i < snapshot.completed_checklist.length; i += 1) {
+          lines.push(`${i + 1}. ${snapshot.completed_checklist[i]}`);
+        }
+      } else {
+        lines.push("1. none");
+      }
+
+      const appendFlat = (title, items) => {
+        lines.push("");
+        lines.push(`${title}:`);
+        if (!items.length) {
+          lines.push("1. none");
+          return;
+        }
+        for (let i = 0; i < items.length; i += 1) {
+          lines.push(`${i + 1}. ${items[i]}`);
+        }
+      };
+      appendFlat("Added", snapshot.added);
+      appendFlat("Updated", snapshot.updated);
+      appendFlat("Deleted", snapshot.deleted);
+      appendFlat("Assembly changes", snapshot.assembly_changes);
+      appendFlat("Failures", [...snapshot.failed_tools, ...snapshot.mutation_failures].slice(0, 80));
+
+      lines.push("");
+      lines.push("Continue from:");
+      lines.push("1. Audit actual state first (list_assemblies + list_positions on target assemblies).");
+      lines.push("2. Audit journals next (list_journal_entries for journal=changes and journal=table).");
+      lines.push("3. Apply only missing operations; do not duplicate already-added items.");
+      lines.push("4. Keep IDs and existing rows stable unless explicitly required by the task.");
+      lines.push("5. Report done/not-done with reasons and no ambiguity.");
+
+      lines.push("");
+      lines.push("Do not touch:");
+      lines.push("1. Already added positions identified in the Added list.");
+      lines.push("2. Existing assemblies and rows unrelated to the user's task.");
+      lines.push("3. Previously successful operations unless verification proves mismatch.");
+
+      const raw = lines.join("\n");
+      if (raw.length <= 24000) return raw;
+      const tail = forHandoff
+        ? "\n\n[Checkpoint truncated to fit context window]\n"
+        : "\n\n[Report truncated]\n";
+      return `${raw.slice(0, Math.max(0, 24000 - tail.length))}${tail}`;
+    };
+
+    const buildHandoffPrompt = (snapshot) => {
+      const checkpointText = buildCheckpointText(snapshot, true);
+      return [
+        "CLEAN_CONTEXT_HANDOFF v1",
+        "You are continuing a long-running task after context reset.",
+        "Critical rule: NO REGRESSION. Preserve already-applied successful changes.",
+        "Audit first, then continue.",
+        "Required first actions:",
+        "1. list_assemblies",
+        "2. list_positions for relevant assemblies",
+        "3. list_journal_entries (journal=changes, then journal=table)",
+        "4. if needed: read_settings / get_state",
+        "",
+        "After audit, perform ONLY missing steps.",
+        "Never re-add rows that already exist.",
+        "Never delete unrelated rows.",
+        "",
+        "Original user task:",
+        userText || "(empty)",
+        "",
+        "Checkpoint report from previous executor:",
+        checkpointText,
+        "",
+        "Finish with a precise completion report: checklist, added/updated/deleted, remaining steps if any.",
+      ].join("\n");
+    };
+
+    const maybeRunCleanContextHandoff = async (trigger, response = null, reason = "") => {
+      if (!cleanHandoffEnabled) return "";
+      if (maxCleanHandoffs <= 0) return "";
+      if (handoffDepth >= maxCleanHandoffs) return "";
+      throwIfCanceled();
+
+      const snapshot = buildCheckpointSnapshot(trigger, response, reason);
+      const prompt = buildHandoffPrompt(snapshot);
+      const nextDepth = handoffDepth + 1;
+      addExternalJournal("agent.handoff.start", `clean context handoff (${trigger})`, {
+        turn_id: turnId,
+        request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+        response_id: String(response?.id || app.ai.streamResponseId || ""),
+        level: "warning",
+        status: "running",
+        meta: {
+          trigger,
+          reason: snapshot.reason || "",
+          handoff_depth: handoffDepth,
+          next_handoff_depth: nextDepth,
+          max_handoffs: maxCleanHandoffs,
+          completed: snapshot.completed_checklist.length,
+          added: snapshot.added.length,
+          updated: snapshot.updated.length,
+          deleted: snapshot.deleted.length,
+        },
+      });
+
+      try {
+        const handoffText = await runOpenAiAgentTurn(prompt, userText, {
+          ...options,
+          previousResponseId: "",
+          previousToolOutputs: [],
+          handoffDepth: nextDepth,
+        });
+        addExternalJournal("agent.handoff.complete", `handoff completed (${trigger})`, {
+          turn_id: turnId,
+          level: "info",
+          status: "completed",
+          meta: {
+            trigger,
+            handoff_depth: nextDepth,
+          },
+        });
+        return handoffText;
+      } catch (err) {
+        addExternalJournal("agent.handoff.error", String(err?.message || err), {
+          turn_id: turnId,
+          level: "warning",
+          status: "error",
+          meta: {
+            trigger,
+            handoff_depth: nextDepth,
+          },
+        });
+        return "";
+      }
+    };
+
+    const buildUnfinishedReport = (trigger, response = null, reason = "") => {
+      const snapshot = buildCheckpointSnapshot(trigger, response, reason);
+      const report = [
+        "Task is not fully completed yet.",
+        buildCheckpointText(snapshot, false),
+      ].join("\n\n");
+      return sanitizeAgentOutputText(report);
+    };
 
     if (!toolsDisabled) {
       throwIfCanceled();
@@ -393,6 +715,9 @@ function createAgentRuntimeTurnInternal(ctx) {
         const text = extractAgentText(response);
         const builtInToolUsed = hasBuiltInToolUsage(response);
         const computerUseCalled = hasComputerUseCall(response);
+        const responseIncomplete = isResponseIncomplete(response);
+        const continuationNeeded = responseIncomplete
+          || shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text);
 
         if (!text && computerUseCalled) {
           addExternalJournal("agent.computer_use.unsupported", "computer_use_preview requires browser executor", {
@@ -405,8 +730,10 @@ function createAgentRuntimeTurnInternal(ctx) {
           return "computer_use_preview недоступен в этом клиенте без browser executor. Используйте web_search.";
         }
 
-        if (!toolsDisabled && shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text) && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
-          const reason = buildAgentRetryReason(expectedMutations, toolStats, text);
+        if (continuationNeeded && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
+          const reason = responseIncomplete
+            ? "response status is incomplete"
+            : buildAgentRetryReason(expectedMutations, toolStats, text);
           toolStats.forcedRetries += 1;
           addTableJournal("agent.retry", `Автоповтор: ${reason}`, {
             turn_id: turnId,
@@ -417,6 +744,7 @@ function createAgentRuntimeTurnInternal(ctx) {
               retries: toolStats.forcedRetries,
               expected_mutations: expectedMutations,
               successful_mutations: toolStats.successfulMutations,
+              response_incomplete: responseIncomplete,
             },
           });
           const compactInfo = await maybeAutoCompactResponse(response, { turnId });
@@ -448,22 +776,32 @@ function createAgentRuntimeTurnInternal(ctx) {
           continue;
         }
 
+        if (continuationNeeded) {
+          const reason = responseIncomplete
+            ? "response remained incomplete after forced retries"
+            : "continuation criteria still not satisfied after forced retries";
+          const handoffText = await maybeRunCleanContextHandoff("continuation_exhausted", response, reason);
+          if (handoffText) return sanitizeAgentOutputText(handoffText);
+        }
+
         if (toolStats.mutationCalls > 0 && toolStats.successfulMutations === 0) {
-          const reason = toolStats.failedMutations.slice(-2).join("; ") || "инструмент изменения не внес правок";
-          return `Изменения не применены: ${reason}.`;
+          const reason = toolStats.failedMutations.slice(-2).join("; ") || "mutation tool did not apply changes";
+          return buildUnfinishedReport("no_successful_mutations", response, reason);
         }
         if (intentToMutate && toolStats.mutationCalls === 0) {
-          return "Изменения не применены: модель не вызвала инструменты изменения.";
+          return buildUnfinishedReport("no_mutation_calls", response, "model did not call mutation tools");
         }
         if (intentToUseTools && toolStats.totalToolCalls === 0 && !builtInToolUsed) {
-          return "Действия не применены: модель не вызвала инструменты.";
+          return buildUnfinishedReport("no_tool_calls", response, "model did not call tools");
         }
         if (intentToMutate && isAgentTextIncomplete(text)) {
+          const handoffText = await maybeRunCleanContextHandoff("final_text_incomplete", response, "final answer is incomplete while mutation task is expected");
+          if (handoffText) return sanitizeAgentOutputText(handoffText);
           if (toolStats.successfulMutations > 0) {
-            return `Готово. Изменения применены (${toolStats.successfulMutations}).`;
+            return `Р“РѕС‚РѕРІРѕ. РР·РјРµРЅРµРЅРёСЏ РїСЂРёРјРµРЅРµРЅС‹ (${toolStats.successfulMutations}).`;
           }
-          const reason = toolStats.failedMutations.slice(-2).join("; ") || "задача не завершена";
-          return `Изменения не применены: ${reason}.`;
+          const reason = toolStats.failedMutations.slice(-2).join("; ") || "task is not completed";
+          return buildUnfinishedReport("mutation_task_incomplete_text", response, reason);
         }
 
         const finalText = text || (toolStats.successfulMutations > 0 ? "Готово, изменения применены." : "Готово.");
@@ -505,9 +843,31 @@ function createAgentRuntimeTurnInternal(ctx) {
             input: summarizedArgs,
           },
         });
-        const result = normalizeToolResult(call.name, await executeAgentTool(call.name, args, turnCtx));
+        let result = normalizeToolResult(call.name, await executeAgentTool(call.name, args, turnCtx));
         throwIfCanceled();
+        if (result?.awaiting_user_input && String(call?.name || "") === "ask_user_question" && !canAskUserQuestions()) {
+          const reason = "ask_user_question skipped by runtime policy (clarifications disabled)";
+          addExternalJournal("tool.awaiting_user_input.ignored", reason, {
+            turn_id: turnId,
+            request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+            response_id: String(response?.id || ""),
+            status: "running",
+            level: "warning",
+            meta: {
+              tool: call.name,
+              call_id: call.call_id || "",
+            },
+          });
+          result = {
+            ...result,
+            ok: false,
+            applied: 0,
+            awaiting_user_input: false,
+            error: reason,
+          };
+        }
         const resultSummary = summarizeToolOutput(result);
+        recordToolProgress(call.name, args, result);
         const resultText = `${call.name}: ${result.ok ? "ok" : "error"} => ${compactToolIoText(resultSummary)}`;
         addExternalJournal("tool.result", resultText, {
           turn_id: turnId,
@@ -614,7 +974,9 @@ function createAgentRuntimeTurnInternal(ctx) {
         rounds_used: roundsUsed,
       },
     });
-    throw new Error("agent tool loop limit");
+    const handoffText = await maybeRunCleanContextHandoff("tool_loop_limit", response, "tool loop limit reached");
+    if (handoffText) return sanitizeAgentOutputText(handoffText);
+    return buildUnfinishedReport("tool_loop_limit", response, "tool loop limit reached");
   }
 
   return { runOpenAiAgentTurn };

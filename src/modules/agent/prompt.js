@@ -1060,7 +1060,12 @@ export class AgentPromptModule {
    
     } catch (err) {
       const details = String(err?.message || "\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u043e\u0448\u0438\u0431\u043a\u0430").slice(0, 400);
-      const canceled = this._app.ai.cancelRequested || /cancel|aborted|terminated/i.test(details);
+      const canceled = Boolean(
+        this._app.ai.cancelRequested
+        || err?.canceled
+        || String(err?.name || "") === "AbortError"
+        || /request cancel(?:ed|led) by user/i.test(details),
+      );
       if (!canceled) console.error(err);
       const reasoningHistory = this._buildReasoningHistory(reasoningTracker);
       if (canceled) {

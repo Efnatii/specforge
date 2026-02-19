@@ -55,12 +55,30 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
       || reason.includes("cancel");
   }
 
+  function isTimeoutAbort(controller, err) {
+    const signalReason = String(controller?.signal?.reason || "").toLowerCase();
+    if (signalReason.includes("timeout")) return true;
+    const errReason = String(err?.reason || err?.cause || "").toLowerCase();
+    if (errReason.includes("timeout")) return true;
+    const msg = String(err?.message || "").toLowerCase();
+    return msg.includes("timeout");
+  }
+
   function throwIfCanceled() {
     if (app.ai.cancelRequested || app.ai.taskState === "cancel_requested" || app.ai.taskState === "cancelled") {
       const e = new Error("request canceled by user");
       e.canceled = true;
       throw e;
     }
+  }
+
+  function getRuntimeAwareOption(key, fallback = undefined) {
+    const runtimeOverrides = app?.ai?.runtimeProfile?.overrides;
+    if (runtimeOverrides && Object.prototype.hasOwnProperty.call(runtimeOverrides, key)) {
+      return runtimeOverrides[key];
+    }
+    const value = app?.ai?.options?.[key];
+    return value === undefined ? fallback : value;
   }
 
   async function callOpenAiResponsesStream(payload, options = {}) {
@@ -74,9 +92,9 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     const requestId = uid();
     const turnId = options?.turnId || app.ai.turnId || "";
     app.ai.currentRequestId = requestId;
-    const timeoutMs = Math.max(30000, num(options?.timeout_ms, 180000));
+    const timeoutMs = Math.max(30000, num(options?.timeout_ms, 600000));
     const requestedServiceTier = String(payload?.service_tier || "default");
-    const lowBandwidthMode = app?.ai?.options?.lowBandwidthMode === true;
+    const lowBandwidthMode = getRuntimeAwareOption("lowBandwidthMode", false) === true;
     const includeItems = Array.isArray(payload?.include)
       ? payload.include.map((x) => String(x || "").trim()).filter(Boolean)
       : [];
@@ -141,6 +159,11 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     } catch (err) {
       clearTimeout(timer);
       if (isAbortError(err)) {
+        if (isTimeoutAbort(controller, err)) {
+          const e = new Error(`stream timeout after ${timeoutMs}ms`);
+          e.timeout = true;
+          throw e;
+        }
         const e = new Error("request canceled by user");
         e.canceled = true;
         throw e;
@@ -226,6 +249,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     let buf = "";
     let completed = null;
     let failed = null;
+    let incomplete = null;
     let responseId = "";
     let deltaCounter = 0;
     let deltaChars = 0;
@@ -274,6 +298,9 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
           } else if (eventName === "response.completed") {
             completed = eventData?.response || eventData;
             if (!responseId && completed?.id) responseId = String(completed.id);
+          } else if (eventName === "response.incomplete") {
+            incomplete = eventData?.response || eventData;
+            if (!responseId && incomplete?.id) responseId = String(incomplete.id);
           } else if (eventName === "response.failed") {
             failed = eventData?.error || eventData;
           }
@@ -287,6 +314,9 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
           if (eventName === "response.completed") {
             completed = eventData?.response || eventData;
             if (!responseId && completed?.id) responseId = String(completed.id);
+          } else if (eventName === "response.incomplete") {
+            incomplete = eventData?.response || eventData;
+            if (!responseId && incomplete?.id) responseId = String(incomplete.id);
           } else if (eventName === "response.failed") {
             failed = eventData?.error || eventData;
           }
@@ -309,10 +339,12 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
       });
       throw new Error(`openai stream failed: ${String(failed?.message || failed || "unknown")}`);
     }
+    if (!completed && incomplete) completed = incomplete;
     if (!completed) throw new Error("openai stream ended without response.completed");
 
     const ms = Date.now() - startedAt;
     const outCount = Array.isArray(completed?.output) ? completed.output.length : 0;
+    const responseStatus = String(completed?.status || "completed").trim().toLowerCase() || "completed";
     const actualServiceTier = String(completed?.service_tier || "");
     app.ai.serviceTierActual = actualServiceTier;
     if (completed?.conversation) {
@@ -332,6 +364,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         output_count: outCount,
         model,
         stream: true,
+        response_status: responseStatus,
         delta_count: deltaCounter,
         delta_chars: deltaChars,
         service_tier_requested: requestedServiceTier,
@@ -345,6 +378,15 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         text_format: textFormatType || null,
       },
     });
+    if (responseStatus === "incomplete") {
+      addExternalJournal("request.incomplete", "response finished with status=incomplete (continuation may be required)", {
+        level: "warning",
+        status: "error",
+        turn_id: turnId,
+        request_id: reqId,
+        response_id: responseId || String(completed?.id || ""),
+      });
+    }
 
     const hasWebSearch = Array.isArray(completed?.output) && completed.output.some((item) => String(item?.type || "").includes("web_search"));
     if (hasWebSearch) {
@@ -360,6 +402,20 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     app.ai.currentRequestId = reqId;
     return completed;
   } catch (err) {
+    if (isTimeoutAbort(controller, err)) {
+      addExternalJournal("request.timeout", `stream timeout after ${timeoutMs}ms`, {
+        level: "warning",
+        status: "error",
+        turn_id: turnId,
+        request_id: requestId,
+        response_id: String(app.ai.streamResponseId || ""),
+        meta: { timeout_ms: timeoutMs, model },
+      });
+      const timeoutErr = err?.timeout
+        ? err
+        : Object.assign(new Error(`stream timeout after ${timeoutMs}ms`), { timeout: true });
+      throw timeoutErr;
+    }
     const canceled = Boolean(err?.canceled || isAbortError(err));
     if (canceled) {
       const cancelErr = err?.canceled

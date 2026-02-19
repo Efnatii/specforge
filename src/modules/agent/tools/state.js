@@ -12,6 +12,8 @@ export class AgentStateToolsModule {
 const ATTACHMENT_READ_MIN_CHARS = 200;
 const ATTACHMENT_READ_MAX_CHARS = 60000;
 const ATTACHMENT_READ_DEFAULT_CHARS = 16000;
+const JOURNAL_READ_DEFAULT_LIMIT = 200;
+const JOURNAL_READ_MAX_LIMIT = 1000;
 
 function createAgentStateToolsInternal(ctx) {
   const { app, deps } = ctx || {};
@@ -149,6 +151,52 @@ function createAgentStateToolsInternal(ctx) {
     return value === undefined ? fallback : value;
   }
 
+  function normalizeBoundedInt(value, fallback = 0, min = 0, max = 1000) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) {
+      return Math.max(min, Math.min(max, Math.round(Number(fallback) || 0)));
+    }
+    return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  function normalizeJournalKind(raw) {
+    const kind = String(raw || "").trim().toLowerCase();
+    if (kind === "table" || kind === "changes" || kind === "external" || kind === "chat" || kind === "all") {
+      return kind;
+    }
+    return "all";
+  }
+
+  function journalListByKind(kind) {
+    if (kind === "table") return Array.isArray(app?.ai?.tableJournal) ? app.ai.tableJournal : [];
+    if (kind === "changes") return Array.isArray(app?.ai?.changesJournal) ? app.ai.changesJournal : [];
+    if (kind === "external") return Array.isArray(app?.ai?.externalJournal) ? app.ai.externalJournal : [];
+    if (kind === "chat") return Array.isArray(app?.ai?.chatJournal) ? app.ai.chatJournal : [];
+    return [];
+  }
+
+  function normalizeJournalEntryForTool(raw, journalKind, includeMeta) {
+    const src = raw && typeof raw === "object" ? raw : {};
+    const entry = {
+      journal: journalKind,
+      id: String(src.id || ""),
+      ts: num(src.ts, 0),
+      kind: String(src.kind || "event").slice(0, 60),
+      text: String(src.text || ""),
+      level: String(src.level || "info"),
+      source: String(src.source || ""),
+      turn_id: String(src.turn_id || ""),
+      request_id: String(src.request_id || ""),
+      response_id: String(src.response_id || ""),
+      duration_ms: src.duration_ms === undefined ? undefined : num(src.duration_ms, 0),
+      status: String(src.status || ""),
+    };
+    if (includeMeta && src.meta !== undefined) {
+      entry.meta = compactForTool(src.meta);
+    }
+    return entry;
+  }
+
   async function tryExecute(name, args, turnCtx = null) {
     if (name === "ask_user_question") {
       const clarifyModeRaw = String(getRuntimeAwareOption("reasoningClarify", "never")).trim().toLowerCase();
@@ -247,6 +295,64 @@ function createAgentStateToolsInternal(ctx) {
         total_chars: text.length,
         has_more: hasMore,
         text: chunk,
+      };
+    }
+
+    if (name === "list_journal_entries") {
+      const journal = normalizeJournalKind(args?.journal);
+      const includeMeta = Boolean(args?.include_meta);
+      const limit = normalizeBoundedInt(args?.limit, JOURNAL_READ_DEFAULT_LIMIT, 1, JOURNAL_READ_MAX_LIMIT);
+      const turnId = String(args?.turn_id || "").trim();
+      const selectedKinds = journal === "all"
+        ? ["table", "changes", "external", "chat"]
+        : [journal];
+
+      const entries = [];
+      for (const kind of selectedKinds) {
+        const list = journalListByKind(kind);
+        for (const raw of list) {
+          const entry = normalizeJournalEntryForTool(raw, kind, includeMeta);
+          if (turnId && entry.turn_id !== turnId) continue;
+          entries.push(entry);
+        }
+      }
+
+      entries.sort((a, b) => {
+        const ta = Number(a?.ts || 0);
+        const tb = Number(b?.ts || 0);
+        if (ta !== tb) return ta - tb;
+        const ia = String(a?.id || "");
+        const ib = String(b?.id || "");
+        if (ia < ib) return -1;
+        if (ia > ib) return 1;
+        return 0;
+      });
+
+      const total = entries.length;
+      const start = Math.max(0, total - limit);
+      const slice = entries.slice(start);
+      const byJournal = {
+        table: 0,
+        changes: 0,
+        external: 0,
+        chat: 0,
+      };
+      for (const item of slice) {
+        const key = String(item?.journal || "");
+        if (Object.prototype.hasOwnProperty.call(byJournal, key)) byJournal[key] += 1;
+      }
+
+      const turnInfo = turnId ? `, turn=${turnId}` : "";
+      addTableJournal("list_journal_entries", `journal=${journal}, returned=${slice.length}/${total}${turnInfo}`);
+      return {
+        ok: true,
+        journal,
+        turn_id: turnId,
+        limit,
+        total,
+        returned: slice.length,
+        by_journal: byJournal,
+        entries: slice,
       };
     }
 

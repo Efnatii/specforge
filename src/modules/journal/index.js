@@ -67,6 +67,20 @@ function createAiJournalInternal(ctx) {
   const STYLE_MODE_ORDER = ["clean", "verbose"];
   const CITATIONS_MODE_ORDER = ["off", "on"];
   const TASK_PROFILE_ORDER = ["auto", "fast", "balanced", "bulk", "longrun", "price_search", "proposal", "source_audit", "accurate", "research", "spec_strict", "custom"];
+  const NO_REASONING_PROFILE_ORDER = ["quick", "standard", "concise", "detailed", "json", "sources", "cautious", "tool_free", "custom"];
+  const NO_REASONING_PROFILE_ALIASES = {
+    auto: "standard",
+    fast: "quick",
+    balanced: "standard",
+    bulk: "concise",
+    longrun: "detailed",
+    price_search: "sources",
+    proposal: "json",
+    source_audit: "sources",
+    accurate: "cautious",
+    research: "sources",
+    spec_strict: "json",
+  };
   const OPTIONAL_TEXT_MODE_ORDER = ["auto", "off", "custom"];
   const BACKGROUND_MODE_ORDER = ["off", "auto", "on"];
   const COMPACT_MODE_ORDER = ["off", "auto", "on"];
@@ -102,6 +116,17 @@ function createAiJournalInternal(ctx) {
     accurate: "Точный (усиленная проверка)",
     research: "Исследование (глубоко)",
     spec_strict: "Спецификация ЩО (максимум)",
+    custom: "Пользовательский",
+  };
+  const NO_REASONING_PROFILE_LABELS = {
+    quick: "Быстрый ответ",
+    standard: "Сбалансированный",
+    concise: "Кратко по делу",
+    detailed: "Подробный ответ",
+    json: "JSON-формат",
+    sources: "С источниками",
+    cautious: "Осторожные действия",
+    tool_free: "Без инструментов",
     custom: "Пользовательский",
   };
   ensureJournalUiState();
@@ -193,6 +218,11 @@ function taskProfileLabel(value) {
   return TASK_PROFILE_LABELS[key] || key;
 }
 
+function noReasoningProfileLabel(value) {
+  const key = normalizeNoReasoningProfile(value, "standard");
+  return NO_REASONING_PROFILE_LABELS[key] || key;
+}
+
 function normalizeServiceTier(value, fallback = "standard") {
   return normalizeEnum(value, SERVICE_TIER_ORDER, fallback);
 }
@@ -250,6 +280,15 @@ function normalizeCitationsMode(value, fallback = "off") {
 }
 function normalizeTaskProfile(value, fallback = "auto") {
   return normalizeEnum(value, TASK_PROFILE_ORDER, fallback);
+}
+
+function normalizeNoReasoningProfile(value, fallback = "standard") {
+  const raw = String(value || "").trim().toLowerCase();
+  const mapped = NO_REASONING_PROFILE_ALIASES[raw] || raw;
+  if (NO_REASONING_PROFILE_ORDER.includes(mapped)) return mapped;
+  const fbRaw = String(fallback || "").trim().toLowerCase();
+  const fbMapped = NO_REASONING_PROFILE_ALIASES[fbRaw] || fbRaw;
+  return NO_REASONING_PROFILE_ORDER.includes(fbMapped) ? fbMapped : "standard";
 }
 
 function normalizeBackgroundMode(value, fallback = "auto") {
@@ -356,6 +395,7 @@ function loadAiSettings() {
         if (typeof parsed[k] === "boolean") app.ai.options[k] = parsed[k];
       }
       app.ai.options.taskProfile = normalizeTaskProfile(parsed.taskProfile, app.ai.options.taskProfile || "auto");
+      app.ai.options.noReasoningProfile = normalizeNoReasoningProfile(parsed.noReasoningProfile, app.ai.options.noReasoningProfile || "standard");
       app.ai.options.serviceTier = normalizeServiceTier(parsed.serviceTier, app.ai.options.serviceTier || "standard");
       app.ai.options.reasoningEffort = normalizeReasoningEffort(parsed.reasoningEffort, app.ai.options.reasoningEffort || "medium");
       app.ai.options.reasoningDepth = normalizeReasoningDepth(parsed.reasoningDepth, app.ai.options.reasoningDepth || "balanced");
@@ -447,6 +487,12 @@ function applySidebarWidth(value, persist = true) {
 }
 
 function renderAiUi() {
+  const chipsRoot = dom.agentChips || null;
+  const prevReasoningPopover = chipsRoot?.querySelector?.("[data-reasoning-popover]") || null;
+  const prevWebSearchPopover = chipsRoot?.querySelector?.("[data-web-search-popover]") || null;
+  const reasoningPopoverScrollTop = Number(prevReasoningPopover?.scrollTop);
+  const webSearchPopoverScrollTop = Number(prevWebSearchPopover?.scrollTop);
+
   if (dom.btnOpenAiAuth) {
     dom.btnOpenAiAuth.classList.toggle("is-connected", app.ai.connected);
     dom.btnOpenAiAuth.title = app.ai.connected ? "OpenAI: настройки подключения" : "Подключить OpenAI";
@@ -486,6 +532,16 @@ function renderAiUi() {
   renderSidebarMode();
   renderJournalViewMode();
   renderAgentChips();
+  if (chipsRoot) {
+    const nextReasoningPopover = chipsRoot.querySelector("[data-reasoning-popover]");
+    if (nextReasoningPopover && Number.isFinite(reasoningPopoverScrollTop) && reasoningPopoverScrollTop >= 0) {
+      nextReasoningPopover.scrollTop = reasoningPopoverScrollTop;
+    }
+    const nextWebSearchPopover = chipsRoot.querySelector("[data-web-search-popover]");
+    if (nextWebSearchPopover && Number.isFinite(webSearchPopoverScrollTop) && webSearchPopoverScrollTop >= 0) {
+      nextWebSearchPopover.scrollTop = webSearchPopoverScrollTop;
+    }
+  }
   renderAgentContextIcons();
   renderAgentQuestionFrame();
   renderAgentJournals();
@@ -541,8 +597,10 @@ function renderAgentChips() {
     </div>`);
   }
 
-  if (app.ai.options.reasoning !== false) {
+  {
+    const reasoningEnabled = app.ai.options.reasoning !== false;
     const taskProfile = normalizeTaskProfile(app.ai.options.taskProfile, "auto");
+    const noReasoningProfile = normalizeNoReasoningProfile(app.ai.options.noReasoningProfile, "standard");
     const effort = normalizeReasoningEffort(app.ai.options.reasoningEffort, "medium");
     const depth = normalizeReasoningDepth(app.ai.options.reasoningDepth, "balanced");
     const verify = normalizeReasoningVerify(app.ai.options.reasoningVerify, "basic");
@@ -584,6 +642,7 @@ function renderAgentChips() {
 
     const effortLabel = reasoningEffortLabel(effort);
     const taskProfileLabelText = taskProfileLabel(taskProfile);
+    const noReasoningProfileLabelText = noReasoningProfileLabel(noReasoningProfile);
     const depthLabel = reasoningDepthLabel(depth);
     const verifyLabel = reasoningVerifyLabel(verify);
     const summaryLabel = reasoningSummaryLabel(summaryMode);
@@ -621,14 +680,18 @@ function renderAgentChips() {
     const customModeLabel = (valueRaw) => {
       const text = String(valueRaw || "").trim();
       if (!text) return "Введите текст…";
-      if (text.length <= 20) return `Введите текст: ${text}`;
-      return `Введите текст: ${text.slice(0, 20)}…`;
+      if (text.length <= 20) return text;
+      return `${text.slice(0, 20)}…`;
     };
     const promptCacheKeyCustomLabel = customModeLabel(promptCacheKeyRaw);
     const promptCacheRetentionCustomLabel = customModeLabel(promptCacheRetentionRaw === "default" ? "" : promptCacheRetentionRaw);
     const safetyIdentifierCustomLabel = customModeLabel(safetyIdentifierRaw);
     const metadataPromptVersionCustomLabel = customModeLabel(metadataPromptVersionRaw === "v1" ? "" : metadataPromptVersionRaw);
     const metadataFrontendBuildCustomLabel = customModeLabel(metadataFrontendBuildRaw);
+    const settingsChipLabel = reasoningEnabled ? "Размышления" : "Параметры ответа";
+    const settingsChipTitle = reasoningEnabled ? "Настройки размышлений" : "Параметры ответа и системы";
+    const settingsChipSubtitle = reasoningEnabled ? taskProfileLabelText : noReasoningProfileLabelText;
+    const settingsSectionTitle = reasoningEnabled ? "Размышления" : "Параметры ответа";
 
     const wrapCls = app.ai.reasoningPopoverOpen
       ? "agent-tool-chip-wrap agent-reasoning-wrap is-open"
@@ -638,16 +701,21 @@ function renderAgentChips() {
       : "agent-chip agent-tool-chip";
 
     parts.push(`<div class="${wrapCls}" data-reasoning-wrap>
-      <button type="button" class="${chipCls}" data-ai-chip-option="reasoningSettings" title="Настройки размышлений" aria-label="Настройки размышлений">
-        <b>Размышления</b>
-        <span>${esc(taskProfileLabelText)}</span>
+      <button type="button" class="${chipCls}" data-ai-chip-option="reasoningSettings" title="${esc(settingsChipTitle)}" aria-label="${esc(settingsChipTitle)}">
+        <b>${esc(settingsChipLabel)}</b>
+        <span>${esc(settingsChipSubtitle)}</span>
         ${gearIcon}
       </button>
-      <div class="agent-reasoning-popover" data-reasoning-popover role="dialog" aria-label="Настройки размышлений">
+      <div class="agent-reasoning-popover" data-reasoning-popover role="dialog" aria-label="${esc(settingsChipTitle)}">
         <div class="agent-web-search-head">
-          <strong>Размышления</strong>
+          <strong>${esc(settingsSectionTitle)}</strong>
           <button type="button" class="agent-web-search-close" data-reasoning-action="close" aria-label="Закрыть настройки">x</button>
         </div>
+        ${reasoningEnabled
+          ? `<div class="agent-web-search-section-title">Настройки мышления</div>`
+          : `<div class="agent-web-search-summary">Режим размышлений отключён. Ниже доступны параметры ответа и системы и профиль для режима без размышления.</div>`}
+        ${reasoningEnabled ? `
+        <div class="agent-web-search-subsection-title">Профиль и диагностика</div>
         <label class="agent-web-search-row">
           <span data-tooltip="Что делает настройка: выбирает стратегию работы агента под тип задачи (порядок сверху вниз: от самого лёгкого к самому тяжёлому).&#10;&#10;• Авто — профиль подбирается по задаче и ключевым словам.&#10;• Черновик — самая высокая скорость, минимальная глубина.&#10;• Стандартный — базовый универсальный режим.&#10;• Пакетный — быстрые массовые операции.&#10;• Длинная сессия — устойчивость на долгом диалоге.&#10;• Поиск цен и источников — сбор цен, поставщиков и ссылок.&#10;• КП и спецификация — фокус на структуру коммерческого предложения.&#10;• Аудит исходников — глубокий разбор кода и артефактов.&#10;• Точный — усиленная самопроверка и детализация.&#10;• Исследование — самый глубокий поиск и сравнение источников.&#10;• Спецификация ЩО (максимум) — наиболее строгий профиль для электрощитовой спецификации.&#10;• Пользовательский — полностью ручные настройки.">Профиль</span>
           <select data-reasoning-config="taskProfile">
@@ -669,6 +737,7 @@ function renderAgentChips() {
           <span data-tooltip="Что показывает настройка: суммарную оценку нагрузки текущих параметров.&#10;&#10;• Формируется из усилия, глубины, проверки, лимитов токенов, включённых источников, фона и структурированного JSON.&#10;• Используйте для быстрой оценки компромисса «качество/скорость/стоимость».">Оценка ресурсов</span>
           <input type="text" value="${esc(resourceSummary)}" readonly tabindex="-1" />
         </label>
+        <div class="agent-web-search-subsection-title">Параметры рассуждения</div>
         <label class="agent-web-search-row">
           <span data-tooltip="Что делает настройка: задаёт вычислительное усилие модели.&#10;&#10;• Низкое — быстрый ответ, минимум анализа.&#10;• Среднее — баланс скорости и качества.&#10;• Высокое — больше сравнений и самопроверок.&#10;• Максимальное — наиболее тщательная проработка (дольше и дороже).">Усилие</span>
           <select data-reasoning-config="effort">
@@ -711,6 +780,26 @@ function renderAgentChips() {
             <option value="normal"${selectedAttr(clarify, "normal")}>Обычно</option>
           </select>
         </label>
+        ` : ""}
+        ${reasoningEnabled ? "" : `
+        <div class="agent-web-search-subsection-title">Профиль режима</div>
+        <label class="agent-web-search-row">
+          <span data-tooltip="Что делает настройка: выбирает профиль параметров ответа и системы для режима без размышления.">Профиль (без размышлений)</span>
+          <select data-reasoning-config="noReasoningProfile">
+            <option value="quick"${selectedAttr(noReasoningProfile, "quick")}>Быстрый ответ</option>
+            <option value="standard"${selectedAttr(noReasoningProfile, "standard")}>Сбалансированный</option>
+            <option value="concise"${selectedAttr(noReasoningProfile, "concise")}>Кратко по делу</option>
+            <option value="detailed"${selectedAttr(noReasoningProfile, "detailed")}>Подробный ответ</option>
+            <option value="json"${selectedAttr(noReasoningProfile, "json")}>JSON-формат</option>
+            <option value="sources"${selectedAttr(noReasoningProfile, "sources")}>С источниками</option>
+            <option value="cautious"${selectedAttr(noReasoningProfile, "cautious")}>Осторожные действия</option>
+            <option value="tool_free"${selectedAttr(noReasoningProfile, "tool_free")}>Без инструментов</option>
+            <option value="custom"${selectedAttr(noReasoningProfile, "custom")}>Пользовательский</option>
+          </select>
+        </label>
+        `}
+        <div class="agent-web-search-section-title">Параметры ответа и системы</div>
+        <div class="agent-web-search-subsection-title">Формат ответа</div>
         <label class="agent-web-search-row">
           <span data-tooltip="Что делает настройка: задаёт политику использования инструментов.&#10;&#10;• Авто — использовать инструменты по необходимости.&#10;• Предпочитать — чаще обращаться к инструментам для проверки фактов.&#10;• Обязательно — по возможности решать через инструменты.&#10;• Не использовать — отвечать без инструментов.">Инструменты</span>
           <select data-reasoning-config="toolsMode">
@@ -762,6 +851,7 @@ function renderAgentChips() {
           <span data-tooltip="Что делает настройка: задаёт верхнюю границу длины ответа в токенах.&#10;&#10;• 0 — лимит выбирается моделью автоматически.&#10;• Положительное число — жёсткий верхний предел длины ответа в токенах.&#10;• Чем выше лимит, тем потенциально длиннее ответ, но выше время и стоимость.&#10;• Пример: 12000.">Токены</span>
           <input type="number" min="0" step="1" value="${reasoningMaxTokens}" data-reasoning-config="maxTokens" />
         </label>
+        <div class="agent-web-search-subsection-title">Кэш и идентификаторы</div>
         <label class="agent-web-search-row">
           <span data-tooltip="Что делает настройка: включает/выключает запоминание фолбэков неподдерживаемых параметров модели.&#10;&#10;• Вкл — рантайм запоминает совместимые фолбэки параметров модели и применяет их дальше.&#10;• Выкл — кэш совместимости не используется.">Кэш совместимости</span>
           <select data-reasoning-config="compatCache">
@@ -796,6 +886,7 @@ function renderAgentChips() {
             <option value="custom">Введите текст…</option>
           </select>
         </label>
+        <div class="agent-web-search-subsection-title">Контекст и выполнение</div>
         <label class="agent-web-search-row">
           <span data-tooltip="Что делает настройка: определяет поведение при переполнении контекста.&#10;&#10;• Вкл — отправлять truncation=auto (режим «не падать» при переполнении контекста).&#10;• Выкл — не отправлять truncation (кроме специальных случаев модели).">Безопасная обрезка</span>
           <select data-reasoning-config="safeTruncationAuto">
@@ -838,6 +929,7 @@ function renderAgentChips() {
             <option value="on"${useConversationState ? " selected" : ""}>Вкл</option>
           </select>
         </label>
+        <div class="agent-web-search-subsection-title">Структура и метаданные</div>
         <label class="agent-web-search-row">
           <span data-tooltip="Что делает настройка: включает строгий структурированный вывод по JSON Schema.&#10;&#10;• Вкл — включить структурированный вывод по JSON Schema.&#10;• Выкл — обычный текстовый вывод.">Структурированный JSON спецификации</span>
           <select data-reasoning-config="structuredSpecOutput">
@@ -870,6 +962,7 @@ function renderAgentChips() {
             <option value="custom">Введите текст…</option>
           </select>
         </label>
+        <div class="agent-web-search-subsection-title">Источники и трафик</div>
         <label class="agent-web-search-row">
           <span data-tooltip="Что делает настройка: управляет запросом источников и результатов tool-call через include.&#10;&#10;• Выкл — поле include не запрашивается.&#10;• Авто — include включается по профилю/инструментам.&#10;• Вкл — всегда запрашивать источники и результаты web/file search.">Источники в ответе</span>
           <select data-reasoning-config="includeSourcesMode">
@@ -908,6 +1001,7 @@ function renderAgentContextIcons() {
     if (key === "reasoning") {
       const enabled = app.ai.options.reasoning !== false;
       const taskProfile = normalizeTaskProfile(app.ai.options.taskProfile, "auto");
+      const noReasoningProfile = normalizeNoReasoningProfile(app.ai.options.noReasoningProfile, "standard");
       const effort = normalizeReasoningEffort(app.ai.options.reasoningEffort, "medium");
       const depth = normalizeReasoningDepth(app.ai.options.reasoningDepth, "balanced");
       const verify = normalizeReasoningVerify(app.ai.options.reasoningVerify, "basic");
@@ -922,7 +1016,9 @@ function renderAgentContextIcons() {
       const depthLabel = reasoningDepthLabel(depth);
       const verifyLabel = reasoningVerifyLabel(verify);
       const summaryLabel = reasoningSummaryLabel(summaryMode);
-      const profileLabel = taskProfileLabel(taskProfile);
+      const profileLabel = enabled
+        ? taskProfileLabel(taskProfile)
+        : noReasoningProfileLabel(noReasoningProfile);
       btn.classList.toggle("is-selected", enabled);
       btn.dataset.effort = effort;
       const backgroundTitle = backgroundMode === "auto" ? "авто" : backgroundMode === "on" ? "вкл" : "выкл";
@@ -2184,6 +2280,3 @@ function moneyUsd(v) {
     moneyUsd,
   };
 }
-
-
-

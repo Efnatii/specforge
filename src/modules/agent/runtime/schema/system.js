@@ -23,18 +23,135 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
   }
 
   function resolveRuntimeTaskProfileInfo() {
-    const modeRaw = String(app?.ai?.options?.taskProfile || "auto").trim().toLowerCase();
-    const mode = modeRaw === "auto" || modeRaw === "balanced" || modeRaw === "proposal" || modeRaw === "price_search" || modeRaw === "source_audit" || modeRaw === "spec_strict" || modeRaw === "bulk" || modeRaw === "accurate" || modeRaw === "research" || modeRaw === "longrun" || modeRaw === "fast" || modeRaw === "custom"
-      ? modeRaw
-      : "auto";
     const runtime = app?.ai?.runtimeProfile || null;
-    const selected = normalizeEnum(
-      runtime?.selected || (mode === "auto" ? "balanced" : mode),
-      ["balanced", "proposal", "price_search", "source_audit", "spec_strict", "bulk", "accurate", "research", "longrun", "fast", "custom"],
-      "balanced",
+    const taskModeRaw = String(app?.ai?.options?.taskProfile || "auto").trim().toLowerCase();
+    const runtimeModeRaw = String(runtime?.mode || "").trim().toLowerCase();
+    const runtimeMode = runtimeModeRaw === "auto"
+      || runtimeModeRaw === "balanced"
+      || runtimeModeRaw === "proposal"
+      || runtimeModeRaw === "price_search"
+      || runtimeModeRaw === "source_audit"
+      || runtimeModeRaw === "spec_strict"
+      || runtimeModeRaw === "bulk"
+      || runtimeModeRaw === "accurate"
+      || runtimeModeRaw === "research"
+      || runtimeModeRaw === "longrun"
+      || runtimeModeRaw === "fast"
+      || runtimeModeRaw === "custom"
+      || runtimeModeRaw === "no_reasoning"
+      || runtimeModeRaw === "no_reasoning_custom"
+      ? runtimeModeRaw
+      : "";
+    const taskMode = taskModeRaw === "auto"
+      || taskModeRaw === "balanced"
+      || taskModeRaw === "proposal"
+      || taskModeRaw === "price_search"
+      || taskModeRaw === "source_audit"
+      || taskModeRaw === "spec_strict"
+      || taskModeRaw === "bulk"
+      || taskModeRaw === "accurate"
+      || taskModeRaw === "research"
+      || taskModeRaw === "longrun"
+      || taskModeRaw === "fast"
+      || taskModeRaw === "custom"
+      ? taskModeRaw
+      : "auto";
+    const noReasoningAliases = {
+      auto: "standard",
+      fast: "quick",
+      balanced: "standard",
+      bulk: "concise",
+      longrun: "detailed",
+      price_search: "sources",
+      proposal: "json",
+      source_audit: "sources",
+      accurate: "cautious",
+      research: "sources",
+      spec_strict: "json",
+    };
+    const noReasoningSelectedRaw = String(app?.ai?.options?.noReasoningProfile || "standard").trim().toLowerCase();
+    const noReasoningSelectedMapped = noReasoningAliases[noReasoningSelectedRaw] || noReasoningSelectedRaw;
+    const noReasoningSelected = normalizeEnum(
+      noReasoningSelectedMapped,
+      ["quick", "standard", "concise", "detailed", "json", "sources", "cautious", "tool_free", "custom"],
+      "standard",
     );
-    const reasonRaw = String(runtime?.reason || (mode === "auto" ? "auto_default" : "manual_profile")).trim();
-    const reason = reasonRaw || "manual_profile";
+    const reasoningOff = app?.ai?.options?.reasoning === false;
+    let mode = "";
+    if (reasoningOff) {
+      mode = runtimeMode === "no_reasoning" || runtimeMode === "no_reasoning_custom"
+        ? runtimeMode
+        : (noReasoningSelected === "custom" ? "no_reasoning_custom" : "no_reasoning");
+    } else {
+      mode = runtimeMode || taskMode;
+    }
+    const noReasoningMode = mode === "no_reasoning" || mode === "no_reasoning_custom";
+    const runtimeSelectedRaw = String(runtime?.selected || "").trim().toLowerCase();
+    const runtimeSelectedNoReasoning = noReasoningAliases[runtimeSelectedRaw] || runtimeSelectedRaw;
+    const taskSelectedAllowed = new Set([
+      "balanced",
+      "proposal",
+      "price_search",
+      "source_audit",
+      "spec_strict",
+      "bulk",
+      "accurate",
+      "research",
+      "longrun",
+      "fast",
+      "custom",
+    ]);
+    const noReasoningSelectedAllowed = new Set([
+      "quick",
+      "standard",
+      "concise",
+      "detailed",
+      "json",
+      "sources",
+      "cautious",
+      "tool_free",
+      "custom",
+    ]);
+    const runtimeSelectedTask = taskSelectedAllowed.has(runtimeSelectedRaw) ? runtimeSelectedRaw : "";
+    const runtimeSelectedNoReasoningSafe = noReasoningSelectedAllowed.has(runtimeSelectedNoReasoning) ? runtimeSelectedNoReasoning : "";
+    const runtimeSelectedByMode = noReasoningMode ? runtimeSelectedNoReasoningSafe : runtimeSelectedTask;
+    const selectedFallback = noReasoningMode
+      ? noReasoningSelected
+      : (mode === "auto" ? "balanced" : mode);
+    const selected = normalizeEnum(
+      runtimeSelectedByMode || selectedFallback,
+      [
+        "balanced",
+        "proposal",
+        "price_search",
+        "source_audit",
+        "spec_strict",
+        "bulk",
+        "accurate",
+        "research",
+        "longrun",
+        "fast",
+        "custom",
+        "quick",
+        "standard",
+        "concise",
+        "detailed",
+        "json",
+        "sources",
+        "cautious",
+        "tool_free",
+      ],
+      noReasoningMode ? "standard" : "balanced",
+    );
+    const defaultReason = mode === "no_reasoning_custom"
+      ? "manual_no_reasoning_custom"
+      : noReasoningMode
+        ? "manual_no_reasoning_profile"
+        : mode === "auto"
+          ? "auto_default"
+          : "manual_profile";
+    const reasonRaw = String(runtime?.reason || defaultReason).trim();
+    const reason = reasonRaw || defaultReason;
     return { mode, selected, reason };
   }
 
