@@ -537,6 +537,10 @@ function createAgentRuntimePolicyInternal(ctx) {
   function inferAutoTaskProfile(taskTextRaw) {
     const src = String(taskTextRaw || "").toLowerCase();
     if (!src) return { selected: "balanced", reason: "empty_request" };
+    const simpleDefinitionRe = /^\s*(what is|what's|define|explain|who is|что такое|кто такой|объясни|дай определение)\b/i;
+    const sourceScopeRe = /(source code|repository|repo|codebase|исходник|репозитор|код|проект|модул|файл)/i;
+    const sourceAuditIntentRe = /(code review|static analy|lint|test coverage|refactor|audit|review|debug|root cause|diagnos|investigat|analy|analysis|bug|аудит|ревью|разбор|исслед|проанализ|анализ|причин|почему\s+лома|расслед)/i;
+    const deepAuditCueRe = /(deep dive|full audit|end[-\s]?to[-\s]?end|тоталь|до конца|полност|глубок)/i;
 
     if (/(mccb|mcb|rcd|rcbo|contactor|busbar|bom|bill of materials|switchboard|electrical spec|\u0430\u0432\u0442\u043e\u043c\u0430\u0442|\u0443\u0437\u043e|\u0434\u0438\u0444|\u0449\u0438\u0442|\u0441\u043f\u0435\u0446\u0438\u0444)/i.test(src)) {
       return { selected: "spec_strict", reason: "electrical_spec_keywords" };
@@ -547,7 +551,13 @@ function createAgentRuntimePolicyInternal(ctx) {
     if (/(price search|price lookup|rfq|quote|supplier|\u0446\u0435\u043d\u0430|\u043f\u0440\u0430\u0439\u0441|\u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442|\u043f\u043e\u0441\u0442\u0430\u0432\u0449)/i.test(src)) {
       return { selected: "price_search", reason: "price_search_keywords" };
     }
+    if (sourceScopeRe.test(src) && (sourceAuditIntentRe.test(src) || deepAuditCueRe.test(src)) && !simpleDefinitionRe.test(src)) {
+      return { selected: "source_audit", reason: "source_audit_scope_intent_keywords" };
+    }
     if (/(source code|repository|repo|codebase|code review|static analy|lint|test coverage|refactor|\u0438\u0441\u0445\u043e\u0434\u043d\u0438\u043a|\u0440\u0435\u0444\u0430\u043a\u0442\u043e\u0440|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442)/i.test(src)) {
+      if (simpleDefinitionRe.test(src)) {
+        return { selected: "balanced", reason: "source_term_definition_query" };
+      }
       return { selected: "source_audit", reason: "source_audit_keywords" };
     }
 
@@ -558,7 +568,7 @@ function createAgentRuntimePolicyInternal(ctx) {
     if (/(long running|continuous|\u0434\u043b\u0438\u043d\u043d\w+\s+\u0441\u0435\u0441\u0441\u0438|\u043c\u043d\u043e\u0433\u043e\s+\u0448\u0430\u0433|\u0434\u043e\u043b\u0433\w+\s+\u0434\u0438\u0430\u043b\u043e\u0433|\u043c\u043d\u043e\u0433\u043e\s+\u0440\u0430\u0443\u043d\u0434)/i.test(src)) {
       return { selected: "longrun", reason: "long_running_keywords" };
     }
-    if (/(analy|analysis|review|audit|compare|debug|bug|\u0430\u043d\u0430\u043b\u0438\u0437|\u0441\u0440\u0430\u0432\u043d|\u043f\u0440\u043e\u0432\u0435\u0440|\u0430\u0443\u0434\u0438\u0442|\u043e\u0431\u0437\u043e\u0440)/i.test(src)) {
+    if (/(analy|analysis|review|audit|compare|debug|bug|root cause|\u0430\u043d\u0430\u043b\u0438\u0437|\u043f\u0440\u043e\u0430\u043d\u0430\u043b\u0438\u0437|\u0441\u0440\u0430\u0432\u043d|\u043f\u0440\u043e\u0432\u0435\u0440|\u0430\u0443\u0434\u0438\u0442|\u0440\u0435\u0432\u044c\u044e|\u043e\u0431\u0437\u043e\u0440|\u0440\u0430\u0437\u0431\u043e\u0440|\u043f\u0440\u0438\u0447\u0438\u043d|\u043f\u043e\u0447\u0435\u043c\u0443\s+\u043b\u043e\u043c\u0430)/i.test(src)) {
       return { selected: "accurate", reason: "analysis_keywords" };
     }
     if (/(research|search|source|citation|cite|web|internet|\u043f\u043e\u0438\u0441\u043a|\u0438\u0441\u0441\u043b\u0435\u0434|\u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a|\u0441\u0441\u044b\u043b|\u0432\u0435\u0431|\u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442)/i.test(src)) {
