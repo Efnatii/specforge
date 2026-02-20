@@ -278,6 +278,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     const explicitDeepCue = /(totally|total|fully|full|end[-\s]?to[-\s]?end|max(?:imum)?|unlimited|deep(?:\s+dive)?|до\s+конца|тоталь|максимум|полност|не\s+ограничивай|глубок\w+\s+разбор)/i.test(text);
     const explicitNoLimitsCue = /(без\s+огранич|не\s*хочу[\s\S]{0,24}огранич|ни\s*хочу[\s\S]{0,24}огранич|нихочу[\s\S]{0,24}огранич|no\s+limit|without\s+limits|as\s+much\s+as\s+needed|сколько\s+нужно|любыми\s+ресурс)/i.test(text);
     const deepProfiles = new Set(["source_audit", "research", "longrun", "spec_strict", "proposal", "bulk"]);
+    const uncappedDeepProfiles = new Set(["source_audit", "research", "longrun", "spec_strict"]);
     const strictToolsProfiles = new Set(["source_audit", "research", "price_search", "spec_strict"]);
     const strictVerifyProfiles = new Set(["source_audit", "research", "spec_strict"]);
 
@@ -318,6 +319,10 @@ function createAgentRuntimeTurnInternal(ctx) {
     const verifyMode = normalizeReasoningVerify(options?.reasoningVerify, "basic");
     if (wantsDeepCompletion && strictVerifyProfiles.has(selectedProfile) && verifyMode !== "strict") {
       out.overrideVerify = "strict";
+    }
+    if (wantsDeepCompletion && uncappedDeepProfiles.has(selectedProfile)) {
+      const maxTokens = normalizePositiveInt(options?.reasoningMaxTokens, 0, 1, 2000000);
+      if (maxTokens > 0) out.overrideReasoningMaxTokens = 0;
     }
     if (explicitNoLimitsCue) {
       if (!toolsDisabled && (toolsMode === "auto" || toolsMode === "prefer")) {
