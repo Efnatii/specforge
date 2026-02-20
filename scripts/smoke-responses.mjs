@@ -14,6 +14,7 @@ function buildConfig() {
     AI_SHORT_ACK_PROMPT_RE: /ok|thanks|спасибо/i,
     AI_MUTATION_INTENT_RE: /edit|change|update|измени|обнов/i,
     AI_ACTIONABLE_VERB_RE: /create|set|find|удали|создай|измени/i,
+    AI_ANALYSIS_INTENT_RE: /research|audit|review|analy|debug|root cause|исслед|разбор|проанализ|анализ|аудит|ревью|расслед/i,
     AI_TOOL_NAME_HINTS: [],
     AI_INCOMPLETE_RESPONSE_RE: /to be continued|продолжение/i,
     AGENT_MAX_FORCED_RETRIES: 1,
@@ -190,6 +191,14 @@ async function main() {
   }
 
   {
+    const { runtime } = createRuntime();
+    const task = "исследуй репозиторий во вложении и сделай разбор";
+    const normalized = runtime.normalizeAgentPrompt(task);
+    assert.equal(runtime.isActionableAgentPrompt(task), true);
+    assert.equal(Boolean(normalized?.actionable), true);
+  }
+
+  {
     const { runtime, app } = createRuntime({
       options: {
         reasoning: false,
@@ -338,6 +347,8 @@ async function main() {
     assert.equal(String(autoPrice?.selected || ""), "price_search");
     const autoSpec = policy.resolveTaskProfile("собери спецификацию щита ВРУ", "auto");
     assert.equal(String(autoSpec?.selected || ""), "spec_strict");
+    const autoAudit = policy.inferAutoTaskProfile("требуется тотальное исследование репозитория и разбор причин");
+    assert.equal(String(autoAudit?.selected || ""), "source_audit");
   }
 
   {
@@ -661,6 +672,75 @@ async function main() {
     assert.equal(String(postedBodies[1]?.previous_response_id || ""), "");
     assert.equal(hasFunctionCallOutput(postedBodies[1]?.input), false);
     assert.ok(logs.some((x) => x.event === "conversation_state.fallback"));
+  }
+
+  {
+    const postedBodies = [];
+    let postCounter = 0;
+    const logs = [];
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        postCounter += 1;
+        const body = JSON.parse(String(init?.body || "{}"));
+        postedBodies.push(body);
+        if (postCounter === 1) {
+          return new Response(
+            JSON.stringify({
+              id: "resp-guard-1",
+              status: "completed",
+              output: [],
+              output_text: "ok",
+              usage: { input_tokens: 14, output_tokens: 3, total_tokens: 17 },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (postCounter === 2) {
+          return new Response(
+            JSON.stringify({
+              id: "resp-guard-2",
+              status: "completed",
+              output: [
+                { type: "function_call", name: "list_attachments", call_id: "call-guard-1", arguments: "{}" },
+                { type: "function_call", name: "read_attachment", call_id: "call-guard-2", arguments: "{\"id\":\"att-1\"}" },
+              ],
+              output_text: "",
+              usage: { input_tokens: 12, output_tokens: 5, total_tokens: 17 },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            id: `resp-guard-${postCounter}`,
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                content: [{ type: "output_text", text: "audit complete" }],
+              },
+            ],
+            output_text: "audit complete",
+            usage: { input_tokens: 11, output_tokens: 4, total_tokens: 15 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const { runtime, app } = createRuntime({ fetchFn, logsSink: logs });
+    app.ai.attachments = [{ id: "att-1", name: "repo.txt", text: "module content", size: 10, type: "text/plain" }];
+    const auditTask = "\u0438\u0441\u0441\u043b\u0435\u0434\u0443\u0439 \u0440\u0435\u043f\u043e\u0437\u0438\u0442\u043e\u0440\u0438\u0439 \u0434\u043e \u043a\u043e\u043d\u0446\u0430 \u0438 \u0441\u0434\u0435\u043b\u0430\u0439 \u0440\u0430\u0437\u0431\u043e\u0440";
+    const out = await runtime.runOpenAiAgentTurn(`Current user request:\n${auditTask}`, auditTask, {
+      turnId: "t-completion-guard",
+    });
+    assert.equal(String(out || ""), "audit complete");
+    assert.ok(postedBodies.length >= 3);
+    const preflight = logs.find((x) => x.event === "agent.preflight");
+    assert.ok(Number(preflight?.meta?.meta?.min_tool_calls || 0) >= 1);
+    assert.ok(logs.some((x) => x.event === "agent.completion_guard.triggered"));
   }
 
   {
