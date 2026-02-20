@@ -233,6 +233,38 @@ function createAgentRuntimeTurnInternal(ctx) {
     return "basic";
   }
 
+  function normalizeReasoningDepth(value, fallback = "balanced") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "fast" || raw === "balanced" || raw === "deep") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "fast" || fb === "balanced" || fb === "deep") return fb;
+    return "balanced";
+  }
+
+  function normalizeReasoningEffort(value, fallback = "medium") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "none" || raw === "minimal" || raw === "low" || raw === "medium" || raw === "high" || raw === "xhigh") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "none" || fb === "minimal" || fb === "low" || fb === "medium" || fb === "high" || fb === "xhigh") return fb;
+    return "medium";
+  }
+
+  function normalizeServiceTier(value, fallback = "standard") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "flex" || raw === "standard" || raw === "priority") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "flex" || fb === "standard" || fb === "priority") return fb;
+    return "standard";
+  }
+
+  function normalizeBackgroundMode(value, fallback = "auto") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "off" || raw === "auto" || raw === "on") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "off" || fb === "auto" || fb === "on") return fb;
+    return "auto";
+  }
+
   function analyzeTaskPreflight(userTextRaw, runtimeProfile, options = {}) {
     const text = String(userTextRaw || "").trim();
     const selectedProfile = String(runtimeProfile?.selected || "").trim().toLowerCase();
@@ -244,11 +276,12 @@ function createAgentRuntimeTurnInternal(ctx) {
     const workspaceScope = /(source code|repository|repo|codebase|module|file|files|project|attachment|attachments|репозитор|проект|модул|файл|вложен)/i.test(text)
       || attachmentsCount > 0;
     const explicitDeepCue = /(totally|total|fully|full|end[-\s]?to[-\s]?end|max(?:imum)?|unlimited|deep(?:\s+dive)?|до\s+конца|тоталь|максимум|полност|не\s+ограничивай|глубок\w+\s+разбор)/i.test(text);
+    const explicitNoLimitsCue = /(без\s+огранич|не\s*хочу[\s\S]{0,24}огранич|ни\s*хочу[\s\S]{0,24}огранич|нихочу[\s\S]{0,24}огранич|no\s+limit|without\s+limits|as\s+much\s+as\s+needed|сколько\s+нужно|любыми\s+ресурс)/i.test(text);
     const deepProfiles = new Set(["source_audit", "research", "longrun", "spec_strict", "proposal", "bulk"]);
     const strictToolsProfiles = new Set(["source_audit", "research", "price_search", "spec_strict"]);
     const strictVerifyProfiles = new Set(["source_audit", "research", "spec_strict"]);
 
-    const wantsDeepCompletion = deepProfiles.has(selectedProfile) || explicitDeepCue;
+    const wantsDeepCompletion = deepProfiles.has(selectedProfile) || explicitDeepCue || explicitNoLimitsCue;
     const intentToMutate = !toolsDisabled && AI_MUTATION_INTENT_RE.test(text);
     const expectedMutationsHint = estimateExpectedMutationCount(text, intentToMutate);
     const intentToUseTools = !toolsDisabled && (actionable || analysisIntent || workspaceScope);
@@ -276,6 +309,7 @@ function createAgentRuntimeTurnInternal(ctx) {
       workspaceScope,
       toolsMode,
       selectedProfile,
+      forceNoLimits: explicitNoLimitsCue,
     };
 
     if (!toolsDisabled && wantsDeepCompletion && strictToolsProfiles.has(selectedProfile) && (toolsMode === "auto" || toolsMode === "prefer")) {
@@ -285,6 +319,27 @@ function createAgentRuntimeTurnInternal(ctx) {
     if (wantsDeepCompletion && strictVerifyProfiles.has(selectedProfile) && verifyMode !== "strict") {
       out.overrideVerify = "strict";
     }
+    if (explicitNoLimitsCue) {
+      if (!toolsDisabled && (toolsMode === "auto" || toolsMode === "prefer")) {
+        out.overrideToolsMode = "require";
+      }
+      if (verifyMode !== "strict") out.overrideVerify = "strict";
+
+      const depthMode = normalizeReasoningDepth(options?.reasoningDepth, "balanced");
+      if (depthMode !== "deep") out.overrideReasoningDepth = "deep";
+
+      const effortMode = normalizeReasoningEffort(options?.reasoningEffort, "medium");
+      if (effortMode !== "high" && effortMode !== "xhigh") out.overrideReasoningEffort = "xhigh";
+
+      const serviceTier = normalizeServiceTier(options?.serviceTier, "standard");
+      if (serviceTier !== "priority") out.overrideServiceTier = "priority";
+
+      const backgroundMode = normalizeBackgroundMode(options?.backgroundMode, "auto");
+      if (backgroundMode !== "on") out.overrideBackgroundMode = "on";
+
+      const maxTokens = normalizePositiveInt(options?.reasoningMaxTokens, 0, 1, 2000000);
+      if (maxTokens > 0) out.overrideReasoningMaxTokens = 0;
+    }
     return out;
   }
 
@@ -293,9 +348,9 @@ function createAgentRuntimeTurnInternal(ctx) {
     const guardEnabled = Boolean(preflight.wantsDeepCompletion || preflight.intentToUseTools || preflight.intentToMutate);
     if (!guardEnabled) return { triggered: false, reason: "" };
 
-    const builtInToolUsed = options?.builtInToolUsed === true;
+    const builtInToolCalls = Math.max(0, num(options?.builtInToolCalls, 0));
     const minToolCalls = Math.max(0, num(preflight.minToolCalls, 0));
-    const effectiveToolCalls = Math.max(0, num(toolStats?.totalToolCalls, 0)) + (builtInToolUsed ? 1 : 0);
+    const effectiveToolCalls = Math.max(0, num(toolStats?.totalToolCalls, 0)) + builtInToolCalls;
     if (minToolCalls > 0 && effectiveToolCalls < minToolCalls) {
       return {
         triggered: true,
@@ -303,7 +358,7 @@ function createAgentRuntimeTurnInternal(ctx) {
         details: {
           min_tool_calls: minToolCalls,
           effective_tool_calls: effectiveToolCalls,
-          built_in_tool_used: builtInToolUsed,
+          built_in_tool_calls: builtInToolCalls,
         },
       };
     }
@@ -453,6 +508,28 @@ function createAgentRuntimeTurnInternal(ctx) {
       app?.ai?.runtimeProfile?.overrides?.reasoningVerify ?? app?.ai?.options?.reasoningVerify ?? "basic",
       "basic",
     );
+    const baseReasoningDepth = normalizeReasoningDepth(
+      app?.ai?.runtimeProfile?.overrides?.reasoningDepth ?? app?.ai?.options?.reasoningDepth ?? "balanced",
+      "balanced",
+    );
+    const baseReasoningEffort = normalizeReasoningEffort(
+      app?.ai?.runtimeProfile?.overrides?.reasoningEffort ?? app?.ai?.options?.reasoningEffort ?? "medium",
+      "medium",
+    );
+    const baseServiceTier = normalizeServiceTier(
+      app?.ai?.runtimeProfile?.overrides?.serviceTier ?? app?.ai?.options?.serviceTier ?? "standard",
+      "standard",
+    );
+    const baseBackgroundMode = normalizeBackgroundMode(
+      app?.ai?.runtimeProfile?.overrides?.backgroundMode ?? app?.ai?.options?.backgroundMode ?? "auto",
+      "auto",
+    );
+    const baseReasoningMaxTokens = normalizePositiveInt(
+      app?.ai?.runtimeProfile?.overrides?.reasoningMaxTokens ?? app?.ai?.options?.reasoningMaxTokens ?? 0,
+      0,
+      1,
+      2000000,
+    );
     const attachmentsCount = Array.isArray(app?.ai?.attachments) ? app.ai.attachments.length : 0;
     const actionablePrompt = isActionableAgentPrompt(userText);
     const preflightDraft = analyzeTaskPreflight(userText, app.ai.runtimeProfile, {
@@ -460,9 +537,19 @@ function createAgentRuntimeTurnInternal(ctx) {
       attachmentsCount,
       actionable: actionablePrompt,
       reasoningVerify: baseVerifyMode,
+      reasoningDepth: baseReasoningDepth,
+      reasoningEffort: baseReasoningEffort,
+      serviceTier: baseServiceTier,
+      backgroundMode: baseBackgroundMode,
+      reasoningMaxTokens: baseReasoningMaxTokens,
     });
     let appliedToolsModeOverride = "";
     let appliedVerifyOverride = "";
+    let appliedDepthOverride = "";
+    let appliedEffortOverride = "";
+    let appliedServiceTierOverride = "";
+    let appliedBackgroundModeOverride = "";
+    let appliedReasoningMaxTokensOverride = null;
     if (app?.ai?.runtimeProfile && typeof app.ai.runtimeProfile === "object") {
       if (!app.ai.runtimeProfile.overrides || typeof app.ai.runtimeProfile.overrides !== "object") {
         app.ai.runtimeProfile.overrides = {};
@@ -479,6 +566,26 @@ function createAgentRuntimeTurnInternal(ctx) {
         app.ai.runtimeProfile.overrides.reasoningVerify = "strict";
         appliedVerifyOverride = "strict";
       }
+      if (preflightDraft.overrideReasoningDepth && baseReasoningDepth !== preflightDraft.overrideReasoningDepth) {
+        app.ai.runtimeProfile.overrides.reasoningDepth = preflightDraft.overrideReasoningDepth;
+        appliedDepthOverride = preflightDraft.overrideReasoningDepth;
+      }
+      if (preflightDraft.overrideReasoningEffort && baseReasoningEffort !== preflightDraft.overrideReasoningEffort) {
+        app.ai.runtimeProfile.overrides.reasoningEffort = preflightDraft.overrideReasoningEffort;
+        appliedEffortOverride = preflightDraft.overrideReasoningEffort;
+      }
+      if (preflightDraft.overrideServiceTier && baseServiceTier !== preflightDraft.overrideServiceTier) {
+        app.ai.runtimeProfile.overrides.serviceTier = preflightDraft.overrideServiceTier;
+        appliedServiceTierOverride = preflightDraft.overrideServiceTier;
+      }
+      if (preflightDraft.overrideBackgroundMode && baseBackgroundMode !== preflightDraft.overrideBackgroundMode) {
+        app.ai.runtimeProfile.overrides.backgroundMode = preflightDraft.overrideBackgroundMode;
+        appliedBackgroundModeOverride = preflightDraft.overrideBackgroundMode;
+      }
+      if (Object.prototype.hasOwnProperty.call(preflightDraft, "overrideReasoningMaxTokens")) {
+        app.ai.runtimeProfile.overrides.reasoningMaxTokens = preflightDraft.overrideReasoningMaxTokens;
+        appliedReasoningMaxTokensOverride = preflightDraft.overrideReasoningMaxTokens;
+      }
     }
     const toolsMode = normalizeToolsMode(
       app?.ai?.runtimeProfile?.overrides?.toolsMode ?? app?.ai?.options?.toolsMode ?? "auto",
@@ -493,7 +600,35 @@ function createAgentRuntimeTurnInternal(ctx) {
       attachmentsCount,
       actionable: actionablePrompt,
       reasoningVerify: verifyMode,
+      reasoningDepth: normalizeReasoningDepth(
+        app?.ai?.runtimeProfile?.overrides?.reasoningDepth ?? app?.ai?.options?.reasoningDepth ?? "balanced",
+        "balanced",
+      ),
+      reasoningEffort: normalizeReasoningEffort(
+        app?.ai?.runtimeProfile?.overrides?.reasoningEffort ?? app?.ai?.options?.reasoningEffort ?? "medium",
+        "medium",
+      ),
+      serviceTier: normalizeServiceTier(
+        app?.ai?.runtimeProfile?.overrides?.serviceTier ?? app?.ai?.options?.serviceTier ?? "standard",
+        "standard",
+      ),
+      backgroundMode: normalizeBackgroundMode(
+        app?.ai?.runtimeProfile?.overrides?.backgroundMode ?? app?.ai?.options?.backgroundMode ?? "auto",
+        "auto",
+      ),
+      reasoningMaxTokens: normalizePositiveInt(
+        app?.ai?.runtimeProfile?.overrides?.reasoningMaxTokens ?? app?.ai?.options?.reasoningMaxTokens ?? 0,
+        0,
+        1,
+        2000000,
+      ),
     });
+    const maxForcedRetries = preflight.forceNoLimits
+      ? Math.max(AGENT_MAX_FORCED_RETRIES, 6)
+      : AGENT_MAX_FORCED_RETRIES;
+    const maxToolRounds = preflight.forceNoLimits
+      ? Math.max(AGENT_MAX_TOOL_ROUNDS, 240)
+      : AGENT_MAX_TOOL_ROUNDS;
     const toolsDisabled = toolsMode === "none";
     const intentToUseTools = preflight.intentToUseTools;
     const intentToMutate = preflight.intentToMutate;
@@ -512,15 +647,24 @@ function createAgentRuntimeTurnInternal(ctx) {
         intent_to_mutate: preflight.intentToMutate,
         min_tool_calls: preflight.minToolCalls,
         expected_mutations_hint: preflight.expectedMutationsHint,
+        force_no_limits: preflight.forceNoLimits,
+        max_forced_retries: maxForcedRetries,
+        max_tool_rounds: maxToolRounds,
         attachments_count: attachmentsCount,
         overrides_applied: compactForTool({
           toolsMode: appliedToolsModeOverride || "",
           reasoningVerify: appliedVerifyOverride || "",
+          reasoningDepth: appliedDepthOverride || "",
+          reasoningEffort: appliedEffortOverride || "",
+          serviceTier: appliedServiceTierOverride || "",
+          backgroundMode: appliedBackgroundModeOverride || "",
+          reasoningMaxTokens: appliedReasoningMaxTokensOverride,
         }),
       },
     });
     const toolStats = {
       totalToolCalls: 0,
+      builtInToolCalls: 0,
       mutationCalls: 0,
       successfulMutations: 0,
       failedMutations: [],
@@ -635,12 +779,13 @@ function createAgentRuntimeTurnInternal(ctx) {
         response_status: truncate(response?.status || "", 32),
         incomplete_details: compactForTool(response?.incomplete_details || null),
         rounds_used: roundsUsed,
-        max_rounds: AGENT_MAX_TOOL_ROUNDS,
+        max_rounds: maxToolRounds,
         forced_retries: toolStats.forcedRetries,
-        max_forced_retries: AGENT_MAX_FORCED_RETRIES,
+        max_forced_retries: maxForcedRetries,
         expected_mutations: expectedMutations,
         successful_mutations: toolStats.successfulMutations,
         total_tool_calls: toolStats.totalToolCalls,
+        built_in_tool_calls: toolStats.builtInToolCalls,
         usage: {
           input_tokens: usage.inputTokens || 0,
           output_tokens: usage.outputTokens || 0,
@@ -888,7 +1033,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     rememberResponseUsage(response);
     updateAgentTurnWebEvidence(turnCtx, response);
 
-    for (let i = 0; i < AGENT_MAX_TOOL_ROUNDS; i += 1) {
+    for (let i = 0; i < maxToolRounds; i += 1) {
       throwIfCanceled();
       roundsUsed = i + 1;
       const calls = extractAgentFunctionCalls(response);
@@ -899,10 +1044,13 @@ function createAgentRuntimeTurnInternal(ctx) {
         }
         const text = extractAgentText(response);
         const builtInToolUsed = hasBuiltInToolUsage(response);
+        if (builtInToolUsed) toolStats.builtInToolCalls += 1;
         const computerUseCalled = hasComputerUseCall(response);
         const responseIncomplete = isResponseIncomplete(response);
         const policyContinuationNeeded = shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text);
-        const completionGuard = evaluateCompletionGuard(preflight, toolStats, progress, { builtInToolUsed });
+        const completionGuard = evaluateCompletionGuard(preflight, toolStats, progress, {
+          builtInToolCalls: toolStats.builtInToolCalls,
+        });
         let continuationNeeded = responseIncomplete || policyContinuationNeeded || completionGuard.triggered;
         let continuationReason = "";
         if (responseIncomplete) continuationReason = "response status is incomplete";
@@ -921,7 +1069,7 @@ function createAgentRuntimeTurnInternal(ctx) {
               details: compactForTool(completionGuard.details || {}),
               min_tool_calls: preflight.minToolCalls,
               total_tool_calls: toolStats.totalToolCalls,
-              built_in_tool_used: builtInToolUsed,
+              built_in_tool_calls: toolStats.builtInToolCalls,
               retries: toolStats.forcedRetries,
             },
           });
@@ -938,7 +1086,7 @@ function createAgentRuntimeTurnInternal(ctx) {
           return "computer_use_preview недоступен в этом клиенте без browser executor. Используйте web_search.";
         }
 
-        if (continuationNeeded && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
+        if (continuationNeeded && toolStats.forcedRetries < maxForcedRetries) {
           const reason = continuationReason || "task is not completed";
           toolStats.forcedRetries += 1;
           addTableJournal("agent.retry", `Автоповтор: ${reason}`, {
@@ -1016,7 +1164,7 @@ function createAgentRuntimeTurnInternal(ctx) {
         if (intentToMutate && toolStats.mutationCalls === 0) {
           return buildUnfinishedReport("no_mutation_calls", response, "model did not call mutation tools");
         }
-        if (intentToUseTools && toolStats.totalToolCalls === 0 && !builtInToolUsed) {
+        if (intentToUseTools && toolStats.totalToolCalls === 0 && toolStats.builtInToolCalls === 0) {
           return buildUnfinishedReport("no_tool_calls", response, "model did not call tools");
         }
         if (intentToMutate && isAgentTextIncomplete(text)) {
@@ -1212,8 +1360,11 @@ function createAgentRuntimeTurnInternal(ctx) {
         expected_mutations: expectedMutations,
         successful_mutations: toolStats.successfulMutations,
         retries: toolStats.forcedRetries,
-        max_tool_rounds: AGENT_MAX_TOOL_ROUNDS,
+        max_forced_retries: maxForcedRetries,
+        max_tool_rounds: maxToolRounds,
         rounds_used: roundsUsed,
+        built_in_tool_calls: toolStats.builtInToolCalls,
+        force_no_limits: preflight.forceNoLimits,
       },
     });
     const handoffText = await maybeRunCleanContextHandoff("tool_loop_limit", response, "tool loop limit reached");

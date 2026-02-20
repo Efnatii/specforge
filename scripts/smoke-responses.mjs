@@ -730,9 +730,18 @@ async function main() {
       }
       return new Response("not found", { status: 404 });
     };
-    const { runtime, app } = createRuntime({ fetchFn, logsSink: logs });
+    const { runtime, app } = createRuntime({
+      fetchFn,
+      logsSink: logs,
+      options: {
+        reasoningMaxTokens: 12000,
+        serviceTier: "standard",
+        backgroundMode: "auto",
+        toolsMode: "auto",
+      },
+    });
     app.ai.attachments = [{ id: "att-1", name: "repo.txt", text: "module content", size: 10, type: "text/plain" }];
-    const auditTask = "\u0438\u0441\u0441\u043b\u0435\u0434\u0443\u0439 \u0440\u0435\u043f\u043e\u0437\u0438\u0442\u043e\u0440\u0438\u0439 \u0434\u043e \u043a\u043e\u043d\u0446\u0430 \u0438 \u0441\u0434\u0435\u043b\u0430\u0439 \u0440\u0430\u0437\u0431\u043e\u0440";
+    const auditTask = "\u0438\u0441\u0441\u043b\u0435\u0434\u0443\u0439 \u0440\u0435\u043f\u043e\u0437\u0438\u0442\u043e\u0440\u0438\u0439 \u0434\u043e \u043a\u043e\u043d\u0446\u0430, \u043d\u0435 \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0438\u0432\u0430\u0439 \u0430\u0433\u0435\u043d\u0442\u0430 \u043f\u043e \u0440\u0435\u0441\u0443\u0440\u0441\u0430\u043c \u0438 \u0441\u0434\u0435\u043b\u0430\u0439 \u0440\u0430\u0437\u0431\u043e\u0440";
     const out = await runtime.runOpenAiAgentTurn(`Current user request:\n${auditTask}`, auditTask, {
       turnId: "t-completion-guard",
     });
@@ -740,6 +749,10 @@ async function main() {
     assert.ok(postedBodies.length >= 3);
     const preflight = logs.find((x) => x.event === "agent.preflight");
     assert.ok(Number(preflight?.meta?.meta?.min_tool_calls || 0) >= 1);
+    assert.equal(Boolean(preflight?.meta?.meta?.force_no_limits), true);
+    const overridesApplied = String(preflight?.meta?.meta?.overrides_applied || "");
+    assert.ok(overridesApplied.includes("\"toolsMode\":\"require\""));
+    assert.ok(overridesApplied.includes("\"reasoningMaxTokens\":0"));
     assert.ok(logs.some((x) => x.event === "agent.completion_guard.triggered"));
   }
 
