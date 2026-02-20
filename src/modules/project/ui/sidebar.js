@@ -215,7 +215,7 @@ export class ProjectSidebarModule {
       <label>Дата изменения<input data-role="setting" data-field="changeDate" type="date" value="${this._esc(s.changeDate)}" /></label>
       <label>Версия<input data-role="setting" data-field="version" value="${this._esc(s.version)}" /></label>
       <label>НДС, %<input data-role="setting" data-field="vatRate" type="number" step="0.01" value="${this._projectStateApi.decToPct(s.vatRate)}" /></label>
-      <label>Итоговая цена<select data-role="setting" data-field="totalMode"><option value="withoutDiscount" ${s.totalMode === "withoutDiscount" ? "selected" : ""}>Без скидки</option><option value="withDiscount" ${s.totalMode === "withDiscount" ? "selected" : ""}>Со скидкой</option></select></label>
+      <label>Итоговая цена<select data-role="setting" data-field="totalMode"><option value="withoutDiscount" ${s.totalMode === "withoutDiscount" ? "selected" : ""}>Розничная цена</option><option value="withDiscount" ${s.totalMode === "withDiscount" ? "selected" : ""}>Наша цена</option></select></label>
     </div>`;
   }
 
@@ -228,7 +228,7 @@ export class ProjectSidebarModule {
       <label>Аббревиатура<input data-role="assembly" data-id="${a.id}" data-field="abbreviation" value="${this._esc(a.abbreviation)}" /></label>
       <label class="check-line"><input data-role="assembly" data-id="${a.id}" data-field="abbrManual" type="checkbox" ${a.abbrManual ? "checked" : ""} /> Ручная аббревиатура</label>
       <label class="check-line"><input data-role="assembly" data-id="${a.id}" data-field="separateConsumables" type="checkbox" ${a.separateConsumables ? "checked" : ""} /> Отдельный лист расходных материалов</label>
-      ${a.separateConsumables ? "" : `<label>Расх. материал без скидки<input data-role="assembly" data-id="${a.id}" data-field="manualConsNoDisc" type="number" step="0.01" value="${a.manualConsNoDisc}" /></label><label>Расх. материал со скидкой<input data-role="assembly" data-id="${a.id}" data-field="manualConsDisc" type="number" step="0.01" value="${a.manualConsDisc}" /></label>`}
+      ${a.separateConsumables ? "" : `<label>Расх. материал Розничная цена<input data-role="assembly" data-id="${a.id}" data-field="manualConsNoDisc" type="number" step="0.01" value="${a.manualConsNoDisc}" /></label><label>Расх. материал Наша цена<input data-role="assembly" data-id="${a.id}" data-field="manualConsDisc" type="number" step="0.01" value="${a.manualConsDisc}" /></label>`}
       <div class="meta">Разработка схемы</div>
       <div class="row"><label>Коэфф.<input data-role="labor" data-id="${a.id}" data-field="devCoeff" type="number" step="0.01" value="${a.labor.devCoeff}" /></label><label>Часы<input data-role="labor" data-id="${a.id}" data-field="devHours" type="number" step="0.1" value="${a.labor.devHours}" /></label></div>
       <label>Ставка<input data-role="labor" data-id="${a.id}" data-field="devRate" type="number" step="0.01" value="${a.labor.devRate}" /></label>
@@ -236,7 +236,7 @@ export class ProjectSidebarModule {
       <div class="row"><label>Коэфф.<input data-role="labor" data-id="${a.id}" data-field="assmCoeff" type="number" step="0.01" value="${a.labor.assmCoeff}" /></label><label>Часы<input data-role="labor" data-id="${a.id}" data-field="assmHours" type="number" step="0.1" value="${a.labor.assmHours}" /></label></div>
       <label>Ставка<input data-role="labor" data-id="${a.id}" data-field="assmRate" type="number" step="0.01" value="${a.labor.assmRate}" /></label>
       <label>Прибыль (0.3 = 30%)<input data-role="labor" data-id="${a.id}" data-field="profitCoeff" type="number" step="0.01" value="${a.labor.profitCoeff}" /></label>
-      <div class="meta">Итог без скидки: <strong>${this._money(m.totalNoDisc)}</strong><br/>Итог со скидкой: <strong>${this._money(m.totalDisc)}</strong></div>
+      <div class="meta">Итог розничная цена: <strong>${this._money(m.totalNoDisc)}</strong><br/>Итог наша цена: <strong>${this._money(m.totalDisc)}</strong></div>
     </div>`;
   }
 
@@ -250,7 +250,7 @@ export class ProjectSidebarModule {
       <label>Производитель<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="manufacturer" value="${this._esc(p.manufacturer)}" /></label>
       <label>Артикул<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="article" value="${this._esc(p.article)}" /></label>
       <div class="row"><label>Кол-во<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="qty" type="number" step="0.01" value="${p.qty}" /></label><label>Ед. изм.<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="unit" value="${this._esc(p.unit)}" /></label></div>
-      <label>Цена без скидки, с наценкой и с НДС<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="priceCatalogVatMarkup" type="number" step="0.01" value="${p.priceCatalogVatMarkup}" /></label>
+      <label>Розничная цена, с наценкой и с НДС<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="priceCatalogVatMarkup" type="number" step="0.01" value="${p.priceCatalogVatMarkup}" /></label>
       <div class="row"><label>Наценка, %<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="markup" type="number" step="0.01" value="${this._projectStateApi.decToPct(p.markup)}" /></label><label>Скидка, %<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="discount" type="number" step="0.01" value="${this._projectStateApi.decToPct(p.discount)}" /></label></div>
       <label>Поставщик<input data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="supplier" value="${this._esc(p.supplier)}" /></label>
       <label>Примечание<textarea data-role="${role}" data-id="${id}" data-list="${list}" data-pos="${p.id}" data-field="note">${this._esc(p.note)}</textarea></label>
