@@ -241,7 +241,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     const attachmentsCount = normalizeNonNegativeInt(options?.attachmentsCount, 0, 0, 2000000);
     const actionable = options?.actionable === true;
     const analysisIntent = AI_ANALYSIS_INTENT_RE.test(text);
-    const workspaceScope = /(source code|repository|repo|codebase|module|file|files|project|attachment|attachments|репозитор|код|проект|модул|файл|вложен)/i.test(text)
+    const workspaceScope = /(source code|repository|repo|codebase|module|file|files|project|attachment|attachments|репозитор|проект|модул|файл|вложен)/i.test(text)
       || attachmentsCount > 0;
     const explicitDeepCue = /(totally|total|fully|full|end[-\s]?to[-\s]?end|max(?:imum)?|unlimited|deep(?:\s+dive)?|до\s+конца|тоталь|максимум|полност|не\s+ограничивай|глубок\w+\s+разбор)/i.test(text);
     const deepProfiles = new Set(["source_audit", "research", "longrun", "spec_strict", "proposal", "bulk"]);
