@@ -19,6 +19,7 @@ function createAgentRuntimePromptInternal(ctx) {
     AI_SHORT_ACK_PROMPT_RE,
     AI_MUTATION_INTENT_RE,
     AI_ACTIONABLE_VERB_RE,
+    AI_ANALYSIS_INTENT_RE,
     AI_TOOL_NAME_HINTS,
   } = config;
 
@@ -46,6 +47,7 @@ function createAgentRuntimePromptInternal(ctx) {
   if (!(AI_SHORT_ACK_PROMPT_RE instanceof RegExp)) throw new Error("AgentRuntimePromptModule requires config.AI_SHORT_ACK_PROMPT_RE");
   if (!(AI_MUTATION_INTENT_RE instanceof RegExp)) throw new Error("AgentRuntimePromptModule requires config.AI_MUTATION_INTENT_RE");
   if (!(AI_ACTIONABLE_VERB_RE instanceof RegExp)) throw new Error("AgentRuntimePromptModule requires config.AI_ACTIONABLE_VERB_RE");
+  if (!(AI_ANALYSIS_INTENT_RE instanceof RegExp)) throw new Error("AgentRuntimePromptModule requires config.AI_ANALYSIS_INTENT_RE");
   if (!Array.isArray(AI_TOOL_NAME_HINTS)) throw new Error("AgentRuntimePromptModule requires config.AI_TOOL_NAME_HINTS");
 
   if (typeof addChangesJournal !== "function") throw new Error("AgentRuntimePromptModule requires deps.addChangesJournal()");
@@ -57,7 +59,7 @@ function createAgentRuntimePromptInternal(ctx) {
   function isActionableAgentPrompt(textRaw) {
     const text = String(textRaw || "").trim();
     if (!text) return false;
-    if (AI_MUTATION_INTENT_RE.test(text) || AI_ACTIONABLE_VERB_RE.test(text)) return true;
+    if (AI_MUTATION_INTENT_RE.test(text) || AI_ACTIONABLE_VERB_RE.test(text) || AI_ANALYSIS_INTENT_RE.test(text)) return true;
     const lower = text.toLowerCase();
     return AI_TOOL_NAME_HINTS.some((tool) => lower.includes(tool));
   }

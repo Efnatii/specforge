@@ -143,6 +143,7 @@ const STREAM_DELTA_FLUSH_MS = 120;
 const STREAM_TEXT_PREVIEW_LIMIT = 12000;
 const AI_MUTATION_INTENT_RE = /\b(создай|создать|добавь|добавить|измени|обнови|поменяй|замени|исправь|заполни|вставь|удали|увелич|уменьш|пересчитай|рассчитай|create|add|set|update|change|fill|replace|delete|write)\b/i;
 const AI_ACTIONABLE_VERB_RE = /\b(вызови|вызвать|переключи|переключить|прочитай|прочитать|выполни|выполнить|запусти|запустить|получи|получить|покажи|показать|resolve|list|read|get|write|set|update|delete|toggle|create|add|duplicate|clear|run|execute)\b/i;
+const AI_ANALYSIS_INTENT_RE = /(\breview\b|\baudit\b|\bdiagnos(?:e|is|tic)?\b|\bdebug\b|\broot\s*cause\b|\binvestigat(?:e|ion)\b|исслед|разбор|разбер|проанализ|анализ|аудит|ревью|расслед)/i;
 const AI_TOOL_NAME_HINTS = [
   "resolve_target_context",
   "list_sheets",
@@ -229,6 +230,7 @@ export const APP_CONFIG = {
   streamTextPreviewLimit: STREAM_TEXT_PREVIEW_LIMIT,
   aiMutationIntentRe: AI_MUTATION_INTENT_RE,
   aiActionableVerbRe: AI_ACTIONABLE_VERB_RE,
+  aiAnalysisIntentRe: AI_ANALYSIS_INTENT_RE,
   aiToolNameHints: AI_TOOL_NAME_HINTS,
   aiContinuePromptRe: AI_CONTINUE_PROMPT_RE,
   aiShortAckPromptRe: AI_SHORT_ACK_PROMPT_RE,

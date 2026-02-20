@@ -284,6 +284,7 @@ export class AgentRuntimeModule {
       AI_SHORT_ACK_PROMPT_RE,
       AI_MUTATION_INTENT_RE,
       AI_ACTIONABLE_VERB_RE,
+      AI_ANALYSIS_INTENT_RE,
       AI_TOOL_NAME_HINTS,
       AI_INCOMPLETE_RESPONSE_RE,
       AGENT_MAX_FORCED_RETRIES,
@@ -330,6 +331,7 @@ export class AgentRuntimeModule {
         AI_SHORT_ACK_PROMPT_RE,
         AI_MUTATION_INTENT_RE,
         AI_ACTIONABLE_VERB_RE,
+        AI_ANALYSIS_INTENT_RE,
         AI_TOOL_NAME_HINTS,
       },
       deps: {
@@ -373,6 +375,7 @@ export class AgentRuntimeModule {
         AGENT_MAX_FORCED_RETRIES,
         AGENT_MAX_TOOL_ROUNDS,
         AI_MUTATION_INTENT_RE,
+        AI_ANALYSIS_INTENT_RE,
       },
       deps: {
         currentAiModelMeta,
