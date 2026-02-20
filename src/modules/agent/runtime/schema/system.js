@@ -22,6 +22,13 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
     return value === undefined ? fallback : value;
   }
 
+  function resolveFactCheckMinSources() {
+    const max = Math.max(1, Number(getRuntimeAwareOption("factCheckMaxSources", 6)) || 6);
+    const raw = Number(getRuntimeAwareOption("factCheckMinSources", 2));
+    if (!Number.isFinite(raw) || raw <= 0) return 2;
+    return Math.max(1, Math.min(max, Math.round(raw)));
+  }
+
   function resolveRuntimeTaskProfileInfo() {
     const runtime = app?.ai?.runtimeProfile || null;
     const taskModeRaw = String(app?.ai?.options?.taskProfile || "auto").trim().toLowerCase();
@@ -76,7 +83,7 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
       ["quick", "standard", "concise", "detailed", "json", "sources", "cautious", "tool_free", "custom"],
       "standard",
     );
-    const reasoningOff = app?.ai?.options?.reasoning === false;
+    const reasoningOff = getRuntimeAwareOption("reasoning", true) === false;
     let mode = "";
     if (reasoningOff) {
       mode = runtimeMode === "no_reasoning" || runtimeMode === "no_reasoning_custom"
@@ -256,6 +263,7 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
   }
 
   function agentSystemPrompt() {
+    const minFactSources = resolveFactCheckMinSources();
     const clarifyMode = normalizeEnum(getRuntimeAwareOption("reasoningClarify", "never"), ["never", "minimal", "normal"], "never");
     const riskyMode = normalizeEnum(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked"), ["confirm", "allow_if_asked", "never"], "allow_if_asked");
     const toolsMode = normalizeEnum(getRuntimeAwareOption("toolsMode", "auto"), ["none", "auto", "prefer", "require"], "auto");
@@ -271,7 +279,7 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
       "Если пользователь просит удалить все сборки, вызывай bulk_delete_assemblies со scope=all.",
       "Строго запрещено выдумывать позиции и любые их поля. Поля позиции: schematic, name, manufacturer, article, qty, unit, price_catalog_vat_markup, markup, discount, supplier, note.",
       "Перед add_position/update_position/add_project_position/update_project_position обязательно передай verification.",
-      "Verification допустим только двумя способами: web_search (query + минимум 2 валидных URL) или подтверждение через прикрепленные документы (attachments).",
+      `Verification допустим только двумя способами: web_search (query + минимум ${minFactSources} валидных URL) или подтверждение через прикрепленные документы (attachments).`,
       "Для подтверждения через документы в verification.attachments укажи name или id прикрепленного файла.",
       "Если подтверждения нет ни по web, ни по документам, сообщи об этом и не добавляй/не обновляй позицию.",
       "Не заполняй отсутствующие данные догадками. Если по полю нет подтверждения источниками, оставь поле пустым или не меняй его.",

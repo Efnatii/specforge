@@ -36,6 +36,9 @@ const NO_REASONING_PROFILE_ALIASES = {
 };
 const OPTIONAL_TEXT_MODE_ORDER = ["auto", "off", "custom"];
 const BACKGROUND_MODE_ORDER = ["off", "auto", "on"];
+const EXECUTION_LIMITS_MODE_ORDER = ["off", "auto", "on"];
+const AUTO_REASONING_ESCALATION_MODE_ORDER = ["auto", "off", "force"];
+const AUTO_RUNTIME_OVERRIDES_MODE_ORDER = ["auto", "off", "force"];
 const COMPACT_MODE_ORDER = ["off", "auto", "on"];
 const INCLUDE_SOURCES_MODE_ORDER = ["off", "auto", "on"];
 const TASK_PROFILE_PRESETS = {
@@ -986,6 +989,24 @@ export class AgentAttachmentModule {
       this._renderAiUi();
       return;
     }
+    if (reasoningField === "autoReasoningEscalationMode") {
+      const next = this._normalizeAutoReasoningEscalationMode(
+        target.value,
+        this._app.ai.options.autoReasoningEscalationMode || "auto",
+      );
+      updateReasoningOption("autoReasoningEscalationMode", next, "autoReasoningEscalationMode");
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "autoRuntimeOverridesMode") {
+      const next = this._normalizeAutoRuntimeOverridesMode(
+        target.value,
+        this._app.ai.options.autoRuntimeOverridesMode || "auto",
+      );
+      updateReasoningOption("autoRuntimeOverridesMode", next, "autoRuntimeOverridesMode");
+      this._renderAiUi();
+      return;
+    }
     if (reasoningField === "depth") {
       const next = this._normalizeReasoningDepth(target.value, this._app.ai.options.reasoningDepth || "balanced");
       updateReasoningOption("reasoningDepth", next, "reasoningDepth");
@@ -1250,6 +1271,18 @@ export class AgentAttachmentModule {
       return;
     }
 
+    if (reasoningField === "executionLimitsMode") {
+      const next = this._normalizeExecutionLimitsMode(target.value, this._app.ai.options.executionLimitsMode || "off");
+      if (this._app.ai.options.executionLimitsMode !== next) {
+        this._app.ai.options.executionLimitsMode = next;
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `executionLimitsMode=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
     if (reasoningField === "backgroundTokenThreshold") {
       const next = this._normalizeTokenThreshold(target.value, this._app.ai.options.backgroundTokenThreshold || 12000, 2000, 2000000);
       if (this._app.ai.options.backgroundTokenThreshold !== next) {
@@ -1257,6 +1290,28 @@ export class AgentAttachmentModule {
         this._app.ai.runtimeProfile = null;
         this._saveAiOptions();
         this._addChangesJournal("ai.option", `backgroundTokenThreshold=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "streamTimeoutMs") {
+      const next = this._normalizeTokenThreshold(target.value, this._app.ai.options.streamTimeoutMs || 0, 0, 604800000);
+      if (this._app.ai.options.streamTimeoutMs !== next) {
+        this._app.ai.options.streamTimeoutMs = next;
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `streamTimeoutMs=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+    if (reasoningField === "backgroundTimeoutMs") {
+      const next = this._normalizeTokenThreshold(target.value, this._app.ai.options.backgroundTimeoutMs || 0, 0, 604800000);
+      if (this._app.ai.options.backgroundTimeoutMs !== next) {
+        this._app.ai.options.backgroundTimeoutMs = next;
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `backgroundTimeoutMs=${next}`);
       }
       this._renderAiUi();
       return;
@@ -1454,6 +1509,21 @@ export class AgentAttachmentModule {
       return;
     }
 
+    if (reasoningField === "factCheckMinSources") {
+      const next = this._normalizeFactCheckMinSources(
+        target.value,
+        this._app.ai.options.factCheckMinSources || 2,
+      );
+      if (this._app.ai.options.factCheckMinSources !== next) {
+        this._app.ai.options.factCheckMinSources = next;
+        this._app.ai.runtimeProfile = null;
+        this._saveAiOptions();
+        this._addChangesJournal("ai.option", `factCheckMinSources=${next}`);
+      }
+      this._renderAiUi();
+      return;
+    }
+
     if (reasoningField === "lowBandwidthMode") {
       const next = this._normalizeBooleanSelect(target.value, this._app.ai.options.lowBandwidthMode === true);
       if (this._app.ai.options.lowBandwidthMode !== next) {
@@ -1625,6 +1695,18 @@ export class AgentAttachmentModule {
     return this._normalizeEnum(value, BACKGROUND_MODE_ORDER, fallback);
   }
 
+  _normalizeExecutionLimitsMode(value, fallback = "off") {
+    return this._normalizeEnum(value, EXECUTION_LIMITS_MODE_ORDER, fallback);
+  }
+
+  _normalizeAutoReasoningEscalationMode(value, fallback = "auto") {
+    return this._normalizeEnum(value, AUTO_REASONING_ESCALATION_MODE_ORDER, fallback);
+  }
+
+  _normalizeAutoRuntimeOverridesMode(value, fallback = "auto") {
+    return this._normalizeEnum(value, AUTO_RUNTIME_OVERRIDES_MODE_ORDER, fallback);
+  }
+
   _normalizeCompactMode(value, fallback = "off") {
     return this._normalizeEnum(value, COMPACT_MODE_ORDER, fallback);
   }
@@ -1645,6 +1727,11 @@ export class AgentAttachmentModule {
       return Math.max(min, Math.min(max, Math.round(fb)));
     }
     return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  _normalizeFactCheckMinSources(value, fallback = 2) {
+    const max = Math.max(1, Number(this._app?.ai?.options?.factCheckMaxSources) || 6);
+    return this._normalizeTokenThreshold(value, fallback, 1, max);
   }
 
   _normalizeTurnThreshold(value, fallback = 0, min = 1, max = 10000) {

@@ -28,13 +28,15 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
   }
 
   function verificationParam() {
+    const minSources = resolveFactCheckMinSources();
     return {
       type: "object",
       properties: {
         query: { type: "string", description: "Поисковый запрос для web_search (обязателен для web-подтверждения)" },
         sources: {
           type: "array",
-          description: "Ссылки из web_search, подтверждающие позицию (для web-подтверждения минимум 2 URL)",
+          minItems: minSources,
+          description: `Ссылки из web_search, подтверждающие позицию (для web-подтверждения минимум ${minSources} URL)`,
           items: {
             type: "object",
             properties: {
@@ -62,6 +64,13 @@ function createAgentRuntimeToolSchemaInternal(ctx) {
       },
       additionalProperties: false,
     };
+  }
+
+  function resolveFactCheckMinSources() {
+    const max = Math.max(1, Number(getRuntimeAwareOption("factCheckMaxSources", 6)) || 6);
+    const raw = Number(getRuntimeAwareOption("factCheckMinSources", 2));
+    if (!Number.isFinite(raw) || raw <= 0) return 2;
+    return Math.max(1, Math.min(max, Math.round(raw)));
   }
 
   function normalizeWebSearchCountry(value, fallback = "RU") {

@@ -8,6 +8,7 @@ export class MarketVerificationModule {
 
     const { minSources, maxSources, marketFields } = config;
     const {
+      getMinSources,
       getAttachments,
       isWebSearchEnabled,
       normalizeHttpUrl,
@@ -18,14 +19,18 @@ export class MarketVerificationModule {
     if (!Number.isFinite(maxSources) || maxSources < minSources) throw new Error("MarketVerificationModule requires config.maxSources");
     if (!marketFields || typeof marketFields[Symbol.iterator] !== "function") throw new Error("MarketVerificationModule requires config.marketFields");
 
+    if (getMinSources !== undefined && typeof getMinSources !== "function") {
+      throw new Error("MarketVerificationModule deps.getMinSources must be a function");
+    }
     if (typeof getAttachments !== "function") throw new Error("MarketVerificationModule requires deps.getAttachments()");
     if (typeof isWebSearchEnabled !== "function") throw new Error("MarketVerificationModule requires deps.isWebSearchEnabled()");
     if (typeof normalizeHttpUrl !== "function") throw new Error("MarketVerificationModule requires deps.normalizeHttpUrl()");
     if (typeof addTableJournal !== "function") throw new Error("MarketVerificationModule requires deps.addTableJournal()");
 
-    this._minSources = minSources;
+    this._minSourcesDefault = minSources;
     this._maxSources = maxSources;
     this._marketFields = Array.from(marketFields, (v) => String(v));
+    this._getMinSources = typeof getMinSources === "function" ? getMinSources : null;
     this._getAttachments = getAttachments;
     this._isWebSearchEnabled = isWebSearchEnabled;
     this._normalizeHttpUrl = normalizeHttpUrl;
@@ -53,9 +58,10 @@ export class MarketVerificationModule {
   }
 
   ensureMarketVerification(turnCtx, verification, actionLabel) {
+    const minSources = this._resolveMinSources();
     const normalized = this._normalizeMarketVerification(verification);
     if (!normalized) {
-      const message = `Нужно verification: web (query + минимум ${this._minSources} URL) или attachments (ссылки на прикрепленные файлы).`;
+      const message = `Нужно verification: web (query + минимум ${minSources} URL) или attachments (ссылки на прикрепленные файлы).`;
       this._addTableJournal(actionLabel, `Ошибка: ${message}`);
       return { ok: false, error: message };
     }
@@ -73,8 +79,8 @@ export class MarketVerificationModule {
         errors.push("веб-поиск отключен");
       } else if (!turnCtx?.webSearchUsed) {
         errors.push("в этом ходе не было web_search");
-      } else if (!normalized.query || normalized.sources.length < this._minSources) {
-        errors.push(`для web-подтверждения нужен query и минимум ${this._minSources} URL`);
+      } else if (!normalized.query || normalized.sources.length < minSources) {
+        errors.push(`для web-подтверждения нужен query и минимум ${minSources} URL`);
       } else {
         webOk = true;
         if (Array.isArray(turnCtx.webSearchUrls) && turnCtx.webSearchUrls.length) {
@@ -183,5 +189,13 @@ export class MarketVerificationModule {
     } catch {
       return "";
     }
+  }
+
+  _resolveMinSources() {
+    const fallback = Math.max(1, Math.min(this._maxSources, Math.round(Number(this._minSourcesDefault) || 1)));
+    if (!this._getMinSources) return fallback;
+    const raw = Number(this._getMinSources());
+    if (!Number.isFinite(raw)) return fallback;
+    return Math.max(1, Math.min(this._maxSources, Math.round(raw)));
   }
 }

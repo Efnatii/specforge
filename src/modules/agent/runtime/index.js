@@ -3,6 +3,7 @@ import { AgentRuntimePolicyModule } from "./policy.js";
 import { AgentRuntimeToolSpecModule } from "./schema/spec.js";
 import { AgentRuntimeResponsesModule } from "./responses.js";
 import { AgentRuntimeTurnModule } from "./turn.js";
+import { askWithWeb as askWithWebStandalone } from "./web-search.js";
 
 const FILE_SEARCH_MAX_AGE_MS = 60 * 60 * 1000;
 
@@ -386,6 +387,7 @@ export class AgentRuntimeModule {
         num,
         isActionableAgentPrompt: promptModule.isActionableAgentPrompt,
         estimateExpectedMutationCount: policyModule.estimateExpectedMutationCount,
+        analyzeTaskComplexity: policyModule.analyzeTaskComplexity,
         resolveTaskProfile: policyModule.resolveTaskProfile,
         buildAgentResponsesPayload: this.buildAgentResponsesPayload,
         callOpenAiResponses: responsesModule.callOpenAiResponses,
@@ -417,6 +419,7 @@ export class AgentRuntimeModule {
     this.runOpenAiAgentTurn = turnModule.runOpenAiAgentTurn;
 
     this.estimateExpectedMutationCount = policyModule.estimateExpectedMutationCount;
+    this.analyzeTaskComplexity = policyModule.analyzeTaskComplexity;
     this.looksLikePseudoToolText = policyModule.looksLikePseudoToolText;
     this.isAgentTextIncomplete = policyModule.isAgentTextIncomplete;
     this.shouldForceAgentContinuation = policyModule.shouldForceAgentContinuation;
@@ -444,6 +447,31 @@ export class AgentRuntimeModule {
     this.extractWebSearchEvidence = responsesModule.extractWebSearchEvidence;
     this.normalizeHttpUrl = responsesModule.normalizeHttpUrl;
     this.pushUnique = responsesModule.pushUnique;
+    this.askWithWeb = (query, options = {}) => {
+      const opts = options && typeof options === "object" ? { ...options } : {};
+      if (!opts.apiKey) opts.apiKey = this._app?.ai?.apiKey || "";
+      if (!opts.model) opts.model = this._app?.ai?.model || "gpt-5-mini";
+      if (!opts.search_context_size) {
+        opts.search_context_size = String(this._app?.ai?.options?.webSearchContextSize || "high").trim().toLowerCase();
+      }
+      if (!opts.user_location) {
+        opts.user_location = {
+          type: "approximate",
+          country: String(this._app?.ai?.options?.webSearchCountry || "RU").trim().toUpperCase(),
+        };
+      }
+      if (!Array.isArray(opts.include) || !opts.include.length) {
+        opts.include = ["web_search_call.action.sources"];
+      }
+      if (opts.min_sources_for_facts === undefined && opts.minSourcesForFacts === undefined) {
+        opts.min_sources_for_facts = Number(this._app?.ai?.options?.factCheckMinSources || 2);
+      }
+      if (opts.max_sources === undefined && opts.maxSources === undefined) {
+        opts.max_sources = Number(this._app?.ai?.options?.factCheckMaxSources || 6);
+      }
+      if (!opts.fetchFn) opts.fetchFn = this._fetch;
+      return askWithWebStandalone(query, opts);
+    };
   }
 
   _ensureFileSearchState() {

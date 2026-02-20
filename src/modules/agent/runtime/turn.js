@@ -26,6 +26,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     num,
     isActionableAgentPrompt,
     estimateExpectedMutationCount,
+    analyzeTaskComplexity,
     resolveTaskProfile,
     buildAgentResponsesPayload,
     callOpenAiResponses,
@@ -63,6 +64,9 @@ function createAgentRuntimeTurnInternal(ctx) {
   if (typeof num !== "function") throw new Error("AgentRuntimeTurnModule requires deps.num()");
   if (typeof isActionableAgentPrompt !== "function") throw new Error("AgentRuntimeTurnModule requires deps.isActionableAgentPrompt()");
   if (typeof estimateExpectedMutationCount !== "function") throw new Error("AgentRuntimeTurnModule requires deps.estimateExpectedMutationCount()");
+  if (analyzeTaskComplexity !== undefined && typeof analyzeTaskComplexity !== "function") {
+    throw new Error("AgentRuntimeTurnModule requires deps.analyzeTaskComplexity() when provided");
+  }
   if (typeof resolveTaskProfile !== "function") throw new Error("AgentRuntimeTurnModule requires deps.resolveTaskProfile()");
   if (typeof buildAgentResponsesPayload !== "function") throw new Error("AgentRuntimeTurnModule requires deps.buildAgentResponsesPayload()");
   if (typeof callOpenAiResponses !== "function") throw new Error("AgentRuntimeTurnModule requires deps.callOpenAiResponses()");
@@ -158,6 +162,11 @@ function createAgentRuntimeTurnInternal(ctx) {
     });
   }
 
+  function hasPendingFunctionCalls(response) {
+    const src = Array.isArray(response?.output) ? response.output : [];
+    return src.some((item) => String(item?.type || "").toLowerCase() === "function_call");
+  }
+
   function isResponseIncomplete(response) {
     const status = String(response?.status || "").trim().toLowerCase();
     if (status === "incomplete") return true;
@@ -199,6 +208,15 @@ function createAgentRuntimeTurnInternal(ctx) {
       return Math.max(min, Math.min(max, Math.round(fb)));
     }
     return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  function normalizeBooleanOption(value, fallback = false) {
+    if (typeof value === "boolean") return value;
+    if (value === undefined || value === null) return Boolean(fallback);
+    const raw = String(value).trim().toLowerCase();
+    if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") return true;
+    if (raw === "0" || raw === "false" || raw === "off" || raw === "no") return false;
+    return Boolean(fallback);
   }
 
   function normalizeClarifyMode(value, fallback = "never") {
@@ -273,6 +291,14 @@ function createAgentRuntimeTurnInternal(ctx) {
     return "off";
   }
 
+  function normalizeAutoRuntimeOverridesMode(value, fallback = "auto") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "auto" || raw === "off" || raw === "force") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "auto" || fb === "off" || fb === "force") return fb;
+    return "auto";
+  }
+
   function analyzeTaskPreflight(userTextRaw, runtimeProfile, options = {}) {
     const text = String(userTextRaw || "").trim();
     const selectedProfile = String(runtimeProfile?.selected || "").trim().toLowerCase();
@@ -280,28 +306,65 @@ function createAgentRuntimeTurnInternal(ctx) {
     const toolsDisabled = toolsMode === "none";
     const attachmentsCount = normalizeNonNegativeInt(options?.attachmentsCount, 0, 0, 2000000);
     const actionable = options?.actionable === true;
-    const analysisIntent = AI_ANALYSIS_INTENT_RE.test(text);
-    const workspaceScope = /(source code|repository|repo|codebase|module|file|files|project|attachment|attachments|репозитор|проект|модул|файл|вложен)/i.test(text)
+    const complexity = typeof analyzeTaskComplexity === "function"
+      ? analyzeTaskComplexity(text, { attachmentsCount })
+      : null;
+    const analysisIntent = Boolean(complexity?.analysisIntent) || AI_ANALYSIS_INTENT_RE.test(text);
+    const workspaceScope = Boolean(complexity?.sourceScope)
+      || /(source code|repository|repo|codebase|module|file|files|project|attachment|attachments|репозитор|проект|модул|файл|вложен)/i.test(text)
       || attachmentsCount > 0;
-    const explicitDeepCue = /(totally|total|fully|full|end[-\s]?to[-\s]?end|max(?:imum)?|unlimited|deep(?:\s+dive)?|до\s+конца|тоталь|максимум|полност|не\s+ограничивай|глубок\w+\s+разбор)/i.test(text);
-    const explicitNoLimitsCue = /(без\s+огранич|не\s*хочу[\s\S]{0,24}огранич|ни\s*хочу[\s\S]{0,24}огранич|нихочу[\s\S]{0,24}огранич|no\s+limit|without\s+limits|as\s+much\s+as\s+needed|сколько\s+нужно|любыми\s+ресурс)/i.test(text);
+    const explicitDeepCue = Boolean(complexity?.deepCue)
+      || /(totally|total|fully|full|end[-\s]?to[-\s]?end|max(?:imum)?|unlimited|deep(?:\s+dive)?|до\s+конца|тоталь|максимум|полност|не\s+ограничивай|глубок\w+\s+разбор)/i.test(text);
+    const explicitNoLimitsCue = Boolean(complexity?.noLimitsCue)
+      || /(без\s+огранич|не\s*хочу[\s\S]{0,24}огранич|ни\s*хочу[\s\S]{0,24}огранич|нихочу[\s\S]{0,24}огранич|no\s+limit|without\s+limits|as\s+much\s+as\s+needed|unbounded|full\s+resources?|unlimited\s+resources?|no\s+token\s+limit|no\s+tool\s+limit|сколько\s+нужно|любыми\s+ресурс)/i.test(text);
+    const severity = String(complexity?.severity || "").trim().toLowerCase();
+    const heavyComplexity = severity === "heavy" || severity === "extreme";
+    const moderateComplexity = severity === "moderate";
+    const analysisScope = analysisIntent && workspaceScope;
     const deepProfiles = new Set(["source_audit", "research", "longrun", "spec_strict", "proposal", "bulk"]);
     const uncappedDeepProfiles = new Set(["source_audit", "research", "longrun", "spec_strict"]);
     const strictToolsProfiles = new Set(["source_audit", "research", "price_search", "spec_strict"]);
     const strictVerifyProfiles = new Set(["source_audit", "research", "spec_strict"]);
+    const strongDepthProfiles = new Set(["source_audit", "research", "spec_strict", "longrun"]);
 
-    const wantsDeepCompletion = deepProfiles.has(selectedProfile) || explicitDeepCue || explicitNoLimitsCue;
+    const wantsDeepCompletion = deepProfiles.has(selectedProfile)
+      || explicitDeepCue
+      || explicitNoLimitsCue
+      || Boolean(complexity?.wantsDeepProfile);
     const intentToMutate = !toolsDisabled && AI_MUTATION_INTENT_RE.test(text);
     const expectedMutationsHint = estimateExpectedMutationCount(text, intentToMutate);
-    const intentToUseTools = !toolsDisabled && (actionable || analysisIntent || workspaceScope);
+    const intentToUseTools = !toolsDisabled
+      && (actionable || analysisIntent || workspaceScope || Boolean(complexity?.prefersResearch));
+    const verifyMode = normalizeReasoningVerify(options?.reasoningVerify, "basic");
+    const depthMode = normalizeReasoningDepth(options?.reasoningDepth, "balanced");
+    const effortMode = normalizeReasoningEffort(options?.reasoningEffort, "medium");
+    const serviceTier = normalizeServiceTier(options?.serviceTier, "standard");
+    const backgroundMode = normalizeBackgroundMode(options?.backgroundMode, "auto");
+    const compactMode = normalizeCompactMode(options?.compactMode, "off");
+    const compactThresholdTokens = normalizePositiveInt(options?.compactThresholdTokens, 90000, 1000, 4000000);
+    const compactTurnThreshold = normalizePositiveInt(options?.compactTurnThreshold, 45, 1, 10000);
+    const useConversationState = normalizeBooleanOption(options?.useConversationState, false);
+    const cleanContextHandoffMax = normalizeNonNegativeInt(options?.cleanContextHandoffMax, 1, 0, 2000000);
+    const maxTokens = normalizePositiveInt(options?.reasoningMaxTokens, 0, 1, 2000000);
 
     let minToolCalls = 0;
     if (!toolsDisabled) {
       if (intentToMutate) minToolCalls = Math.max(minToolCalls, 1);
       if (intentToUseTools) {
-        if (selectedProfile === "source_audit" || selectedProfile === "research" || selectedProfile === "longrun") {
+        if (
+          selectedProfile === "source_audit"
+          || selectedProfile === "research"
+          || selectedProfile === "longrun"
+          || (analysisScope && (heavyComplexity || explicitNoLimitsCue))
+        ) {
           minToolCalls = Math.max(minToolCalls, 2);
-        } else if (wantsDeepCompletion || analysisIntent || workspaceScope) {
+        } else if (
+          wantsDeepCompletion
+          || analysisIntent
+          || workspaceScope
+          || heavyComplexity
+          || moderateComplexity
+        ) {
           minToolCalls = Math.max(minToolCalls, 1);
         }
       }
@@ -319,43 +382,83 @@ function createAgentRuntimeTurnInternal(ctx) {
       toolsMode,
       selectedProfile,
       forceNoLimits: explicitNoLimitsCue,
+      complexitySeverity: severity,
+      complexityScore: Math.max(0, num(complexity?.score, 0)),
     };
 
-    if (!toolsDisabled && wantsDeepCompletion && strictToolsProfiles.has(selectedProfile) && (toolsMode === "auto" || toolsMode === "prefer")) {
-      out.overrideToolsMode = "require";
+    if (!toolsDisabled && (toolsMode === "auto" || toolsMode === "prefer")) {
+      if (wantsDeepCompletion && strictToolsProfiles.has(selectedProfile)) {
+        out.overrideToolsMode = "require";
+      } else if (analysisScope && (heavyComplexity || explicitDeepCue || explicitNoLimitsCue)) {
+        out.overrideToolsMode = "require";
+      }
     }
-    const verifyMode = normalizeReasoningVerify(options?.reasoningVerify, "basic");
-    if (wantsDeepCompletion && strictVerifyProfiles.has(selectedProfile) && verifyMode !== "strict") {
+    if (
+      verifyMode !== "strict"
+      && (
+        (wantsDeepCompletion && strictVerifyProfiles.has(selectedProfile))
+        || (analysisScope && heavyComplexity)
+        || explicitNoLimitsCue
+      )
+    ) {
       out.overrideVerify = "strict";
     }
-    if (wantsDeepCompletion && uncappedDeepProfiles.has(selectedProfile)) {
-      const maxTokens = normalizePositiveInt(options?.reasoningMaxTokens, 0, 1, 2000000);
+    if (wantsDeepCompletion && (uncappedDeepProfiles.has(selectedProfile) || heavyComplexity || explicitNoLimitsCue)) {
       if (maxTokens > 0) out.overrideReasoningMaxTokens = 0;
     }
+    if (wantsDeepCompletion && (analysisScope || heavyComplexity || strongDepthProfiles.has(selectedProfile))) {
+      if (depthMode === "fast") out.overrideReasoningDepth = "deep";
+      if (effortMode === "none" || effortMode === "minimal" || effortMode === "low" || effortMode === "medium") {
+        out.overrideReasoningEffort = (explicitNoLimitsCue || severity === "extreme") ? "xhigh" : "high";
+      }
+      if (!useConversationState) out.overrideUseConversationState = true;
+      if (compactMode === "off") out.overrideCompactMode = explicitNoLimitsCue ? "on" : "auto";
+      const desiredCompactTokenThreshold = explicitNoLimitsCue
+        ? 50000
+        : heavyComplexity
+          ? 60000
+          : 75000;
+      const desiredCompactTurnThreshold = explicitNoLimitsCue
+        ? 14
+        : heavyComplexity
+          ? 20
+          : 28;
+      if (compactThresholdTokens > desiredCompactTokenThreshold) {
+        out.overrideCompactThresholdTokens = desiredCompactTokenThreshold;
+      }
+      if (compactTurnThreshold > desiredCompactTurnThreshold) {
+        out.overrideCompactTurnThreshold = desiredCompactTurnThreshold;
+      }
+      if (cleanContextHandoffMax > 0) {
+        const desiredHandoffs = explicitNoLimitsCue
+          ? 8
+          : heavyComplexity
+            ? 4
+            : 2;
+        if (cleanContextHandoffMax < desiredHandoffs) out.overrideCleanContextHandoffMax = desiredHandoffs;
+      }
+    }
     if (explicitNoLimitsCue) {
+      out.overrideExecutionLimitsMode = "off";
       if (!toolsDisabled && (toolsMode === "auto" || toolsMode === "prefer")) {
         out.overrideToolsMode = "require";
       }
       if (verifyMode !== "strict") out.overrideVerify = "strict";
-
-      const depthMode = normalizeReasoningDepth(options?.reasoningDepth, "balanced");
       if (depthMode !== "deep") out.overrideReasoningDepth = "deep";
-
-      const effortMode = normalizeReasoningEffort(options?.reasoningEffort, "medium");
       if (effortMode !== "high" && effortMode !== "xhigh") out.overrideReasoningEffort = "xhigh";
-
-      const serviceTier = normalizeServiceTier(options?.serviceTier, "standard");
       if (serviceTier !== "priority") out.overrideServiceTier = "priority";
-
-      const backgroundMode = normalizeBackgroundMode(options?.backgroundMode, "auto");
       if (backgroundMode !== "on") out.overrideBackgroundMode = "on";
-
-      const maxTokens = normalizePositiveInt(options?.reasoningMaxTokens, 0, 1, 2000000);
+      if (!useConversationState) out.overrideUseConversationState = true;
+      if (compactMode !== "on") out.overrideCompactMode = "on";
+      if (compactThresholdTokens > 45000) out.overrideCompactThresholdTokens = 45000;
+      if (compactTurnThreshold > 12) out.overrideCompactTurnThreshold = 12;
+      if (cleanContextHandoffMax > 0 && cleanContextHandoffMax < 8) {
+        out.overrideCleanContextHandoffMax = 8;
+      }
       if (maxTokens > 0) out.overrideReasoningMaxTokens = 0;
     }
     return out;
   }
-
   function evaluateCompletionGuard(preflight, toolStats, progress, options = {}) {
     if (!preflight || typeof preflight !== "object") return { triggered: false, reason: "" };
     const guardEnabled = Boolean(preflight.wantsDeepCompletion || preflight.intentToUseTools || preflight.intentToMutate);
@@ -435,10 +538,27 @@ function createAgentRuntimeTurnInternal(ctx) {
       || text.includes("does not exist");
   }
 
+  function isContextOverflowError(err) {
+    const text = String(err?.message || err || "").toLowerCase();
+    if (!text) return false;
+    return text.includes("context_length_exceeded")
+      || text.includes("maximum context length")
+      || text.includes("context window")
+      || text.includes("prompt is too long")
+      || text.includes("input is too long")
+      || text.includes("too many tokens")
+      || text.includes("too many input tokens")
+      || text.includes("token limit exceeded");
+  }
+
   async function maybeAutoCompactResponse(response, options = {}) {
     const responseId = String(response?.id || "").trim();
     if (!responseId) return { compacted: false, responseId: "" };
     if (String(app.ai.lastCompactedResponseId || "") === responseId) return { compacted: false, responseId };
+    const pendingToolOutputsCount = normalizeNonNegativeInt(options?.pendingToolOutputsCount, 0, 0, 1000000);
+    if (pendingToolOutputsCount > 0) return { compacted: false, responseId };
+    if (hasPendingFunctionCalls(response)) return { compacted: false, responseId };
+    if (isResponseIncomplete(response)) return { compacted: false, responseId };
     const mode = normalizeCompactMode(getRuntimeAwareOption("compactMode", "off"), "off");
     if (mode === "off") return { compacted: false, responseId };
 
@@ -453,7 +573,11 @@ function createAgentRuntimeTurnInternal(ctx) {
 
     const nowTs = Date.now();
     const lastCompactionTs = Math.max(0, Number(app.ai.lastCompactionTs || 0));
-    const minIntervalMs = mode === "on" ? 5000 : 45000;
+    const limitMode = normalizeLimitMode(getRuntimeAwareOption("executionLimitsMode", "off"), "off");
+    const unboundedCompactionWindow = limitMode === "off";
+    const minIntervalMs = mode === "on"
+      ? (unboundedCompactionWindow ? 1500 : 5000)
+      : (unboundedCompactionWindow ? 10000 : 45000);
     if (lastCompactionTs > 0 && (nowTs - lastCompactionTs) < minIntervalMs) {
       return { compacted: false, responseId };
     }
@@ -501,9 +625,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     const userMessageInput = [{ role: "user", content: [{ type: "input_text", text: userInput }] }];
     const userText = String(options?.rawUserText || rawUserText || "").trim();
     const turnId = String(options?.turnId || app.ai.turnId || "");
-    const handoffDepth = normalizeNonNegativeInt(options?.handoffDepth, 0, 0, 8);
-    const cleanHandoffEnabled = getRuntimeAwareOption("cleanContextHandoff", true) !== false;
-    const maxCleanHandoffs = normalizeNonNegativeInt(getRuntimeAwareOption("cleanContextHandoffMax", 1), 1, 0, 8);
+    const handoffDepth = normalizeNonNegativeInt(options?.handoffDepth, 0, 0, 2000000);
     app.ai.runtimeProfile = resolveTaskProfile(userText, app?.ai?.options?.taskProfile);
     addExternalJournal("agent.runtime_profile", "runtime profile resolved", {
       turn_id: turnId,
@@ -543,6 +665,44 @@ function createAgentRuntimeTurnInternal(ctx) {
       1,
       2000000,
     );
+    const baseLimitMode = normalizeLimitMode(
+      app?.ai?.runtimeProfile?.overrides?.executionLimitsMode ?? app?.ai?.options?.executionLimitsMode ?? "off",
+      "off",
+    );
+    const baseCompactMode = normalizeCompactMode(
+      app?.ai?.runtimeProfile?.overrides?.compactMode ?? app?.ai?.options?.compactMode ?? "off",
+      "off",
+    );
+    const baseCompactThresholdTokens = normalizePositiveInt(
+      app?.ai?.runtimeProfile?.overrides?.compactThresholdTokens ?? app?.ai?.options?.compactThresholdTokens ?? 90000,
+      90000,
+      1000,
+      4000000,
+    );
+    const baseCompactTurnThreshold = normalizePositiveInt(
+      app?.ai?.runtimeProfile?.overrides?.compactTurnThreshold ?? app?.ai?.options?.compactTurnThreshold ?? 45,
+      45,
+      1,
+      10000,
+    );
+    const baseUseConversationState = normalizeBooleanOption(
+      app?.ai?.runtimeProfile?.overrides?.useConversationState ?? app?.ai?.options?.useConversationState ?? false,
+      false,
+    );
+    const baseCleanContextHandoffMax = normalizeNonNegativeInt(
+      app?.ai?.runtimeProfile?.overrides?.cleanContextHandoffMax ?? app?.ai?.options?.cleanContextHandoffMax ?? 1,
+      1,
+      0,
+      2000000,
+    );
+    const autoRuntimeOverridesMode = normalizeAutoRuntimeOverridesMode(
+      getRuntimeAwareOption("autoRuntimeOverridesMode", "auto"),
+      "auto",
+    );
+    const runtimeProfileMode = String(app?.ai?.runtimeProfile?.mode || "").trim().toLowerCase();
+    const manualRuntimeProfileLocked = runtimeProfileMode === "custom" || runtimeProfileMode === "no_reasoning_custom";
+    const autoOverridesEnabled = autoRuntimeOverridesMode !== "off" && !manualRuntimeProfileLocked;
+    const autoOverridesForced = autoRuntimeOverridesMode === "force" && !manualRuntimeProfileLocked;
     const attachmentsCount = Array.isArray(app?.ai?.attachments) ? app.ai.attachments.length : 0;
     const actionablePrompt = isActionableAgentPrompt(userText);
     const preflightDraft = analyzeTaskPreflight(userText, app.ai.runtimeProfile, {
@@ -555,6 +715,11 @@ function createAgentRuntimeTurnInternal(ctx) {
       serviceTier: baseServiceTier,
       backgroundMode: baseBackgroundMode,
       reasoningMaxTokens: baseReasoningMaxTokens,
+      compactMode: baseCompactMode,
+      compactThresholdTokens: baseCompactThresholdTokens,
+      compactTurnThreshold: baseCompactTurnThreshold,
+      useConversationState: baseUseConversationState,
+      cleanContextHandoffMax: baseCleanContextHandoffMax,
     });
     let appliedToolsModeOverride = "";
     let appliedVerifyOverride = "";
@@ -563,14 +728,26 @@ function createAgentRuntimeTurnInternal(ctx) {
     let appliedServiceTierOverride = "";
     let appliedBackgroundModeOverride = "";
     let appliedReasoningMaxTokensOverride = null;
-    if (app?.ai?.runtimeProfile && typeof app.ai.runtimeProfile === "object") {
+    let appliedExecutionLimitsOverride = "";
+    let appliedUseConversationStateOverride = null;
+    let appliedCompactModeOverride = "";
+    let appliedCompactThresholdTokensOverride = null;
+    let appliedCompactTurnThresholdOverride = null;
+    let appliedCleanContextHandoffMaxOverride = null;
+    const allowPromptForcedOverrides = preflightDraft.forceNoLimits && autoRuntimeOverridesMode !== "off";
+    const overridesEnabledForThisTurn = autoOverridesEnabled || allowPromptForcedOverrides;
+    if (overridesEnabledForThisTurn && app?.ai?.runtimeProfile && typeof app.ai.runtimeProfile === "object") {
       if (!app.ai.runtimeProfile.overrides || typeof app.ai.runtimeProfile.overrides !== "object") {
         app.ai.runtimeProfile.overrides = {};
+      }
+      if (preflightDraft.overrideExecutionLimitsMode === "off" && baseLimitMode !== "off") {
+        app.ai.runtimeProfile.overrides.executionLimitsMode = "off";
+        appliedExecutionLimitsOverride = "off";
       }
       if (
         preflightDraft.overrideToolsMode
         && baseToolsMode !== "none"
-        && (baseToolsMode === "auto" || baseToolsMode === "prefer")
+        && (autoOverridesForced || baseToolsMode === "auto" || baseToolsMode === "prefer")
       ) {
         app.ai.runtimeProfile.overrides.toolsMode = preflightDraft.overrideToolsMode;
         appliedToolsModeOverride = preflightDraft.overrideToolsMode;
@@ -598,6 +775,50 @@ function createAgentRuntimeTurnInternal(ctx) {
       if (Object.prototype.hasOwnProperty.call(preflightDraft, "overrideReasoningMaxTokens")) {
         app.ai.runtimeProfile.overrides.reasoningMaxTokens = preflightDraft.overrideReasoningMaxTokens;
         appliedReasoningMaxTokensOverride = preflightDraft.overrideReasoningMaxTokens;
+      }
+      if (preflightDraft.overrideUseConversationState === true && !baseUseConversationState) {
+        app.ai.runtimeProfile.overrides.useConversationState = true;
+        appliedUseConversationStateOverride = true;
+      }
+      if (preflightDraft.overrideCompactMode && baseCompactMode !== preflightDraft.overrideCompactMode) {
+        app.ai.runtimeProfile.overrides.compactMode = preflightDraft.overrideCompactMode;
+        appliedCompactModeOverride = preflightDraft.overrideCompactMode;
+      }
+      if (Object.prototype.hasOwnProperty.call(preflightDraft, "overrideCompactThresholdTokens")) {
+        const compactTokens = normalizePositiveInt(
+          preflightDraft.overrideCompactThresholdTokens,
+          baseCompactThresholdTokens,
+          1000,
+          4000000,
+        );
+        if (compactTokens > 0 && compactTokens !== baseCompactThresholdTokens) {
+          app.ai.runtimeProfile.overrides.compactThresholdTokens = compactTokens;
+          appliedCompactThresholdTokensOverride = compactTokens;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(preflightDraft, "overrideCompactTurnThreshold")) {
+        const compactTurns = normalizePositiveInt(
+          preflightDraft.overrideCompactTurnThreshold,
+          baseCompactTurnThreshold,
+          1,
+          10000,
+        );
+        if (compactTurns > 0 && compactTurns !== baseCompactTurnThreshold) {
+          app.ai.runtimeProfile.overrides.compactTurnThreshold = compactTurns;
+          appliedCompactTurnThresholdOverride = compactTurns;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(preflightDraft, "overrideCleanContextHandoffMax")) {
+        const cleanMax = normalizeNonNegativeInt(
+          preflightDraft.overrideCleanContextHandoffMax,
+          baseCleanContextHandoffMax,
+          0,
+          2000000,
+        );
+        if (cleanMax !== baseCleanContextHandoffMax) {
+          app.ai.runtimeProfile.overrides.cleanContextHandoffMax = cleanMax;
+          appliedCleanContextHandoffMaxOverride = cleanMax;
+        }
       }
     }
     const toolsMode = normalizeToolsMode(
@@ -635,25 +856,163 @@ function createAgentRuntimeTurnInternal(ctx) {
         1,
         2000000,
       ),
+      compactMode: normalizeCompactMode(
+        app?.ai?.runtimeProfile?.overrides?.compactMode ?? app?.ai?.options?.compactMode ?? "off",
+        "off",
+      ),
+      compactThresholdTokens: normalizePositiveInt(
+        app?.ai?.runtimeProfile?.overrides?.compactThresholdTokens ?? app?.ai?.options?.compactThresholdTokens ?? 90000,
+        90000,
+        1000,
+        4000000,
+      ),
+      compactTurnThreshold: normalizePositiveInt(
+        app?.ai?.runtimeProfile?.overrides?.compactTurnThreshold ?? app?.ai?.options?.compactTurnThreshold ?? 45,
+        45,
+        1,
+        10000,
+      ),
+      useConversationState: normalizeBooleanOption(
+        app?.ai?.runtimeProfile?.overrides?.useConversationState ?? app?.ai?.options?.useConversationState ?? false,
+        false,
+      ),
+      cleanContextHandoffMax: normalizeNonNegativeInt(
+        app?.ai?.runtimeProfile?.overrides?.cleanContextHandoffMax ?? app?.ai?.options?.cleanContextHandoffMax ?? 1,
+        1,
+        0,
+        2000000,
+      ),
     });
     const limitMode = normalizeLimitMode(getRuntimeAwareOption("executionLimitsMode", "off"), "off");
-    const unboundedExecution = limitMode === "off" || (limitMode === "auto" && preflight.wantsDeepCompletion);
+    const forceNoLimitsActive = preflight.forceNoLimits && overridesEnabledForThisTurn;
+    const unboundedExecution = forceNoLimitsActive
+      || limitMode === "off"
+      || (limitMode === "auto" && preflight.wantsDeepCompletion);
+    const configuredStreamTimeoutMs = normalizeNonNegativeInt(
+      getRuntimeAwareOption("streamTimeoutMs", 0),
+      0,
+      0,
+      604800000,
+    );
+    const configuredBackgroundTimeoutMs = normalizeNonNegativeInt(
+      getRuntimeAwareOption("backgroundTimeoutMs", 0),
+      0,
+      0,
+      604800000,
+    );
+    const effectiveStreamTimeoutMs = unboundedExecution ? 0 : configuredStreamTimeoutMs;
+    const effectiveBackgroundTimeoutMs = unboundedExecution ? 0 : configuredBackgroundTimeoutMs;
+    const streamTimeoutLabel = effectiveStreamTimeoutMs > 0 ? effectiveStreamTimeoutMs : (unboundedExecution ? "unbounded" : "default");
+    const backgroundTimeoutLabel = effectiveBackgroundTimeoutMs > 0 ? effectiveBackgroundTimeoutMs : (unboundedExecution ? "unbounded" : "default");
+    const requestCallOptions = {
+      turnId,
+      onDelta: options?.onStreamDelta,
+      onEvent: options?.onStreamEvent,
+    };
+    if (unboundedExecution || effectiveStreamTimeoutMs > 0) requestCallOptions.timeout_ms = effectiveStreamTimeoutMs;
+    if (unboundedExecution || effectiveBackgroundTimeoutMs > 0) requestCallOptions.backgroundTimeoutMs = effectiveBackgroundTimeoutMs;
     const maxForcedRetries = unboundedExecution
       ? Number.POSITIVE_INFINITY
-      : preflight.forceNoLimits
-        ? Math.max(AGENT_MAX_FORCED_RETRIES, 6)
-        : AGENT_MAX_FORCED_RETRIES;
+      : AGENT_MAX_FORCED_RETRIES;
     const maxToolRounds = unboundedExecution
       ? Number.POSITIVE_INFINITY
-      : preflight.forceNoLimits
-        ? Math.max(AGENT_MAX_TOOL_ROUNDS, 240)
-        : AGENT_MAX_TOOL_ROUNDS;
+      : AGENT_MAX_TOOL_ROUNDS;
     const maxForcedRetriesLabel = Number.isFinite(maxForcedRetries) ? maxForcedRetries : "unbounded";
     const maxToolRoundsLabel = Number.isFinite(maxToolRounds) ? maxToolRounds : "unbounded";
     const toolsDisabled = toolsMode === "none";
     const intentToUseTools = preflight.intentToUseTools;
     const intentToMutate = preflight.intentToMutate;
     const expectedMutations = preflight.expectedMutationsHint;
+    const cleanHandoffEnabled = getRuntimeAwareOption("cleanContextHandoff", true) !== false;
+    const configuredMaxCleanHandoffs = normalizeNonNegativeInt(
+      getRuntimeAwareOption("cleanContextHandoffMax", 1),
+      1,
+      0,
+      2000000,
+    );
+    const maxCleanHandoffs = cleanHandoffEnabled
+      ? (
+          forceNoLimitsActive
+            ? (configuredMaxCleanHandoffs > 0 ? Math.max(configuredMaxCleanHandoffs, 12) : 0)
+            : configuredMaxCleanHandoffs
+        )
+      : 0;
+    const maxCleanHandoffsLabel = Number.isFinite(maxCleanHandoffs) ? maxCleanHandoffs : "unbounded";
+    // Always keep loop protection enabled when tools are available.
+    // This prevents long read-only loops even if intent heuristics miss a mutation/research cue.
+    const stallGuardEnabled = !toolsDisabled;
+    const stallNoCallContinuationLimit = intentToMutate
+      ? (forceNoLimitsActive ? 10 : 4)
+      : forceNoLimitsActive
+        ? 48
+        : preflight.wantsDeepCompletion
+          ? 10
+          : 6;
+    const stallNoProgressRoundLimit = intentToMutate
+      ? (forceNoLimitsActive ? 24 : 8)
+      : forceNoLimitsActive
+        ? 96
+        : preflight.wantsDeepCompletion
+          ? 18
+          : 12;
+    const stallRepeatedSignatureRoundLimit = intentToMutate
+      ? (forceNoLimitsActive ? 8 : 4)
+      : forceNoLimitsActive
+        ? 32
+        : preflight.wantsDeepCompletion
+          ? 8
+          : 6;
+    const stallAbsoluteNoProgressRoundLimit = forceNoLimitsActive
+      ? 1200
+      : preflight.wantsDeepCompletion
+        ? 220
+        : 120;
+    const stallNoProgressSignatureWindow = Math.max(8, stallRepeatedSignatureRoundLimit + 2);
+    const checkpointSnapshotLimit = forceNoLimitsActive
+      ? 720
+      : preflight.wantsDeepCompletion
+        ? 180
+        : 120;
+    const checkpointMutationChangeLimit = forceNoLimitsActive
+      ? 2000
+      : preflight.wantsDeepCompletion
+        ? 320
+        : 200;
+    const checkpointAssemblyChangeLimit = forceNoLimitsActive
+      ? 1200
+      : preflight.wantsDeepCompletion
+        ? 220
+        : 120;
+    const checkpointFailureLimit = forceNoLimitsActive
+      ? 720
+      : preflight.wantsDeepCompletion
+        ? 180
+        : 120;
+    const checkpointWebQueryLimit = forceNoLimitsActive
+      ? 160
+      : preflight.wantsDeepCompletion
+        ? 40
+        : 20;
+    const checkpointWebUrlLimit = forceNoLimitsActive
+      ? 320
+      : preflight.wantsDeepCompletion
+        ? 80
+        : 40;
+    const checkpointFailureTailLimit = forceNoLimitsActive
+      ? 240
+      : preflight.wantsDeepCompletion
+        ? 60
+        : 40;
+    const checkpointMutationFailureTailLimit = forceNoLimitsActive
+      ? 160
+      : preflight.wantsDeepCompletion
+        ? 40
+        : 20;
+    const checkpointTextCharLimit = forceNoLimitsActive
+      ? 220000
+      : preflight.wantsDeepCompletion
+        ? 52000
+        : 24000;
     addExternalJournal("agent.preflight", "task preflight analyzed", {
       turn_id: turnId,
       status: "completed",
@@ -663,15 +1022,34 @@ function createAgentRuntimeTurnInternal(ctx) {
         wants_deep_completion: preflight.wantsDeepCompletion,
         actionable_prompt: preflight.actionable,
         analysis_intent: preflight.analysisIntent,
+        complexity_severity: preflight.complexitySeverity || "",
+        complexity_score: preflight.complexityScore || 0,
         workspace_scope: preflight.workspaceScope,
         intent_to_use_tools: preflight.intentToUseTools,
         intent_to_mutate: preflight.intentToMutate,
         min_tool_calls: preflight.minToolCalls,
         expected_mutations_hint: preflight.expectedMutationsHint,
         force_no_limits: preflight.forceNoLimits,
+        force_no_limits_applied: forceNoLimitsActive,
+        auto_runtime_overrides_mode: autoRuntimeOverridesMode,
+        auto_runtime_overrides_enabled: autoOverridesEnabled,
+        prompt_forced_overrides_enabled: allowPromptForcedOverrides,
+        overrides_enabled_for_turn: overridesEnabledForThisTurn,
+        runtime_profile_manual_lock: manualRuntimeProfileLocked,
         execution_limits_mode: limitMode,
+        stream_timeout_ms: streamTimeoutLabel,
+        background_timeout_ms: backgroundTimeoutLabel,
         max_forced_retries: maxForcedRetriesLabel,
         max_tool_rounds: maxToolRoundsLabel,
+        clean_handoff_enabled: cleanHandoffEnabled,
+        max_clean_handoffs: maxCleanHandoffsLabel,
+        stall_guard_enabled: stallGuardEnabled,
+        stall_no_call_continuation_limit: stallNoCallContinuationLimit,
+        stall_no_progress_round_limit: stallNoProgressRoundLimit,
+        stall_repeated_signature_round_limit: stallRepeatedSignatureRoundLimit,
+        stall_absolute_no_progress_round_limit: stallAbsoluteNoProgressRoundLimit,
+        checkpoint_snapshot_limit: checkpointSnapshotLimit,
+        checkpoint_text_char_limit: checkpointTextCharLimit,
         attachments_count: attachmentsCount,
         overrides_applied: compactForTool({
           toolsMode: appliedToolsModeOverride || "",
@@ -681,6 +1059,12 @@ function createAgentRuntimeTurnInternal(ctx) {
           serviceTier: appliedServiceTierOverride || "",
           backgroundMode: appliedBackgroundModeOverride || "",
           reasoningMaxTokens: appliedReasoningMaxTokensOverride,
+          executionLimitsMode: appliedExecutionLimitsOverride || "",
+          useConversationState: appliedUseConversationStateOverride,
+          compactMode: appliedCompactModeOverride || "",
+          compactThresholdTokens: appliedCompactThresholdTokensOverride,
+          compactTurnThreshold: appliedCompactTurnThresholdOverride,
+          cleanContextHandoffMax: appliedCleanContextHandoffMaxOverride,
         }),
       },
     });
@@ -705,6 +1089,13 @@ function createAgentRuntimeTurnInternal(ctx) {
       assemblyChanges: [],
       failedTools: [],
     };
+    const stallState = {
+      noCallContinuationStreak: 0,
+      noProgressRounds: 0,
+      repeatedSignatureRounds: 0,
+      lastRoundSignature: "",
+      recentNoProgressSignatures: [],
+    };
     const startedAt = Date.now();
     let roundsUsed = 0;
 
@@ -716,6 +1107,44 @@ function createAgentRuntimeTurnInternal(ctx) {
       if (list.length >= limit) return;
       list.push(text);
     };
+    const captureProgressMarker = () => ({
+      successfulMutations: Math.max(0, Number(toolStats.successfulMutations || 0)),
+      checklist: progress.completedChecklist.length,
+      added: progress.added.length,
+      updated: progress.updated.length,
+      deleted: progress.deleted.length,
+      assembly: progress.assemblyChanges.length,
+    });
+    const hasProgressDelta = (before, after) => (
+      after.successfulMutations > before.successfulMutations
+      || after.checklist > before.checklist
+      || after.added > before.added
+      || after.updated > before.updated
+      || after.deleted > before.deleted
+      || after.assembly > before.assembly
+    );
+    const buildToolCallSignature = (callName, summarizedArgs) => {
+      const name = String(callName || "").trim();
+      return `${name}:${compactToolIoText(summarizedArgs || {}, 180)}`;
+    };
+    const pushNoProgressSignature = (signature) => {
+      const text = truncate(signature, 800) || "<empty>";
+      stallState.recentNoProgressSignatures.push(text);
+      if (stallState.recentNoProgressSignatures.length > stallNoProgressSignatureWindow) {
+        stallState.recentNoProgressSignatures.shift();
+      }
+    };
+    const noProgressSignatureDiversity = () => {
+      const src = Array.isArray(stallState.recentNoProgressSignatures)
+        ? stallState.recentNoProgressSignatures
+        : [];
+      return new Set(src).size;
+    };
+    const resetNoProgressStreak = () => {
+      stallState.noProgressRounds = 0;
+      stallState.repeatedSignatureRounds = 0;
+      stallState.recentNoProgressSignatures = [];
+    };
 
     const identifyToolTarget = (callName, args, result) => {
       const article = truncate(args?.article || "", 96);
@@ -723,11 +1152,22 @@ function createAgentRuntimeTurnInternal(ctx) {
       const assembly = truncate(args?.assembly_name || args?.full_name || "", 120);
       const positionId = truncate(args?.position_id || "", 80);
       const assemblyId = truncate(args?.assembly_id || result?.entity?.id || "", 80);
+      const attachmentId = truncate(args?.attachment_id || args?.file_id || args?.id || "", 80);
+      const sheetId = truncate(args?.sheet_id || "", 80);
+      const range = truncate(args?.range || args?.target_range || "", 120);
+      const query = truncate(args?.query || args?.text || "", 120);
+      const path = truncate(args?.path || args?.file || "", 120);
       if (article) return article;
       if (name) return name;
       if (positionId) return `position:${positionId}`;
       if (assemblyId && assembly) return `${assembly} (${assemblyId})`;
       if (assembly) return assembly;
+      if (attachmentId) return `attachment:${attachmentId}`;
+      if (sheetId && range) return `${sheetId}:${range}`;
+      if (sheetId) return `sheet:${sheetId}`;
+      if (range) return `range:${range}`;
+      if (query) return `query:${query}`;
+      if (path) return `path:${path}`;
       return callName;
     };
 
@@ -737,20 +1177,28 @@ function createAgentRuntimeTurnInternal(ctx) {
       const ok = Boolean(result?.ok);
 
       if (ok && applied > 0) {
-        pushUniqueLimited(progress.completedChecklist, `${callName}: ${target}`, 240);
+        pushUniqueLimited(progress.completedChecklist, `${callName}: ${target}`, checkpointSnapshotLimit);
       } else if (!ok) {
         const err = truncate(result?.error || result?.message || "tool error", 180);
-        pushUniqueLimited(progress.failedTools, `${callName}: ${target}${err ? ` (${err})` : ""}`, 120);
+        pushUniqueLimited(progress.failedTools, `${callName}: ${target}${err ? ` (${err})` : ""}`, checkpointFailureLimit);
       }
 
-      if (!ok || applied <= 0) return;
+      if (!ok) return;
+      if (applied <= 0) {
+        // For research/audit tasks, successful read/list calls are useful progress.
+        // For mutation intents keep stricter accounting to detect pointless loops.
+        if (!intentToMutate && !isMutationToolName(callName)) {
+          pushUniqueLimited(progress.completedChecklist, `inspect ${target} via ${callName}`, checkpointSnapshotLimit);
+        }
+        return;
+      }
 
       if (
         callName === "add_position"
         || callName === "add_project_position"
         || callName === "duplicate_position"
       ) {
-        pushUniqueLimited(progress.added, `${target} via ${callName}`, 200);
+        pushUniqueLimited(progress.added, `${target} via ${callName}`, checkpointMutationChangeLimit);
         return;
       }
       if (
@@ -763,7 +1211,7 @@ function createAgentRuntimeTurnInternal(ctx) {
         || callName === "replace_in_range"
         || callName === "copy_range"
       ) {
-        pushUniqueLimited(progress.updated, `${target} via ${callName}`, 200);
+        pushUniqueLimited(progress.updated, `${target} via ${callName}`, checkpointMutationChangeLimit);
         return;
       }
       if (
@@ -772,7 +1220,7 @@ function createAgentRuntimeTurnInternal(ctx) {
         || callName === "clear_range"
         || callName === "clear_sheet_overrides"
       ) {
-        pushUniqueLimited(progress.deleted, `${target} via ${callName}`, 200);
+        pushUniqueLimited(progress.deleted, `${target} via ${callName}`, checkpointMutationChangeLimit);
         return;
       }
       if (
@@ -782,7 +1230,7 @@ function createAgentRuntimeTurnInternal(ctx) {
         || callName === "delete_assembly"
         || callName === "bulk_delete_assemblies"
       ) {
-        pushUniqueLimited(progress.assemblyChanges, `${target} via ${callName}`, 120);
+        pushUniqueLimited(progress.assemblyChanges, `${target} via ${callName}`, checkpointAssemblyChangeLimit);
       }
     };
 
@@ -815,16 +1263,22 @@ function createAgentRuntimeTurnInternal(ctx) {
         },
         web_evidence: {
           used: Boolean(turnCtx.webSearchUsed),
-          queries: Array.isArray(turnCtx.webSearchQueries) ? turnCtx.webSearchQueries.slice(-20) : [],
-          urls: Array.isArray(turnCtx.webSearchUrls) ? turnCtx.webSearchUrls.slice(-40) : [],
+          queries: Array.isArray(turnCtx.webSearchQueries) ? turnCtx.webSearchQueries.slice(-checkpointWebQueryLimit) : [],
+          urls: Array.isArray(turnCtx.webSearchUrls) ? turnCtx.webSearchUrls.slice(-checkpointWebUrlLimit) : [],
         },
-        completed_checklist: progress.completedChecklist.slice(0, 120),
-        added: progress.added.slice(0, 120),
-        updated: progress.updated.slice(0, 120),
-        deleted: progress.deleted.slice(0, 120),
-        assembly_changes: progress.assemblyChanges.slice(0, 80),
-        failed_tools: progress.failedTools.slice(-40),
-        mutation_failures: toolStats.failedMutations.slice(-20),
+        completed_checklist: progress.completedChecklist.slice(0, checkpointSnapshotLimit),
+        added: progress.added.slice(0, checkpointSnapshotLimit),
+        updated: progress.updated.slice(0, checkpointSnapshotLimit),
+        deleted: progress.deleted.slice(0, checkpointSnapshotLimit),
+        assembly_changes: progress.assemblyChanges.slice(0, Math.min(checkpointSnapshotLimit, checkpointAssemblyChangeLimit)),
+        failed_tools: progress.failedTools.slice(-checkpointFailureTailLimit),
+        mutation_failures: toolStats.failedMutations.slice(-checkpointMutationFailureTailLimit),
+        stall_guard: {
+          enabled: stallGuardEnabled,
+          no_call_streak: stallState.noCallContinuationStreak,
+          no_progress_rounds: stallState.noProgressRounds,
+          repeated_signature_rounds: stallState.repeatedSignatureRounds,
+        },
       };
       return snapshot;
     };
@@ -863,7 +1317,11 @@ function createAgentRuntimeTurnInternal(ctx) {
       appendFlat("Updated", snapshot.updated);
       appendFlat("Deleted", snapshot.deleted);
       appendFlat("Assembly changes", snapshot.assembly_changes);
-      appendFlat("Failures", [...snapshot.failed_tools, ...snapshot.mutation_failures].slice(0, 80));
+      appendFlat(
+        "Failures",
+        [...snapshot.failed_tools, ...snapshot.mutation_failures]
+          .slice(0, Math.max(80, checkpointFailureTailLimit + checkpointMutationFailureTailLimit)),
+      );
 
       lines.push("");
       lines.push("Continue from:");
@@ -880,11 +1338,11 @@ function createAgentRuntimeTurnInternal(ctx) {
       lines.push("3. Previously successful operations unless verification proves mismatch.");
 
       const raw = lines.join("\n");
-      if (raw.length <= 24000) return raw;
+      if (raw.length <= checkpointTextCharLimit) return raw;
       const tail = forHandoff
         ? "\n\n[Checkpoint truncated to fit context window]\n"
         : "\n\n[Report truncated]\n";
-      return `${raw.slice(0, Math.max(0, 24000 - tail.length))}${tail}`;
+      return `${raw.slice(0, Math.max(0, checkpointTextCharLimit - tail.length))}${tail}`;
     };
 
     const buildHandoffPrompt = (snapshot) => {
@@ -981,6 +1439,32 @@ function createAgentRuntimeTurnInternal(ctx) {
       ].join("\n\n");
       return sanitizeAgentOutputText(report);
     };
+    const handleStallGuard = async (trigger, response = null, reason = "", extraMeta = {}) => {
+      const signatureDiversity = noProgressSignatureDiversity();
+      addExternalJournal("agent.stall_guard.triggered", "stall guard forced loop break", {
+        turn_id: turnId,
+        request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+        response_id: String(response?.id || ""),
+        status: "running",
+        level: "warning",
+        meta: {
+          trigger,
+          reason: truncate(reason, 240),
+          no_call_continuation_streak: stallState.noCallContinuationStreak,
+          no_progress_rounds: stallState.noProgressRounds,
+          repeated_signature_rounds: stallState.repeatedSignatureRounds,
+          signature_diversity: signatureDiversity,
+          recent_signatures: stallState.recentNoProgressSignatures.slice(-6),
+          execution_limits_mode: limitMode,
+          max_forced_retries: maxForcedRetriesLabel,
+          max_tool_rounds: maxToolRoundsLabel,
+          ...extraMeta,
+        },
+      });
+      const handoffText = await maybeRunCleanContextHandoff(trigger, response, reason);
+      if (handoffText) return sanitizeAgentOutputText(handoffText);
+      return buildUnfinishedReport(trigger, response, reason);
+    };
 
     if (!toolsDisabled) {
       throwIfCanceled();
@@ -1029,27 +1513,55 @@ function createAgentRuntimeTurnInternal(ctx) {
     };
     let response = null;
     try {
-      response = await callOpenAiResponses(buildInitialPayload(initialPreviousResponseId), {
-        turnId,
-        onDelta: options?.onStreamDelta,
-        onEvent: options?.onStreamEvent,
-      });
+      response = await callOpenAiResponses(buildInitialPayload(initialPreviousResponseId), { ...requestCallOptions });
     } catch (err) {
-      if (!initialPreviousResponseId || !isPreviousResponseError(err)) throw err;
-      addExternalJournal("conversation_state.fallback", "previous_response_id rejected, fallback to fresh turn", {
-        turn_id: turnId,
-        level: "warning",
-        status: "error",
-        meta: {
-          previous_response_id: initialPreviousResponseId,
-          reason: String(err?.message || err || "").slice(0, 220),
-        },
-      });
-      response = await callOpenAiResponses(buildInitialPayload(""), {
-        turnId,
-        onDelta: options?.onStreamDelta,
-        onEvent: options?.onStreamEvent,
-      });
+      const previousResponseRejected = Boolean(initialPreviousResponseId) && isPreviousResponseError(err);
+      const contextOverflow = isContextOverflowError(err);
+      if (previousResponseRejected || (Boolean(initialPreviousResponseId) && contextOverflow)) {
+        const reasonText = String(err?.message || err || "").slice(0, 220);
+        addExternalJournal("conversation_state.fallback", "previous_response_id rejected, fallback to fresh turn", {
+          turn_id: turnId,
+          level: "warning",
+          status: "error",
+          meta: {
+            previous_response_id: initialPreviousResponseId,
+            reason: reasonText,
+            context_overflow: contextOverflow,
+          },
+        });
+        try {
+          response = await callOpenAiResponses(buildInitialPayload(""), { ...requestCallOptions });
+        } catch (err2) {
+          if (!isContextOverflowError(err2)) throw err2;
+          const overflowReason = `context window overflow during initial fallback: ${String(err2?.message || err2 || "").slice(0, 220)}`;
+          addExternalJournal("agent.context_overflow", overflowReason, {
+            turn_id: turnId,
+            level: "warning",
+            status: "error",
+            meta: {
+              phase: "initial_fallback",
+            },
+          });
+          const handoffText = await maybeRunCleanContextHandoff("context_overflow_initial", null, overflowReason);
+          if (handoffText) return sanitizeAgentOutputText(handoffText);
+          throw err2;
+        }
+      } else if (contextOverflow) {
+        const overflowReason = `context window overflow on initial request: ${String(err?.message || err || "").slice(0, 220)}`;
+        addExternalJournal("agent.context_overflow", overflowReason, {
+          turn_id: turnId,
+          level: "warning",
+          status: "error",
+          meta: {
+            phase: "initial",
+          },
+        });
+        const handoffText = await maybeRunCleanContextHandoff("context_overflow_initial", null, overflowReason);
+        if (handoffText) return sanitizeAgentOutputText(handoffText);
+        throw err;
+      } else {
+        throw err;
+      }
     }
     app.ai.streamResponseId = String(response?.id || "");
     rememberResponseUsage(response);
@@ -1079,6 +1591,21 @@ function createAgentRuntimeTurnInternal(ctx) {
         else if (completionGuard.triggered) continuationReason = completionGuard.reason;
         else if (policyContinuationNeeded) continuationReason = buildAgentRetryReason(expectedMutations, toolStats, text);
 
+        if (continuationNeeded && stallGuardEnabled) {
+          stallState.noCallContinuationStreak += 1;
+          if (stallState.noCallContinuationStreak > stallNoCallContinuationLimit) {
+            const reason = continuationReason
+              ? `no tool calls after ${stallState.noCallContinuationStreak} continuation attempts (${continuationReason})`
+              : `no tool calls after ${stallState.noCallContinuationStreak} continuation attempts`;
+            return handleStallGuard("stall_guard_no_call_loop", response, reason, {
+              continuation_reason: continuationReason || "",
+              response_incomplete: responseIncomplete,
+            });
+          }
+        } else {
+          stallState.noCallContinuationStreak = 0;
+        }
+
         if (completionGuard.triggered) {
           addExternalJournal("agent.completion_guard.triggered", "completion guard forced continuation", {
             turn_id: turnId,
@@ -1105,13 +1632,13 @@ function createAgentRuntimeTurnInternal(ctx) {
             level: "warning",
             status: "error",
           });
-          return "computer_use_preview недоступен в этом клиенте без browser executor. Используйте web_search.";
+          return "computer_use_preview is unavailable in this client without browser executor. Use web_search.";
         }
 
         if (continuationNeeded && toolStats.forcedRetries < maxForcedRetries) {
           const reason = continuationReason || "task is not completed";
           toolStats.forcedRetries += 1;
-          addTableJournal("agent.retry", `Автоповтор: ${reason}`, {
+          addTableJournal("agent.retry", `Auto retry: ${reason}`, {
             turn_id: turnId,
             status: "running",
             meta: {
@@ -1141,24 +1668,30 @@ function createAgentRuntimeTurnInternal(ctx) {
               turnId,
               taskText: userText,
               allowBackground: false,
-            }), {
-              turnId,
-              onDelta: options?.onStreamDelta,
-              onEvent: options?.onStreamEvent,
-            });
+            }), { ...requestCallOptions });
           } catch (err) {
-            if (!isPreviousResponseError(err)) throw err;
-            const fallbackReason = `previous_response_id rejected during forced continuation: ${String(err?.message || err || "").slice(0, 220)}`;
-            addExternalJournal("conversation_state.fallback", "previous_response_id rejected during forced continuation", {
+            const previousResponseRejected = isPreviousResponseError(err);
+            const contextOverflow = isContextOverflowError(err);
+            if (!previousResponseRejected && !contextOverflow) throw err;
+            const fallbackReason = previousResponseRejected
+              ? `previous_response_id rejected during forced continuation: ${String(err?.message || err || "").slice(0, 220)}`
+              : `context window overflow during forced continuation: ${String(err?.message || err || "").slice(0, 220)}`;
+            const eventName = previousResponseRejected ? "conversation_state.fallback" : "agent.context_overflow";
+            const eventMessage = previousResponseRejected
+              ? "previous_response_id rejected during forced continuation"
+              : "context overflow during forced continuation";
+            addExternalJournal(eventName, eventMessage, {
               turn_id: turnId,
               level: "warning",
               status: "error",
               meta: {
                 previous_response_id: String(response?.id || ""),
                 reason: fallbackReason,
+                phase: "forced_continuation",
               },
             });
-            const handoffText = await maybeRunCleanContextHandoff("previous_response_rejected", response, fallbackReason);
+            const handoffTrigger = previousResponseRejected ? "previous_response_rejected" : "context_overflow_forced_continuation";
+            const handoffText = await maybeRunCleanContextHandoff(handoffTrigger, response, fallbackReason);
             if (handoffText) return sanitizeAgentOutputText(handoffText);
             throw err;
           }
@@ -1193,17 +1726,20 @@ function createAgentRuntimeTurnInternal(ctx) {
           const handoffText = await maybeRunCleanContextHandoff("final_text_incomplete", response, "final answer is incomplete while mutation task is expected");
           if (handoffText) return sanitizeAgentOutputText(handoffText);
           if (toolStats.successfulMutations > 0) {
-            return `Р“РѕС‚РѕРІРѕ. РР·РјРµРЅРµРЅРёСЏ РїСЂРёРјРµРЅРµРЅС‹ (${toolStats.successfulMutations}).`;
+            return `Done. Applied mutations: ${toolStats.successfulMutations}.`;
           }
           const reason = toolStats.failedMutations.slice(-2).join("; ") || "task is not completed";
           return buildUnfinishedReport("mutation_task_incomplete_text", response, reason);
         }
 
-        const finalText = text || (toolStats.successfulMutations > 0 ? "Готово, изменения применены." : "Готово.");
+        const finalText = text || (toolStats.successfulMutations > 0 ? "Done, changes were applied." : "Done.");
         return sanitizeAgentOutputText(finalText);
       }
 
       const outputs = [];
+      stallState.noCallContinuationStreak = 0;
+      const roundProgressBefore = captureProgressMarker();
+      const roundSignatures = [];
       let pauseForUser = null;
       let skippedAfterPause = 0;
       for (const call of calls) {
@@ -1215,6 +1751,7 @@ function createAgentRuntimeTurnInternal(ctx) {
         toolStats.totalToolCalls += 1;
         const args = parseJsonSafe(call.arguments, {});
         const summarizedArgs = summarizeToolArgs(args);
+        roundSignatures.push(buildToolCallSignature(call.name, summarizedArgs));
         const callText = `${call.name} <= ${compactToolIoText(summarizedArgs)}`;
         addExternalJournal("tool.call", callText, {
           turn_id: turnId,
@@ -1296,7 +1833,7 @@ function createAgentRuntimeTurnInternal(ctx) {
             toolStats.successfulMutations += applied;
             app.ai.lastSuccessfulMutationTs = Date.now();
           } else {
-            const errText = String(result?.error || "изменение не применено").replace(/\s+/g, " ").trim().slice(0, 160);
+            const errText = String(result?.error || "mutation not applied").replace(/\s+/g, " ").trim().slice(0, 160);
             toolStats.failedMutations.push(`${call.name}: ${errText}`);
           }
         }
@@ -1319,18 +1856,70 @@ function createAgentRuntimeTurnInternal(ctx) {
           pending.tool_outputs = outputs.slice();
         }
         if (skippedAfterPause > 0) {
-          addTableJournal("agent.pause", `Остановлено: ожидается ответ пользователя (пропущено вызовов: ${skippedAfterPause})`, {
+          addTableJournal("agent.pause", `Paused: waiting for user input (skipped calls: ${skippedAfterPause})`, {
             turn_id: turnId,
             status: "running",
             meta: { skipped_calls: skippedAfterPause },
           });
         }
-        const waitMsg = String(pauseForUser?.message || "Нужно уточнение от пользователя. Ответьте в блоке вопроса.");
+        const waitMsg = String(pauseForUser?.message || "Need clarification from the user. Reply in the question block.");
         return sanitizeAgentOutputText(waitMsg);
       }
 
+      if (stallGuardEnabled) {
+        const roundProgressAfter = captureProgressMarker();
+        const roundHasProgress = hasProgressDelta(roundProgressBefore, roundProgressAfter);
+        const roundSignature = truncate(roundSignatures.join(" || "), 1200);
+        if (roundHasProgress) {
+          resetNoProgressStreak();
+          stallState.lastRoundSignature = roundSignature;
+        } else {
+          stallState.noProgressRounds += 1;
+          if (roundSignature && roundSignature === stallState.lastRoundSignature) {
+            stallState.repeatedSignatureRounds += 1;
+          } else {
+            stallState.repeatedSignatureRounds = 1;
+          }
+          if (roundSignature) stallState.lastRoundSignature = roundSignature;
+          pushNoProgressSignature(roundSignature || "<empty>");
+          const signatureDiversity = noProgressSignatureDiversity();
+          const repeatedLoop = stallState.repeatedSignatureRounds >= stallRepeatedSignatureRoundLimit;
+          const stagnationLoop = stallState.noProgressRounds >= stallNoProgressRoundLimit && signatureDiversity <= 2;
+          const broadStagnationLimit = Math.min(
+            stallAbsoluteNoProgressRoundLimit,
+            Math.max(
+              stallNoProgressRoundLimit + 2,
+              stallNoProgressRoundLimit * (intentToMutate ? 2 : (forceNoLimitsActive ? 3 : 2)),
+            ),
+          );
+          const broadStagnationLoop = stallState.noProgressRounds >= broadStagnationLimit;
+          const absoluteStall = stallState.noProgressRounds >= stallAbsoluteNoProgressRoundLimit;
+          if (repeatedLoop || stagnationLoop || broadStagnationLoop || absoluteStall) {
+            const reason = repeatedLoop
+              ? `repeated no-progress tool pattern for ${stallState.repeatedSignatureRounds} rounds`
+              : broadStagnationLoop
+                ? `no progress for ${stallState.noProgressRounds} rounds (adaptive stall limit ${broadStagnationLimit})`
+              : absoluteStall
+                ? `no progress for ${stallState.noProgressRounds} rounds`
+                : `no progress for ${stallState.noProgressRounds} rounds with low tool-pattern diversity (${signatureDiversity})`;
+            return handleStallGuard("stall_guard_no_progress_tool_loop", response, reason, {
+              repeated_loop: repeatedLoop,
+              stagnation_loop: stagnationLoop,
+              broad_stagnation_loop: broadStagnationLoop,
+              broad_stagnation_limit: broadStagnationLimit,
+              absolute_stall: absoluteStall,
+              round_signature: roundSignature,
+              signature_diversity: signatureDiversity,
+            });
+          }
+        }
+      }
+
       throwIfCanceled();
-      const compactInfo = await maybeAutoCompactResponse(response, { turnId });
+      const compactInfo = await maybeAutoCompactResponse(response, {
+        turnId,
+        pendingToolOutputsCount: outputs.length,
+      });
       if (compactInfo?.responseId && compactInfo.responseId !== String(response?.id || "")) {
         response = { ...(response || {}), id: compactInfo.responseId };
       }
@@ -1346,24 +1935,30 @@ function createAgentRuntimeTurnInternal(ctx) {
           turnId,
           taskText: userText,
           allowBackground: false,
-        }), {
-          turnId,
-          onDelta: options?.onStreamDelta,
-          onEvent: options?.onStreamEvent,
-        });
+        }), { ...requestCallOptions });
       } catch (err) {
-        if (!isPreviousResponseError(err)) throw err;
-        const fallbackReason = `previous_response_id rejected during tool continuation: ${String(err?.message || err || "").slice(0, 220)}`;
-        addExternalJournal("conversation_state.fallback", "previous_response_id rejected during tool continuation", {
+        const previousResponseRejected = isPreviousResponseError(err);
+        const contextOverflow = isContextOverflowError(err);
+        if (!previousResponseRejected && !contextOverflow) throw err;
+        const fallbackReason = previousResponseRejected
+          ? `previous_response_id rejected during tool continuation: ${String(err?.message || err || "").slice(0, 220)}`
+          : `context window overflow during tool continuation: ${String(err?.message || err || "").slice(0, 220)}`;
+        const eventName = previousResponseRejected ? "conversation_state.fallback" : "agent.context_overflow";
+        const eventMessage = previousResponseRejected
+          ? "previous_response_id rejected during tool continuation"
+          : "context overflow during tool continuation";
+        addExternalJournal(eventName, eventMessage, {
           turn_id: turnId,
           level: "warning",
           status: "error",
           meta: {
             previous_response_id: String(response?.id || ""),
             reason: fallbackReason,
+            phase: "tool_continuation",
           },
         });
-        const handoffText = await maybeRunCleanContextHandoff("previous_response_rejected", response, fallbackReason);
+        const handoffTrigger = previousResponseRejected ? "previous_response_rejected" : "context_overflow_tool_continuation";
+        const handoffText = await maybeRunCleanContextHandoff(handoffTrigger, response, fallbackReason);
         if (handoffText) return sanitizeAgentOutputText(handoffText);
         throw err;
       }
@@ -1388,6 +1983,7 @@ function createAgentRuntimeTurnInternal(ctx) {
         rounds_used: roundsUsed,
         built_in_tool_calls: toolStats.builtInToolCalls,
         force_no_limits: preflight.forceNoLimits,
+        force_no_limits_applied: forceNoLimitsActive,
       },
     });
     const handoffText = await maybeRunCleanContextHandoff("tool_loop_limit", response, "tool loop limit reached");

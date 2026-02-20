@@ -32,7 +32,7 @@ export class AppCoreCompositionModule {
   }
 
   compose() {
-    const { sheetNames, defaultAiModel } = this._config;
+    const { sheetNames, defaultAiModel, marketVerificationMinSources } = this._config;
 
     const app = {
       template: null,
@@ -66,6 +66,8 @@ export class AppCoreCompositionModule {
           reasoning: true,
           taskProfile: "auto",
           noReasoningProfile: "standard",
+          autoReasoningEscalationMode: "auto",
+          autoRuntimeOverridesMode: "auto",
           reasoningEffort: "medium",
           reasoningDepth: "balanced",
           reasoningVerify: "basic",
@@ -87,6 +89,8 @@ export class AppCoreCompositionModule {
           safetyIdentifier: "",
           safeTruncationAuto: false,
           backgroundMode: "auto",
+          streamTimeoutMs: 0,
+          backgroundTimeoutMs: 0,
           backgroundTokenThreshold: 12000,
           compactMode: "off",
           compactThresholdTokens: 90000,
@@ -101,6 +105,12 @@ export class AppCoreCompositionModule {
           includeSourcesMode: "off",
           lowBandwidthMode: false,
           executionLimitsMode: "off",
+          factCheckMinSources: Number.isFinite(Number(marketVerificationMinSources))
+            ? Math.max(1, Math.round(Number(marketVerificationMinSources)))
+            : 2,
+          factCheckMaxSources: Number.isFinite(Number(this._config?.marketVerificationMaxSources))
+            ? Math.max(1, Math.round(Number(this._config.marketVerificationMaxSources)))
+            : 6,
         },
         webSearchPopoverOpen: false,
         reasoningPopoverOpen: false,

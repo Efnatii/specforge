@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { AgentRuntimeModule } from "../src/modules/agent/runtime/index.js";
 import { AgentAttachmentModule } from "../src/modules/agent/tools/attachment.js";
 import { AgentRuntimePolicyModule } from "../src/modules/agent/runtime/policy.js";
+import { askWithWeb } from "../src/modules/agent/runtime/web-search.js";
 // Run: node --experimental-default-type=module scripts/smoke-responses.mjs
 
 function buildConfig() {
@@ -30,6 +31,8 @@ function defaultOptions() {
     reasoning: true,
     taskProfile: "auto",
     noReasoningProfile: "standard",
+    autoReasoningEscalationMode: "auto",
+    autoRuntimeOverridesMode: "auto",
     reasoningEffort: "medium",
     reasoningDepth: "balanced",
     reasoningVerify: "basic",
@@ -51,6 +54,8 @@ function defaultOptions() {
     safetyIdentifier: "",
     safeTruncationAuto: false,
     backgroundMode: "auto",
+    streamTimeoutMs: 0,
+    backgroundTimeoutMs: 0,
     backgroundTokenThreshold: 12000,
     compactMode: "off",
     compactThresholdTokens: 90000,
@@ -65,6 +70,8 @@ function defaultOptions() {
     includeSourcesMode: "off",
     lowBandwidthMode: false,
     executionLimitsMode: "off",
+    factCheckMinSources: 2,
+    factCheckMaxSources: 6,
   };
 }
 
@@ -136,7 +143,7 @@ function createRuntime({ options = {}, runtimeProfile = null, fetchFn, logsSink,
     addTableJournal: () => {},
     compactForTool: (v) => {
       try {
-        return JSON.stringify(v).slice(0, 120);
+        return JSON.stringify(v).slice(0, 360);
       } catch {
         return String(v ?? "");
       }
@@ -375,6 +382,28 @@ async function main() {
     const noReasoningCustom = policy.resolveTaskProfile("manual profile", "auto");
     assert.equal(String(noReasoningCustom?.mode || ""), "no_reasoning_custom");
     assert.equal(String(noReasoningCustom?.selected || ""), "custom");
+  }
+
+  {
+    const app = {
+      ai: {
+        options: {
+          taskProfile: "auto",
+          reasoning: false,
+          noReasoningProfile: "custom",
+          autoReasoningEscalationMode: "force",
+        },
+        runtimeProfile: null,
+      },
+    };
+    const policy = new AgentRuntimePolicyModule({
+      app,
+      config: { AI_INCOMPLETE_RESPONSE_RE: /incomplete/i },
+      deps: { num: (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback) },
+    });
+    const forcedManual = policy.resolveTaskProfile("total audit of repository with root cause analysis", "auto");
+    assert.equal(String(forcedManual?.mode || ""), "no_reasoning_custom");
+    assert.equal(String(forcedManual?.selected || ""), "custom");
   }
 
   {
@@ -677,6 +706,197 @@ async function main() {
 
   {
     const postedBodies = [];
+    const logs = [];
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        const body = JSON.parse(String(init?.body || "{}"));
+        postedBodies.push(body);
+        if (String(body?.previous_response_id || "") === "resp-old-ctx") {
+          return new Response(
+            JSON.stringify({ error: { message: "context_length_exceeded: too many input tokens" } }),
+            { status: 400, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            id: "resp-fresh-after-ctx",
+            status: "completed",
+            output: [],
+            output_text: "done after context fallback",
+            usage: { input_tokens: 21, output_tokens: 6, total_tokens: 27 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    const { runtime } = createRuntime({ fetchFn, logsSink: logs });
+    const out = await runtime.runOpenAiAgentTurn("Current user request:\ncheck", "check", {
+      turnId: "t-context-overflow-fallback",
+      previousResponseId: "resp-old-ctx",
+      previousToolOutputs: [{ type: "function_call_output", call_id: "call-ctx-1", output: "ok" }],
+    });
+    assert.equal(String(out || ""), "done after context fallback");
+    assert.equal(postedBodies.length, 2);
+    assert.equal(String(postedBodies[0]?.previous_response_id || ""), "resp-old-ctx");
+    assert.equal(String(postedBodies[1]?.previous_response_id || ""), "");
+    const fallback = logs.find((x) => x.event === "conversation_state.fallback");
+    assert.equal(Boolean(fallback), true);
+    assert.equal(Boolean(fallback?.meta?.meta?.context_overflow), true);
+  }
+
+  {
+    let attempt = 0;
+    const events = [];
+    const fetchFn = async (url, init = {}) => {
+      attempt += 1;
+      if (attempt === 1) {
+        const err = new TypeError("fetch failed");
+        throw err;
+      }
+      const body = JSON.parse(String(init?.body || "{}"));
+      assert.equal(String(url || ""), "https://api.openai.com/v1/responses");
+      assert.equal(String(body?.tools?.[0]?.type || ""), "web_search");
+      assert.ok(Array.isArray(body?.include) && body.include.includes("web_search_call.action.sources"));
+      assert.equal(String(body?.tool_choice || ""), "required");
+      assert.equal(Number(body?.max_tool_calls || 0), 2);
+      return new Response(
+        JSON.stringify({
+          id: "resp-web-1",
+          status: "completed",
+          output_text: "answer via web",
+          output: [
+            {
+              type: "web_search_call",
+              action: {
+                sources: [
+                  { title: "Allowed", url: "https://allowed.example.com/a" },
+                  { title: "Blocked", url: "https://blocked.example.net/b" },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const result = await askWithWeb("проверь факт", {
+      apiKey: "sk-test",
+      model: "gpt-5-mini",
+      fetchFn,
+      allowed_domains: ["example.com"],
+      search_context_size: "high",
+      max_tool_calls: 2,
+      tool_choice: "required",
+      max_retries: 1,
+      timeout_ms: 5000,
+      min_sources_for_facts: 1,
+      logger: (event, meta) => events.push({ event, meta }),
+    });
+    assert.equal(attempt, 2);
+    assert.equal(String(result?.answerText || ""), "answer via web");
+    assert.equal(Array.isArray(result?.sources), true);
+    assert.equal(result.sources.length, 1);
+    assert.equal(String(result.sources[0]?.url || ""), "https://allowed.example.com/a");
+    assert.ok(events.some((x) => x.event === "web_search.request.retry_wait"));
+  }
+
+  {
+    const fetchFn = async (_url, init = {}) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+      assert.equal(Object.prototype.hasOwnProperty.call(body || {}, "max_tool_calls"), false);
+      return new Response(
+        JSON.stringify({
+          id: "resp-web-unbounded-default",
+          status: "completed",
+          output_text: "ok",
+          output: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const result = await askWithWeb("default max tool calls", {
+      apiKey: "sk-test",
+      fetchFn,
+      min_sources_for_facts: 1,
+    });
+    assert.equal(String(result?.answerText || ""), "ok");
+  }
+
+  {
+    let attempt = 0;
+    const fetchFn = async (_url, init = {}) => {
+      attempt += 1;
+      const body = JSON.parse(String(init?.body || "{}"));
+      if (attempt === 1) {
+        assert.ok(Object.prototype.hasOwnProperty.call(body?.tools?.[0] || {}, "allowed_domains"));
+        return new Response(
+          JSON.stringify({ error: { message: "Unknown parameter: allowed_domains" } }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      assert.equal(Object.prototype.hasOwnProperty.call(body?.tools?.[0] || {}, "allowed_domains"), false);
+      return new Response(
+        JSON.stringify({
+          id: "resp-web-compat",
+          status: "completed",
+          output_text: "compat ok",
+          output: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const result = await askWithWeb("compat test", {
+      apiKey: "sk-test",
+      fetchFn,
+      allowed_domains: ["example.com"],
+      external_web_access: true,
+      max_retries: 0,
+    });
+    assert.equal(attempt, 2);
+    assert.equal(String(result?.answerText || ""), "compat ok");
+  }
+
+  {
+    const neverResolveFetch = async (_url, init = {}) => {
+      const signal = init?.signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener?.("abort", () => {
+          const e = new Error("aborted");
+          e.name = "AbortError";
+          reject(e);
+        }, { once: true });
+      });
+    };
+    await assert.rejects(
+      () => askWithWeb("timeout test", {
+        apiKey: "sk-test",
+        fetchFn: neverResolveFetch,
+        timeout_ms: 20,
+        max_retries: 0,
+      }),
+      /Таймаут запроса к OpenAI|web_search завершился ошибкой/i,
+    );
+  }
+
+  {
+    const { runtime } = createRuntime({
+      options: {
+        factCheckMinSources: 3,
+      },
+    });
+    const prompt = runtime.agentSystemPrompt();
+    assert.ok(String(prompt).includes("минимум 3 валидных URL"));
+    const tools = runtime.agentToolsSpec();
+    const serialized = JSON.stringify(tools);
+    assert.ok(serialized.includes("минимум 3 URL"));
+  }
+
+  {
+    const postedBodies = [];
     let postCounter = 0;
     const logs = [];
     const fetchFn = async (url, init = {}) => {
@@ -754,7 +974,218 @@ async function main() {
     const overridesApplied = String(preflight?.meta?.meta?.overrides_applied || "");
     assert.ok(overridesApplied.includes("\"toolsMode\":\"require\""));
     assert.ok(overridesApplied.includes("\"reasoningMaxTokens\":0"));
+    assert.ok(overridesApplied.includes("\"useConversationState\":true"));
+    assert.ok(overridesApplied.includes("\"compactMode\":\"on\"") || overridesApplied.includes("\"compactMode\":\"auto\""));
     assert.ok(logs.some((x) => x.event === "agent.completion_guard.triggered"));
+  }
+
+  {
+    let postCounter = 0;
+    const logs = [];
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        postCounter += 1;
+        return new Response(
+          JSON.stringify({
+            id: `resp-stall-${postCounter}`,
+            status: "completed",
+            output: [
+              { type: "function_call", name: "list_assemblies", call_id: `call-stall-${postCounter}`, arguments: "{}" },
+            ],
+            output_text: "",
+            usage: { input_tokens: 9, output_tokens: 3, total_tokens: 12 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const { runtime } = createRuntime({
+      fetchFn,
+      logsSink: logs,
+      options: {
+        toolsMode: "require",
+        cleanContextHandoff: false,
+      },
+    });
+    const out = await runtime.runOpenAiAgentTurn(
+      "Current user request:\naudit repository and find root cause",
+      "audit repository and find root cause",
+      { turnId: "t-stall-guard" },
+    );
+    assert.ok(String(out || "").includes("Task is not fully completed yet."));
+    assert.ok(logs.some((x) => x.event === "agent.stall_guard.triggered"));
+    assert.ok(postCounter < 20);
+  }
+
+  {
+    let postCounter = 0;
+    const logs = [];
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        postCounter += 1;
+        return new Response(
+          JSON.stringify({
+            id: `resp-stall-auto-${postCounter}`,
+            status: "completed",
+            output: [
+              { type: "function_call", name: "list_assemblies", call_id: `call-stall-auto-${postCounter}`, arguments: "{}" },
+            ],
+            output_text: "",
+            usage: { input_tokens: 8, output_tokens: 3, total_tokens: 11 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const { runtime } = createRuntime({
+      fetchFn,
+      logsSink: logs,
+      options: {
+        toolsMode: "auto",
+        executionLimitsMode: "on",
+        cleanContextHandoff: false,
+      },
+    });
+    const out = await runtime.runOpenAiAgentTurn(
+      "Current user request:\nwhat is KPI",
+      "what is KPI",
+      { turnId: "t-stall-guard-auto-tools" },
+    );
+    assert.ok(String(out || "").includes("Task is not fully completed yet."));
+    assert.ok(logs.some((x) => x.event === "agent.stall_guard.triggered"));
+    assert.ok(postCounter < 20);
+  }
+
+  {
+    let postCounter = 0;
+    let compactCounter = 0;
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        postCounter += 1;
+        return new Response(
+          JSON.stringify({
+            id: `resp-compact-skip-${postCounter}`,
+            status: "completed",
+            output: [
+              { type: "function_call", name: "list_assemblies", call_id: `call-compact-skip-${postCounter}`, arguments: "{}" },
+            ],
+            output_text: "",
+            usage: { input_tokens: 9, output_tokens: 3, total_tokens: 12 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (u.includes("/compact") && m === "POST") {
+        compactCounter += 1;
+        return new Response(
+          JSON.stringify({ id: "resp-compact-result", status: "completed", output: [] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const { runtime } = createRuntime({
+      fetchFn,
+      options: {
+        toolsMode: "require",
+        compactMode: "on",
+        cleanContextHandoff: false,
+      },
+    });
+    const out = await runtime.runOpenAiAgentTurn(
+      "Current user request:\naudit repository and find root cause",
+      "audit repository and find root cause",
+      { turnId: "t-compact-skip-pending" },
+    );
+    assert.ok(String(out || "").includes("Task is not fully completed yet."));
+    assert.equal(compactCounter, 0);
+  }
+
+  {
+    const logs = [];
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        return new Response(
+          JSON.stringify({
+            id: "resp-unbounded-1",
+            status: "completed",
+            output: [],
+            output_text: "ok",
+            usage: { input_tokens: 7, output_tokens: 2, total_tokens: 9 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const { runtime } = createRuntime({
+      fetchFn,
+      logsSink: logs,
+      options: {
+        toolsMode: "none",
+        executionLimitsMode: "on",
+      },
+    });
+    const out = await runtime.runOpenAiAgentTurn(
+      "Current user request:\nwork with no limits and use as much resources as needed",
+      "work with no limits and use as much resources as needed",
+      { turnId: "t-force-unbounded" },
+    );
+    assert.equal(String(out || ""), "ok");
+    const preflight = logs.find((x) => x.event === "agent.preflight");
+    assert.equal(String(preflight?.meta?.meta?.max_tool_rounds || ""), "unbounded");
+    assert.equal(String(preflight?.meta?.meta?.max_forced_retries || ""), "unbounded");
+    assert.equal(Boolean(preflight?.meta?.meta?.force_no_limits), true);
+    assert.ok(Number(preflight?.meta?.meta?.max_clean_handoffs || 0) >= 12);
+  }
+
+  {
+    const logs = [];
+    const fetchFn = async (url, init = {}) => {
+      const u = String(url || "");
+      const m = String(init?.method || "GET");
+      if (u === "https://api.openai.com/v1/responses" && m === "POST") {
+        return new Response(
+          JSON.stringify({
+            id: "resp-manual-lock-1",
+            status: "completed",
+            output: [],
+            output_text: "ok",
+            usage: { input_tokens: 7, output_tokens: 2, total_tokens: 9 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const { runtime } = createRuntime({
+      fetchFn,
+      logsSink: logs,
+      options: {
+        toolsMode: "auto",
+        executionLimitsMode: "on",
+        autoRuntimeOverridesMode: "off",
+      },
+    });
+    const out = await runtime.runOpenAiAgentTurn(
+      "Current user request:\nwork with no limits and use as much resources as needed",
+      "work with no limits and use as much resources as needed",
+      { turnId: "t-manual-overrides-off" },
+    );
+    assert.equal(String(out || ""), "ok");
+    const preflight = logs.find((x) => x.event === "agent.preflight");
+    assert.equal(String(preflight?.meta?.meta?.auto_runtime_overrides_mode || ""), "off");
+    assert.equal(Boolean(preflight?.meta?.meta?.auto_runtime_overrides_enabled), false);
   }
 
   {
@@ -809,6 +1240,17 @@ async function main() {
     assert.equal(app.ai.options.includeSourcesMode, "auto");
     fire("includeSourcesMode", "on");
     assert.equal(app.ai.options.citationsMode, "on");
+
+    fire("autoReasoningEscalationMode", "force");
+    assert.equal(app.ai.options.autoReasoningEscalationMode, "force");
+    fire("autoRuntimeOverridesMode", "off");
+    assert.equal(app.ai.options.autoRuntimeOverridesMode, "off");
+    fire("executionLimitsMode", "on");
+    assert.equal(app.ai.options.executionLimitsMode, "on");
+    fire("streamTimeoutMs", "15000");
+    assert.equal(app.ai.options.streamTimeoutMs, 15000);
+    fire("backgroundTimeoutMs", "32000");
+    assert.equal(app.ai.options.backgroundTimeoutMs, 32000);
   }
 
   {

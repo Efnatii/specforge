@@ -274,7 +274,9 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
   async function waitForBackgroundCompletion(responseId, payload, options, requestId, abortController) {
     const turnId = String(options?.turnId || app.ai.turnId || "");
     const pollMs = Math.max(250, Number(options?.backgroundPollMs || DEFAULT_BG_POLL_MS));
-    const timeoutMs = Math.max(15000, Number(options?.backgroundTimeoutMs || DEFAULT_BG_TIMEOUT_MS));
+    const timeoutRaw = Number(options?.backgroundTimeoutMs);
+    const timeoutEnabled = Number.isFinite(timeoutRaw) ? timeoutRaw > 0 : true;
+    const timeoutMs = timeoutEnabled ? Math.max(15000, Number(timeoutRaw || DEFAULT_BG_TIMEOUT_MS)) : 0;
     const startedAt = Date.now();
     let pollCount = 0;
     const includeQuery = buildIncludeQuery(payload?.include);
@@ -290,7 +292,7 @@ function createAgentRuntimeJsonTransportInternal(ctx) {
         throw e;
       }
 
-      if ((Date.now() - startedAt) > timeoutMs) {
+      if (timeoutEnabled && (Date.now() - startedAt) > timeoutMs) {
         const e = new Error("background response timeout");
         e.no_fallback = true;
         throw e;

@@ -92,7 +92,9 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     const requestId = uid();
     const turnId = options?.turnId || app.ai.turnId || "";
     app.ai.currentRequestId = requestId;
-    const timeoutMs = Math.max(30000, num(options?.timeout_ms, 600000));
+    const timeoutRaw = Number(options?.timeout_ms);
+    const timeoutEnabled = Number.isFinite(timeoutRaw) ? timeoutRaw > 0 : true;
+    const timeoutMs = timeoutEnabled ? Math.max(30000, num(timeoutRaw, 600000)) : 0;
     const requestedServiceTier = String(payload?.service_tier || "default");
     const lowBandwidthMode = getRuntimeAwareOption("lowBandwidthMode", false) === true;
     const includeItems = Array.isArray(payload?.include)
@@ -128,6 +130,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         prompt_cache: hasPromptCache,
         safety_identifier: hasSafetyIdentifier,
         text_format: textFormatType || null,
+        timeout_ms: timeoutEnabled ? timeoutMs : "unbounded",
       },
     });
 
@@ -138,7 +141,9 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
       } catch {}
     };
     setActiveAbort(abortFn);
-    const timer = setTimeout(() => controller.abort("timeout"), timeoutMs);
+    const timer = timeoutEnabled
+      ? setTimeout(() => controller.abort("timeout"), timeoutMs)
+      : null;
     let res = null;
     try {
     try {
@@ -157,9 +162,9 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         signal: controller.signal,
       });
     } catch (err) {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       if (isAbortError(err)) {
-        if (isTimeoutAbort(controller, err)) {
+        if (timeoutEnabled && isTimeoutAbort(controller, err)) {
           const e = new Error(`stream timeout after ${timeoutMs}ms`);
           e.timeout = true;
           throw e;
@@ -176,7 +181,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     const ct = String(res.headers.get("content-type") || "").toLowerCase();
 
     if (!res.ok) {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       const body = await res.text();
       const ms = Date.now() - startedAt;
       const shortBody = compactText(body);
@@ -200,7 +205,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     }
 
     if (!ct.includes("text/event-stream") || !res.body) {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       let parsed = null;
       try {
         parsed = await res.json();
@@ -229,6 +234,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
           safety_identifier: hasSafetyIdentifier,
           truncation: truncationMode || null,
           text_format: textFormatType || null,
+          timeout_ms: timeoutEnabled ? timeoutMs : "unbounded",
         },
       });
       app.ai.serviceTierActual = String(parsed?.service_tier || "");
@@ -323,7 +329,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         }
       }
     } finally {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
     }
 
     if (failed) {
@@ -376,6 +382,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
         safety_identifier: hasSafetyIdentifier,
         truncation: truncationMode || null,
         text_format: textFormatType || null,
+        timeout_ms: timeoutEnabled ? timeoutMs : "unbounded",
       },
     });
     if (responseStatus === "incomplete") {
@@ -390,7 +397,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
 
     const hasWebSearch = Array.isArray(completed?.output) && completed.output.some((item) => String(item?.type || "").includes("web_search"));
     if (hasWebSearch) {
-      addExternalJournal("web.search", "OpenAI выполнил web_search tool", {
+      addExternalJournal("web.search", "OpenAI executed web_search tool", {
         turn_id: turnId,
         request_id: reqId,
         response_id: responseId || String(completed?.id || ""),
@@ -402,7 +409,7 @@ function createAgentRuntimeStreamTransportInternal(ctx) {
     app.ai.currentRequestId = reqId;
     return completed;
   } catch (err) {
-    if (isTimeoutAbort(controller, err)) {
+    if (timeoutEnabled && isTimeoutAbort(controller, err)) {
       addExternalJournal("request.timeout", `stream timeout after ${timeoutMs}ms`, {
         level: "warning",
         status: "error",

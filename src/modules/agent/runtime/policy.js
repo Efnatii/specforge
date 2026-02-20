@@ -534,13 +534,135 @@ function createAgentRuntimePolicyInternal(ctx) {
     return { ...preset };
   }
 
+  function analyzeTaskComplexity(taskTextRaw, options = {}) {
+    const text = String(taskTextRaw || "").trim();
+    const src = text.toLowerCase();
+    const attachmentsCount = Math.max(0, num(options?.attachmentsCount, 0));
+    const sentenceCount = (text.match(/[.!?\n]+/g) || []).length;
+    const longText = text.length >= 260;
+    const numericHints = (src.match(/\b\d{2,4}\b/g) || []).length;
+
+    const simpleDefinitionRe = /^\s*(what is|what's|define|explain|who is|что такое|кто такой|объясни|дай определение)\b/i;
+    const sourceScopeRe = /(source code|repository|repo|codebase|module|file|files|project|исходник|репозитор|код|проект|модул|файл)/i;
+    const analysisIntentRe = /(code review|static analy|lint|test coverage|refactor|audit|review|debug|root cause|diagnos|investigat|analysis|analy|bug|аудит|ревью|разбор|исслед|проанализ|анализ|причин|почему\s+лома|расслед)/i;
+    const deepCueRe = /(deep dive|full audit|end[-\s]?to[-\s]?end|totally|total|fully|unlimited|max(?:imum)?|до конца|тоталь|полност|глубок|максимум|не\s+ограничивай|без\s+огранич)/i;
+    const noLimitsCueRe = /(no\s+limit|without\s+limits|as\s+much\s+as\s+needed|unbounded|сколько\s+нужно|без\s+огранич|не\s*хочу[\s\S]{0,24}огранич|ни\s*хочу[\s\S]{0,24}огранич|нихочу[\s\S]{0,24}огранич|нехочу[\s\S]{0,24}огранич)/i;
+    const strictAccuracyCueRe = /(exact|strict|100%|zero mistakes|no regression|максимально точно|строго|без ошибок|без регрессий|тотально проверь|проверь всё)/i;
+    const researchCueRe = /(research|search|source|citation|cite|web|internet|поиск|источник|ссылк|веб|интернет)/i;
+    const longSessionCueRe = /(long running|continuous|many rounds|много шаг|долг\w+\s+диалог|длинн\w+\s+сесси|много\s+раунд)/i;
+    const bulkCueRe = /(bulk|batch|import|массов|пакетн|all\s+(items|positions|rows|articles)|все[\s\S]{0,48}(позиц|строк|артикул|элемент))/i;
+    const mutationCueRe = /(create|add|update|delete|replace|set|write|change|созда|добав|обнов|измени|удал|замен|заполни|пересчит)/i;
+    const multiStepCueRe = /(step|stages|plan|pipeline|workflow|сначала|затем|после|этап|шаг|алгоритм)/i;
+    const speedCueRe = /(quick|fast|brief|short|быстр|кратк|коротк)/i;
+    const resourceFreedomCueRe = /(не\s+ограничивай|без\s+лимит|без\s+огранич|максимум\s+ресурс|максимально\s+свобод|full\s+resources?|unlimited\s+resources?|as\s+many\s+tool\s+calls\s+as\s+needed|no\s+token\s+limit|no\s+tool\s+limit|без\s+ограничений\s+по\s+(?:ресурс|токен|врем|инструмент|контекст))/i;
+    const completionDemandCueRe = /(до\s+конца|полностью|максимум|тотальн|не\s+ограничивай|без\s+огранич|end[-\s]?to[-\s]?end|finish(?:\s+fully)?|complete(?:\s+fully)?|maximum|as\s+much\s+as\s+needed)/i;
+    const sourceAuditPairRe = /((source code|repository|repo|codebase|module|file|files|project|исходник|репозитор|код|проект|модул|файл)[\s\S]{0,72}(audit|review|analysis|analy|debug|root cause|diagnos|investigat|аудит|ревью|разбор|исслед|проанализ|анализ|причин|почему\s+лома|расслед))|((audit|review|analysis|analy|debug|root cause|diagnos|investigat|аудит|ревью|разбор|исслед|проанализ|анализ|причин|почему\s+лома|расслед)[\s\S]{0,72}(source code|repository|repo|codebase|module|file|files|project|исходник|репозитор|код|проект|модул|файл))/i;
+    const hugeBatchCueRe = /(\b\d{2,4}\b[\s\S]{0,24}(assembl|items|positions|rows|files|modules|сбор|позиц|строк|файл|модул))|(массов|пакетн|bulk|batch)/i;
+    const enumItemCount = (text.match(/(?:^|\n)\s*(?:[-*•]|\d+[.)]|[A-Za-zА-Яа-я][.)])\s+/gm) || []).length;
+
+    const simpleDefinition = simpleDefinitionRe.test(src);
+    const sourceScope = sourceScopeRe.test(src) || attachmentsCount > 0;
+    const analysisIntent = analysisIntentRe.test(src);
+    const deepCue = deepCueRe.test(src);
+    const resourceFreedomCue = resourceFreedomCueRe.test(src);
+    const noLimitsCue = noLimitsCueRe.test(src) || resourceFreedomCue;
+    const strictAccuracyCue = strictAccuracyCueRe.test(src);
+    const researchCue = researchCueRe.test(src);
+    const longSessionCue = longSessionCueRe.test(src);
+    const bulkCue = bulkCueRe.test(src);
+    const mutationCue = mutationCueRe.test(src);
+    const multiStepCue = multiStepCueRe.test(src);
+    const speedCue = speedCueRe.test(src);
+    const completionDemandCue = completionDemandCueRe.test(src);
+    const sourceAuditPairCue = sourceAuditPairRe.test(src);
+    const hugeBatchCue = hugeBatchCueRe.test(src);
+    const enumeratedListCue = enumItemCount >= 6;
+
+    let score = 0;
+    if (sourceScope) score += 4;
+    if (analysisIntent) score += 4;
+    if (deepCue) score += 4;
+    if (noLimitsCue) score += 6;
+    if (resourceFreedomCue) score += 3;
+    if (strictAccuracyCue) score += 3;
+    if (researchCue) score += 2;
+    if (longSessionCue) score += 3;
+    if (bulkCue) score += 3;
+    if (mutationCue) score += 2;
+    if (multiStepCue) score += 2;
+    if (completionDemandCue) score += 2;
+    if (sourceAuditPairCue) score += 3;
+    if (hugeBatchCue) score += 3;
+    if (enumeratedListCue) score += 2;
+    if (attachmentsCount > 0) score += Math.min(4, 1 + Math.floor(Math.log10(attachmentsCount + 1)));
+    if (numericHints >= 2) score += Math.min(3, numericHints - 1);
+    if (longText) score += 1;
+    if (sentenceCount >= 3) score += 1;
+    if (simpleDefinition) score -= 3;
+    if (simpleDefinition && !sourceScope && !analysisIntent && !deepCue) score -= 2;
+    if (speedCue && !analysisIntent && !sourceScope) score -= 1;
+    score = Math.max(0, score);
+
+    let severity = "light";
+    if (score >= 13) severity = "extreme";
+    else if (score >= 9) severity = "heavy";
+    else if (score >= 5) severity = "moderate";
+
+    const wantsDeepProfile = noLimitsCue
+      || deepCue
+      || (sourceScope && analysisIntent)
+      || completionDemandCue
+      || sourceAuditPairCue
+      || resourceFreedomCue
+      || strictAccuracyCue
+      || severity === "heavy"
+      || severity === "extreme";
+
+    const prefersSourceAudit = sourceScope && (analysisIntent || deepCue || noLimitsCue || strictAccuracyCue || sourceAuditPairCue);
+    const prefersResearch = researchCue && !mutationCue;
+    const prefersLongrun = longSessionCue
+      || hugeBatchCue
+      || (resourceFreedomCue && (multiStepCue || bulkCue || analysisIntent))
+      || (severity === "extreme" && (bulkCue || multiStepCue || enumeratedListCue));
+    const canUseFast = severity === "light"
+      && !sourceScope
+      && !analysisIntent
+      && !strictAccuracyCue
+      && !deepCue
+      && !noLimitsCue;
+
+    return {
+      score,
+      severity,
+      simpleDefinition,
+      sourceScope,
+      analysisIntent,
+      deepCue,
+      noLimitsCue,
+      strictAccuracyCue,
+      researchCue,
+      longSessionCue,
+      bulkCue,
+      mutationCue,
+      multiStepCue,
+      speedCue,
+      completionDemandCue,
+      sourceAuditPairCue,
+      hugeBatchCue,
+      enumeratedListCue,
+      resourceFreedomCue,
+      wantsDeepProfile,
+      prefersSourceAudit,
+      prefersResearch,
+      prefersLongrun,
+      canUseFast,
+    };
+  }
+
   function inferAutoTaskProfile(taskTextRaw) {
     const src = String(taskTextRaw || "").toLowerCase();
     if (!src) return { selected: "balanced", reason: "empty_request" };
-    const simpleDefinitionRe = /^\s*(what is|what's|define|explain|who is|что такое|кто такой|объясни|дай определение)\b/i;
-    const sourceScopeRe = /(source code|repository|repo|codebase|исходник|репозитор|код|проект|модул|файл)/i;
-    const sourceAuditIntentRe = /(code review|static analy|lint|test coverage|refactor|audit|review|debug|root cause|diagnos|investigat|analy|analysis|bug|аудит|ревью|разбор|исслед|проанализ|анализ|причин|почему\s+лома|расслед)/i;
-    const deepAuditCueRe = /(deep dive|full audit|end[-\s]?to[-\s]?end|тоталь|до конца|полност|глубок)/i;
+    const complexity = analyzeTaskComplexity(src);
 
     if (/(mccb|mcb|rcd|rcbo|contactor|busbar|bom|bill of materials|switchboard|electrical spec|\u0430\u0432\u0442\u043e\u043c\u0430\u0442|\u0443\u0437\u043e|\u0434\u0438\u0444|\u0449\u0438\u0442|\u0441\u043f\u0435\u0446\u0438\u0444)/i.test(src)) {
       return { selected: "spec_strict", reason: "electrical_spec_keywords" };
@@ -551,49 +673,147 @@ function createAgentRuntimePolicyInternal(ctx) {
     if (/(price search|price lookup|rfq|quote|supplier|\u0446\u0435\u043d\u0430|\u043f\u0440\u0430\u0439\u0441|\u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442|\u043f\u043e\u0441\u0442\u0430\u0432\u0449)/i.test(src)) {
       return { selected: "price_search", reason: "price_search_keywords" };
     }
-    if (sourceScopeRe.test(src) && (sourceAuditIntentRe.test(src) || deepAuditCueRe.test(src)) && !simpleDefinitionRe.test(src)) {
-      return { selected: "source_audit", reason: "source_audit_scope_intent_keywords" };
+    if (complexity.noLimitsCue && complexity.sourceScope && complexity.analysisIntent && !complexity.simpleDefinition) {
+      return { selected: "source_audit", reason: `source_audit_forced_nolimits_${complexity.severity}` };
     }
-    if (/(source code|repository|repo|codebase|code review|static analy|lint|test coverage|refactor|\u0438\u0441\u0445\u043e\u0434\u043d\u0438\u043a|\u0440\u0435\u0444\u0430\u043a\u0442\u043e\u0440|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442)/i.test(src)) {
-      if (simpleDefinitionRe.test(src)) {
-        return { selected: "balanced", reason: "source_term_definition_query" };
-      }
-      return { selected: "source_audit", reason: "source_audit_keywords" };
+    if (complexity.noLimitsCue && !complexity.sourceScope && complexity.analysisIntent && !complexity.mutationCue) {
+      return { selected: "research", reason: `research_forced_nolimits_${complexity.severity}` };
+    }
+    if (complexity.noLimitsCue && complexity.prefersLongrun && complexity.mutationCue) {
+      return { selected: "longrun", reason: `longrun_forced_nolimits_${complexity.severity}` };
     }
 
-    const bulkScopeRe = /(\b(all|every|each)\b[\s\S]{0,48}\b(item|items|article|articles|position|positions|row|rows|sku|skus)\b|(\u0432\u0441\u0435|\u043a\u0430\u0436\u0434\w*)[\s\S]{0,48}(\u0430\u0440\u0442\u0438\u043a\u0443\u043b|\u043f\u043e\u0437\u0438\u0446|\u0441\u0442\u0440\u043e\u043a|\u0442\u043e\u0432\u0430\u0440|\u044d\u043b\u0435\u043c\u0435\u043d\u0442|sku))/i;
-    if (/(bulk|batch|import|\u0438\u043c\u043f\u043e\u0440\u0442|\u043c\u0430\u0441\u0441\u043e\u0432|\u043f\u0430\u043a\u0435\u0442\u043d)/i.test(src) || bulkScopeRe.test(src)) {
+    if (complexity.prefersSourceAudit && !complexity.simpleDefinition) {
+      return { selected: "source_audit", reason: `source_audit_complexity_${complexity.severity}` };
+    }
+    if (complexity.bulkCue && complexity.prefersLongrun) {
+      return { selected: "longrun", reason: "bulk_longrun_complexity" };
+    }
+    if (complexity.bulkCue) {
       return { selected: "bulk", reason: "bulk_keywords" };
     }
-    if (/(long running|continuous|\u0434\u043b\u0438\u043d\u043d\w+\s+\u0441\u0435\u0441\u0441\u0438|\u043c\u043d\u043e\u0433\u043e\s+\u0448\u0430\u0433|\u0434\u043e\u043b\u0433\w+\s+\u0434\u0438\u0430\u043b\u043e\u0433|\u043c\u043d\u043e\u0433\u043e\s+\u0440\u0430\u0443\u043d\u0434)/i.test(src)) {
-      return { selected: "longrun", reason: "long_running_keywords" };
+    if (complexity.prefersLongrun) {
+      return { selected: "longrun", reason: "long_running_complexity" };
     }
-    if (/(analy|analysis|review|audit|compare|debug|bug|root cause|\u0430\u043d\u0430\u043b\u0438\u0437|\u043f\u0440\u043e\u0430\u043d\u0430\u043b\u0438\u0437|\u0441\u0440\u0430\u0432\u043d|\u043f\u0440\u043e\u0432\u0435\u0440|\u0430\u0443\u0434\u0438\u0442|\u0440\u0435\u0432\u044c\u044e|\u043e\u0431\u0437\u043e\u0440|\u0440\u0430\u0437\u0431\u043e\u0440|\u043f\u0440\u0438\u0447\u0438\u043d|\u043f\u043e\u0447\u0435\u043c\u0443\s+\u043b\u043e\u043c\u0430)/i.test(src)) {
+
+    if (complexity.analysisIntent) {
+      if (complexity.sourceScope && !complexity.simpleDefinition) {
+        return { selected: "source_audit", reason: `source_scope_analysis_${complexity.severity}` };
+      }
+      if (complexity.severity === "extreme" || complexity.severity === "heavy") {
+        return { selected: "accurate", reason: `analysis_complexity_${complexity.severity}` };
+      }
       return { selected: "accurate", reason: "analysis_keywords" };
     }
-    if (/(research|search|source|citation|cite|web|internet|\u043f\u043e\u0438\u0441\u043a|\u0438\u0441\u0441\u043b\u0435\u0434|\u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a|\u0441\u0441\u044b\u043b|\u0432\u0435\u0431|\u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442)/i.test(src)) {
-      return { selected: "research", reason: "research_keywords" };
+    if (complexity.prefersResearch) {
+      return { selected: "research", reason: `research_complexity_${complexity.severity}` };
     }
-    if (/(quick|fast|brief|short|\u0431\u044b\u0441\u0442\u0440|\u043a\u0440\u0430\u0442\u043a|\u043a\u043e\u0440\u043e\u0442\u043a)/i.test(src)) {
+    if (complexity.canUseFast && complexity.speedCue) {
       return { selected: "fast", reason: "speed_keywords" };
+    }
+    if (complexity.severity === "extreme") {
+      return { selected: "research", reason: "extreme_complexity_fallback" };
+    }
+    if (complexity.severity === "heavy") {
+      if (complexity.sourceScope || complexity.sourceAuditPairCue) {
+        return { selected: "source_audit", reason: "heavy_source_scope_fallback" };
+      }
+      return { selected: "accurate", reason: "heavy_complexity_fallback" };
     }
     return { selected: "balanced", reason: "default" };
   }
 
+  function shouldAutoEscalateReasoning(taskTextRaw, profileModeRaw = "auto") {
+    const escalationModeRaw = String(app?.ai?.options?.autoReasoningEscalationMode || "").trim().toLowerCase();
+    const legacyEscalationEnabled = app?.ai?.options?.autoReasoningEscalation !== false;
+    const escalationMode = escalationModeRaw === "off" || escalationModeRaw === "auto" || escalationModeRaw === "force"
+      ? escalationModeRaw
+      : (legacyEscalationEnabled ? "auto" : "off");
+    const complexity = analyzeTaskComplexity(taskTextRaw);
+    if (escalationMode === "off") return { escalate: false, reason: "auto_escalation_disabled", complexity };
+
+    const mode = normalizeTaskProfile(profileModeRaw, "auto");
+    const noReasoningMode = normalizeNoReasoningProfile(app?.ai?.options?.noReasoningProfile, "standard");
+    if (noReasoningMode === "custom") {
+      return { escalate: false, reason: "manual_no_reasoning_profile_forced", complexity };
+    }
+    if (mode === "custom") {
+      return { escalate: false, reason: "manual_task_profile_forced", complexity };
+    }
+    const explicitNeed = complexity.noLimitsCue || complexity.deepCue || complexity.prefersSourceAudit;
+    const strictNeed = complexity.strictAccuracyCue && (complexity.analysisIntent || complexity.sourceScope);
+    const heavyNeed = complexity.severity === "heavy" || complexity.severity === "extreme";
+    const moderateNeed = complexity.severity === "moderate" && (complexity.sourceScope || complexity.analysisIntent || complexity.multiStepCue);
+    const moderateAuditNeed = moderateNeed && (complexity.prefersSourceAudit || (complexity.sourceScope && complexity.analysisIntent));
+    const toolFreeHardBlock = noReasoningMode === "tool_free" && !explicitNeed && complexity.severity !== "extreme";
+    if (toolFreeHardBlock) {
+      return { escalate: false, reason: "manual_no_reasoning_profile_locked", complexity };
+    }
+    const escalate = escalationMode === "force"
+      ? (explicitNeed || strictNeed || heavyNeed || moderateNeed)
+      : (explicitNeed || strictNeed || heavyNeed || moderateAuditNeed);
+    return {
+      escalate,
+      reason: escalate
+        ? (escalationMode === "force" ? "forced_complexity_requires_reasoning" : "heavy_complexity_requires_reasoning")
+        : "complexity_not_high_enough",
+      complexity,
+    };
+  }
+
   function resolveTaskProfile(taskTextRaw = "", profileRaw = null) {
+    const mode = normalizeTaskProfile(profileRaw ?? app?.ai?.options?.taskProfile, "auto");
     if (app?.ai?.options?.reasoning === false) {
-      const mode = normalizeNoReasoningProfile(app?.ai?.options?.noReasoningProfile, "standard");
-      if (mode === "custom") {
+      const escalation = shouldAutoEscalateReasoning(taskTextRaw, mode);
+      if (escalation.escalate) {
+        const inferred = inferAutoTaskProfile(taskTextRaw);
+        const selected = mode !== "auto" && mode !== "custom" ? mode : inferred.selected;
+        const baseOverrides = getTaskProfilePreset(selected) || {};
+        const overrides = {
+          ...baseOverrides,
+          reasoning: true,
+          executionLimitsMode: "off",
+          useConversationState: true,
+        };
+        if (!overrides.compactMode || overrides.compactMode === "off") overrides.compactMode = "auto";
+        const cleanContextHandoffMax = Number(overrides.cleanContextHandoffMax);
+        if (!Number.isFinite(cleanContextHandoffMax) || cleanContextHandoffMax < 2) {
+          overrides.cleanContextHandoffMax = escalation.complexity.noLimitsCue ? 6 : 3;
+        }
+        if (escalation.complexity.noLimitsCue || escalation.complexity.severity === "extreme") {
+          if (overrides.toolsMode === "auto" || overrides.toolsMode === "prefer") {
+            overrides.toolsMode = "require";
+          }
+          if (overrides.reasoningDepth === "fast") overrides.reasoningDepth = "balanced";
+          if (overrides.reasoningVerify === "off") overrides.reasoningVerify = "basic";
+          if (overrides.compactMode !== "on") overrides.compactMode = "on";
+          if (!Number.isFinite(Number(overrides.compactThresholdTokens)) || Number(overrides.compactThresholdTokens) > 45000) {
+            overrides.compactThresholdTokens = 45000;
+          }
+          if (!Number.isFinite(Number(overrides.compactTurnThreshold)) || Number(overrides.compactTurnThreshold) > 12) {
+            overrides.compactTurnThreshold = 12;
+          }
+          overrides.reasoningMaxTokens = 0;
+        }
+        return {
+          mode: mode === "custom" ? "auto" : (mode === "auto" ? "auto" : mode),
+          selected,
+          reason: `reasoning_auto_escalated:${inferred.reason}:${escalation.reason}`,
+          overrides,
+        };
+      }
+
+      const noReasoningMode = normalizeNoReasoningProfile(app?.ai?.options?.noReasoningProfile, "standard");
+      if (noReasoningMode === "custom") {
         return { mode: "no_reasoning_custom", selected: "custom", reason: "manual_no_reasoning_custom", overrides: null };
       }
       return {
         mode: "no_reasoning",
-        selected: mode,
+        selected: noReasoningMode,
         reason: "manual_no_reasoning_profile",
-        overrides: getNoReasoningProfilePreset(mode),
+        overrides: getNoReasoningProfilePreset(noReasoningMode),
       };
     }
-    const mode = normalizeTaskProfile(profileRaw ?? app?.ai?.options?.taskProfile, "auto");
     if (mode === "custom") {
       return { mode, selected: "custom", reason: "manual_custom", overrides: null };
     }
@@ -901,7 +1121,9 @@ function createAgentRuntimePolicyInternal(ctx) {
     estimateExpectedMutationCount,
     normalizeTaskProfile,
     getTaskProfilePreset,
+    analyzeTaskComplexity,
     inferAutoTaskProfile,
+    shouldAutoEscalateReasoning,
     resolveTaskProfile,
     looksLikePseudoToolText,
     isAgentTextIncomplete,

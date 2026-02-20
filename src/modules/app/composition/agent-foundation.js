@@ -60,6 +60,7 @@ export class AppAgentFoundationCompositionModule {
         marketFields: positionMarketFields,
       },
       deps: {
+        getMinSources: () => Number(app?.ai?.options?.factCheckMinSources || marketVerificationMinSources || 2),
         getAttachments: () => app.ai.attachments,
         isWebSearchEnabled: () => Boolean(app.ai.options.webSearch),
         normalizeHttpUrl: (raw) => {
