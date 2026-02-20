@@ -207,7 +207,11 @@ function createAgentStateToolsInternal(ctx) {
       const riskyMode = riskyModeRaw === "confirm" || riskyModeRaw === "allow_if_asked" || riskyModeRaw === "never"
         ? riskyModeRaw
         : "allow_if_asked";
-      const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
+      const toolsModeRaw = String(getRuntimeAwareOption("toolsMode", "auto")).trim().toLowerCase();
+      const toolsMode = toolsModeRaw === "none" || toolsModeRaw === "auto" || toolsModeRaw === "prefer" || toolsModeRaw === "require"
+        ? toolsModeRaw
+        : "auto";
+      const allowQuestions = clarifyMode !== "never" && riskyMode !== "never" && toolsMode !== "none";
       if (!allowQuestions) {
         addTableJournal("ask_user_question", `Ошибка: вопросы пользователю запрещены настройкой (clarify=${clarifyMode}, risky=${riskyMode})`);
         return { ok: false, applied: 0, error: `questions are disabled (clarify=${clarifyMode}, risky=${riskyMode})` };

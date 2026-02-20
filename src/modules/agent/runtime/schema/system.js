@@ -257,7 +257,8 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
   function agentSystemPrompt() {
     const clarifyMode = normalizeEnum(getRuntimeAwareOption("reasoningClarify", "never"), ["never", "minimal", "normal"], "never");
     const riskyMode = normalizeEnum(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked"), ["confirm", "allow_if_asked", "never"], "allow_if_asked");
-    const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
+    const toolsMode = normalizeEnum(getRuntimeAwareOption("toolsMode", "auto"), ["none", "auto", "prefer", "require"], "auto");
+    const allowQuestions = clarifyMode !== "never" && riskyMode !== "never" && toolsMode !== "none";
     const selectedRangeInstruction = "If the user asks about selected cells or a highlighted range, call get_selection first and use its result.";
     const attachmentInstruction = "If attached files exist, use file_search first. For exact excerpts, call list_attachments and read_attachment.";
     const runtimeProfileInstruction = buildRuntimeProfileInstructions();

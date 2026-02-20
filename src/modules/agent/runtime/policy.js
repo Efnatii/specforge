@@ -223,11 +223,11 @@ function createAgentRuntimePolicyInternal(ctx) {
       reasoningDepth: "deep",
       reasoningVerify: "strict",
       reasoningSummary: "detailed",
-      reasoningClarify: "never",
+      reasoningClarify: "minimal",
       toolsMode: "require",
       brevityMode: "detailed",
       outputMode: "json",
-      riskyActionsMode: "allow_if_asked",
+      riskyActionsMode: "confirm",
       styleMode: "clean",
       citationsMode: "on",
       reasoningMaxTokens: 24000,
@@ -538,16 +538,16 @@ function createAgentRuntimePolicyInternal(ctx) {
     const src = String(taskTextRaw || "").toLowerCase();
     if (!src) return { selected: "balanced", reason: "empty_request" };
 
-    if (/(СЌР»РµРєС‚СЂРѕС‰|С‰РёС‚РѕРІ|С‰РёС‚|РІСЂСѓ|РіСЂС‰|Р°РІС‚РѕРјР°С‚|Р°РІСЂ|СѓР·Рѕ|rcd|rcbo|mccb|mcb|contactor|busbar|РєР»РµРјРј|С€РєР°С„|bom|bill of materials|СЃРїРµС†РёС„РёРєР°С†)/i.test(src)) {
+    if (/(mccb|mcb|rcd|rcbo|contactor|busbar|bom|bill of materials|switchboard|electrical spec|\u0430\u0432\u0442\u043e\u043c\u0430\u0442|\u0443\u0437\u043e|\u0434\u0438\u0444|\u0449\u0438\u0442|\u0441\u043f\u0435\u0446\u0438\u0444)/i.test(src)) {
       return { selected: "spec_strict", reason: "electrical_spec_keywords" };
     }
-    if (/(РєРѕРјРјРµСЂС‡РµСЃРє|РєРї\b|proposal|quotation|offer|С‚РµС…РЅРёРєРѕ-РєРѕРјРјРµСЂС‡РµСЃРє)/i.test(src)) {
+    if (/(proposal|quotation|offer|\u043a\u043f\b|\u043a\u043e\u043c\u043c\u0435\u0440\u0447)/i.test(src)) {
       return { selected: "proposal", reason: "proposal_keywords" };
     }
-    if (/(РїРѕРёСЃРє С†РµРЅ|РїСЂР°Р№СЃ|С†РµРЅР°|СЃС‚РѕРёРјРѕСЃС‚|supplier|РїРѕСЃС‚Р°РІС‰РёРє|price search|price lookup|rfq|quote)/i.test(src)) {
+    if (/(price search|price lookup|rfq|quote|supplier|\u0446\u0435\u043d\u0430|\u043f\u0440\u0430\u0439\u0441|\u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442|\u043f\u043e\u0441\u0442\u0430\u0432\u0449)/i.test(src)) {
       return { selected: "price_search", reason: "price_search_keywords" };
     }
-    if (/(РёСЃС…РѕРґРЅРёРє|source code|repository|repo|codebase|СЂРµС„Р°РєС‚РѕСЂ|code review|static analy|lint|test coverage|Р°СЂС…РёС‚РµРєС‚СѓСЂ)/i.test(src)) {
+    if (/(source code|repository|repo|codebase|code review|static analy|lint|test coverage|refactor|\u0438\u0441\u0445\u043e\u0434\u043d\u0438\u043a|\u0440\u0435\u0444\u0430\u043a\u0442\u043e\u0440|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442)/i.test(src)) {
       return { selected: "source_audit", reason: "source_audit_keywords" };
     }
 
@@ -555,7 +555,7 @@ function createAgentRuntimePolicyInternal(ctx) {
     if (/(bulk|batch|import|\u0438\u043c\u043f\u043e\u0440\u0442|\u043c\u0430\u0441\u0441\u043e\u0432|\u043f\u0430\u043a\u0435\u0442\u043d)/i.test(src) || bulkScopeRe.test(src)) {
       return { selected: "bulk", reason: "bulk_keywords" };
     }
-    if (/(long running|РґР»РёРЅРЅ\w+\s+СЃРµСЃСЃРё|РјРЅРѕРіРѕ С€Р°РіРѕРІ|РґРѕР»Рі\w+\s+РґРёР°Р»РѕРі|РјРЅРѕРіРѕ СЂР°СѓРЅРґРѕРІ|continuous)/i.test(src)) {
+    if (/(long running|continuous|\u0434\u043b\u0438\u043d\u043d\w+\s+\u0441\u0435\u0441\u0441\u0438|\u043c\u043d\u043e\u0433\u043e\s+\u0448\u0430\u0433|\u0434\u043e\u043b\u0433\w+\s+\u0434\u0438\u0430\u043b\u043e\u0433|\u043c\u043d\u043e\u0433\u043e\s+\u0440\u0430\u0443\u043d\u0434)/i.test(src)) {
       return { selected: "longrun", reason: "long_running_keywords" };
     }
     if (/(analy|analysis|review|audit|compare|debug|bug|\u0430\u043d\u0430\u043b\u0438\u0437|\u0441\u0440\u0430\u0432\u043d|\u043f\u0440\u043e\u0432\u0435\u0440|\u0430\u0443\u0434\u0438\u0442|\u043e\u0431\u0437\u043e\u0440)/i.test(src)) {
@@ -613,23 +613,22 @@ function createAgentRuntimePolicyInternal(ctx) {
     const src = String(text || "").toLowerCase();
     let count = 0;
 
-    if (/(СЃРѕР·РґР°|create|РЅРѕРІ(СѓСЋ|Р°СЏ) СЃР±РѕСЂРє|new assembly)/i.test(src)) count += 1;
-    if (/(РґРѕР±Р°РІ|insert|append|РїРѕР·РёС†|РјР°С‚РµСЂРёР°Р»|Р°РІС‚РѕРјР°С‚)/i.test(src)) count += 1;
-    if (/(РёР·РјРµРЅРё|РѕР±РЅРѕРІ|РїРѕРјРµРЅСЏ|Р·Р°РјРµРЅРё|СѓРґР°Р»Рё|update|set|write|delete|replace|СѓРІРµР»РёС‡|СѓРјРµРЅСЊС€)/i.test(src)) count = Math.max(count, 1);
+    if (/(create|new assembly|\u0441\u043e\u0437\u0434\u0430|\u043d\u043e\u0432\w+\s+\u0441\u0431\u043e\u0440\u043a)/i.test(src)) count += 1;
+    if (/(insert|append|add|position|material|\u0434\u043e\u0431\u0430\u0432|\u043f\u043e\u0437\u0438\u0446|\u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b|\u0430\u0432\u0442\u043e\u043c\u0430\u0442)/i.test(src)) count += 1;
+    if (/(update|set|write|delete|replace|change|\u0438\u0437\u043c\u0435\u043d|\u043e\u0431\u043d\u043e\u0432|\u043f\u043e\u043c\u0435\u043d|\u0437\u0430\u043c\u0435\u043d|\u0443\u0434\u0430\u043b|\u0443\u0432\u0435\u043b\u0438\u0447|\u0443\u043c\u0435\u043d\u044c\u0448)/i.test(src)) count = Math.max(count, 1);
 
-    const bulkAllRequested = /(\ball\b|\bevery\b|\beach\b|РІСЃРµ|РІСЃРµС…|РІСЃСЋ|РІСЃРµР№|РІРµСЃСЊ|РєР°Р¶Рґ)/i.test(src);
-    const bulkByArticles = /((all|РІСЃРµ|РєР°Р¶Рґ)[^.!?\n]{0,64}(article|sku|item|position|Р°СЂС‚РёРєСѓР»|РїРѕР·РёС†))/i.test(src);
-    if (bulkAllRequested) count = Math.max(count, 50);
-    if (bulkByArticles) count = Math.max(count, 200);
+    const bulkAllRequested = /(\ball\b|\bevery\b|\beach\b|\u0432\u0441\u0435|\u0432\u0441\u0435\u0445|\u0432\u0441\u044e|\u0432\u0435\u0441\u044c|\u043a\u0430\u0436\u0434)/i.test(src);
+    const bulkByArticles = /((all|\u0432\u0441\u0435|\u043a\u0430\u0436\u0434)[^.!?\n]{0,64}(article|sku|item|position|\u0430\u0440\u0442\u0438\u043a\u0443\u043b|\u043f\u043e\u0437\u0438\u0446))/i.test(src);
+    if (bulkAllRequested || bulkByArticles) count = Math.max(count, 2);
 
-    const explicitAmountMatch = src.match(/(?:РґРѕ|РјРёРЅРёРјСѓРј|РЅРµ\s+РјРµРЅРµРµ|at\s+least)?\s*(\d{2,4})\s*(?:item|items|sku|article|position|positions|РїРѕР·РёС†|Р°СЂС‚РёРєСѓР»)/i);
+    const explicitAmountMatch = src.match(/(?:\u0434\u043e|\u043c\u0438\u043d\u0438\u043c\u0443\u043c|\u043d\u0435\s+\u043c\u0435\u043d\u0435\u0435|at\s+least)?\s*(\d{1,4})\s*(?:item|items|sku|article|position|positions|\u043f\u043e\u0437\u0438\u0446|\u0430\u0440\u0442\u0438\u043a\u0443\u043b)/i);
     if (explicitAmountMatch) {
       const explicitAmount = Number.parseInt(explicitAmountMatch[1], 10);
       if (Number.isFinite(explicitAmount)) count = Math.max(count, explicitAmount);
     }
 
     if (count <= 0) return 1;
-    return Math.min(500, Math.max(1, count));
+    return Math.min(120, Math.max(1, count));
   }
 
   function looksLikePseudoToolText(text) {
@@ -640,6 +639,23 @@ function createAgentRuntimePolicyInternal(ctx) {
     if (/"type"\s*:\s*"multi_tool_result"/i.test(src)) return true;
     if (/^###\s*calling\b/i.test(src)) return true;
     return false;
+  }
+
+  function normalizeToolsMode(value, fallback = "auto") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "none" || raw === "auto" || raw === "prefer" || raw === "require") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "none" || fb === "auto" || fb === "prefer" || fb === "require") return fb;
+    return "auto";
+  }
+
+  function hasDirectQuestionCue(textRaw) {
+    const text = String(textRaw || "").trim();
+    if (!text) return false;
+    if (/\?\s*$/.test(text) && /(choose|confirm|reply|answer|which|what|could you|would you|need clarification|\u0443\u0442\u043e\u0447\u043d|\u0432\u044b\u0431\u0435\u0440|\u0443\u043a\u0430\u0436|\u043e\u0442\u0432\u0435\u0442|\u043a\u0430\u043a\u043e\u0439\s+\u0432\u0430\u0440\u0438\u0430\u043d\u0442)/i.test(text)) {
+      return true;
+    }
+    return /(\u0443\u0442\u043e\u0447\u043d|\u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435|\u0443\u043a\u0430\u0436\u0438\u0442\u0435|\u043e\u0442\u0432\u0435\u0442\u044c\u0442\u0435|would you like|if you want|need clarification)/i.test(text);
   }
 
   function isAgentTextIncomplete(text) {
@@ -655,29 +671,63 @@ function createAgentRuntimePolicyInternal(ctx) {
       ? riskyModeRaw
       : "allow_if_asked";
     const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
-    if (!allowQuestions && AI_INCOMPLETE_RESPONSE_RE.test(src)) return true;
-    if (/^(РІС‹РїРѕР»РЅСЏСЋ|РїСЂРёСЃС‚СѓРїР°СЋ|РїРѕРґРѕР¶РґРёС‚Рµ|РЅР°С‡РёРЅР°СЋ|calling|running|i'?ll run)/i.test(src)) return true;
+    if (!allowQuestions && AI_INCOMPLETE_RESPONSE_RE.test(src)) {
+      if (/(questions?\s+(are|is)\s+disabled|\u0432\u043e\u043f\u0440\u043e\u0441\u044b\s+\u0437\u0430\u043f\u0440\u0435\u0449\u0435\u043d\u044b|\u043d\u0435\s+\u043c\u043e\u0433\u0443\s+\u0437\u0430\u0434\u0430\u0432\u0430\u0442\u044c\s+\u0432\u043e\u043f\u0440\u043e\u0441)/i.test(src)) {
+        return false;
+      }
+      return true;
+    }
+    if (/^(\u0432\u044b\u043f\u043e\u043b\u043d\u044f\u044e|\u043f\u0440\u0438\u0441\u0442\u0443\u043f\u0430\u044e|\u043f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435|\u043d\u0430\u0447\u0438\u043d\u0430\u044e|calling|running|i'?ll run)/i.test(src)) return true;
     return false;
   }
 
   function shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text) {
     if (looksLikePseudoToolText(text)) return true;
+    const totalToolCalls = num(toolStats?.totalToolCalls, 0);
+    const successfulMutations = num(toolStats?.successfulMutations, 0);
+    const toolsMode = normalizeToolsMode(getEffectiveAiOption("toolsMode", "auto"), "auto");
+    const toolsRequired = toolsMode === "require";
+
+    const clarifyModeRaw = String(getEffectiveAiOption("reasoningClarify", "never")).trim().toLowerCase();
+    const clarifyMode = clarifyModeRaw === "never" || clarifyModeRaw === "minimal" || clarifyModeRaw === "normal"
+      ? clarifyModeRaw
+      : "never";
+    const riskyModeRaw = String(getEffectiveAiOption("riskyActionsMode", "allow_if_asked")).trim().toLowerCase();
+    const riskyMode = riskyModeRaw === "confirm" || riskyModeRaw === "allow_if_asked" || riskyModeRaw === "never"
+      ? riskyModeRaw
+      : "allow_if_asked";
+    const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
+
+    if (totalToolCalls === 0) {
+      if (intentToMutate) return true;
+      if (toolsRequired && intentToUseTools) return true;
+      if (allowQuestions && hasDirectQuestionCue(text) && toolsMode !== "none") return true;
+      return false;
+    }
+
     if (isAgentTextIncomplete(text)) return true;
-    if (!intentToUseTools && num(toolStats?.totalToolCalls, 0) === 0) return false;
-    if (num(toolStats?.totalToolCalls, 0) === 0) return true;
-    if (intentToMutate && toolStats.successfulMutations < expectedMutations) return true;
+
+    if (intentToMutate) {
+      const expectedRaw = Math.max(0, num(expectedMutations, 0));
+      const strictExpected = expectedRaw <= 12
+        ? expectedRaw
+        : Math.min(12, Math.max(3, Math.round(Math.sqrt(expectedRaw))));
+      if (strictExpected > 0 && successfulMutations < strictExpected) return true;
+      if (strictExpected <= 0 && successfulMutations === 0) return true;
+    }
+
     return false;
   }
 
   function buildAgentRetryReason(expectedMutations, toolStats, text) {
-    if (isAgentTextIncomplete(text)) return "РѕС‚РІРµС‚ РЅРµ Р·Р°РІРµСЂС€Р°РµС‚ Р·Р°РґР°С‡Сѓ";
-    if (num(toolStats?.totalToolCalls, 0) === 0) return "РјРѕРґРµР»СЊ РЅРµ РІС‹Р·РІР°Р»Р° РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹";
-    if (expectedMutations > 0 && toolStats.mutationCalls === 0) return "РјРѕРґРµР»СЊ РЅРµ РІС‹Р·РІР°Р»Р° РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ РёР·РјРµРЅРµРЅРёСЏ";
+    if (isAgentTextIncomplete(text)) return "answer is incomplete";
+    if (num(toolStats?.totalToolCalls, 0) === 0) return "model did not call tools";
+    if (expectedMutations > 0 && toolStats.mutationCalls === 0) return "model did not call mutation tools";
     if (toolStats.successfulMutations < expectedMutations) {
       const tail = toolStats.failedMutations.slice(-2).join("; ");
-      return tail ? `РІС‹РїРѕР»РЅРµРЅРѕ РёР·РјРµРЅРµРЅРёР№ ${toolStats.successfulMutations}/${expectedMutations}; РѕС€РёР±РєРё: ${tail}` : `РІС‹РїРѕР»РЅРµРЅРѕ РёР·РјРµРЅРµРЅРёР№ ${toolStats.successfulMutations}/${expectedMutations}`;
+      return tail ? `mutations ${toolStats.successfulMutations}/${expectedMutations}; errors: ${tail}` : `mutations ${toolStats.successfulMutations}/${expectedMutations}`;
     }
-    return "Р·Р°РґР°С‡Р° РЅРµ Р·Р°РІРµСЂС€РµРЅР°";
+    return "task is not completed";
   }
 
   function buildAgentContinuationInstruction(reason, forcedToolFollowup = false) {
@@ -699,7 +749,17 @@ function createAgentRuntimePolicyInternal(ctx) {
 
   function sanitizeAgentOutputText(textRaw) {
     const src = String(textRaw || "").trim();
-    if (!src) return "Р“РѕС‚РѕРІРѕ.";
+    if (!src) return "Готово.";
+
+    const clarifyModeRaw = String(getEffectiveAiOption("reasoningClarify", "never")).trim().toLowerCase();
+    const clarifyMode = clarifyModeRaw === "never" || clarifyModeRaw === "minimal" || clarifyModeRaw === "normal"
+      ? clarifyModeRaw
+      : "never";
+    const riskyModeRaw = String(getEffectiveAiOption("riskyActionsMode", "allow_if_asked")).trim().toLowerCase();
+    const riskyMode = riskyModeRaw === "confirm" || riskyModeRaw === "allow_if_asked" || riskyModeRaw === "never"
+      ? riskyModeRaw
+      : "allow_if_asked";
+    const allowQuestions = clarifyMode !== "never" && riskyMode !== "never";
 
     const parts = src
       .replace(/\r/g, "")
@@ -709,12 +769,13 @@ function createAgentRuntimePolicyInternal(ctx) {
       .filter((line) => !/^\[(json|tool)/i.test(line))
       .filter((line) => !/^\{[\s\S]*\}$/.test(line))
       .filter((line) => !/^if you want\b/i.test(line))
-      .filter((line) => !/^РµСЃР»Рё РЅСѓР¶РЅРѕ\b/i.test(line))
-      .filter((line) => !/^РµСЃР»Рё С…РѕС‚РёС‚Рµ\b/i.test(line))
-      .filter((line) => !/^РґР°Р»СЊС€Рµ РјРѕРіСѓ\b/i.test(line));
+      .filter((line) => !/^если нужно\b/i.test(line))
+      .filter((line) => !/^если хотите\b/i.test(line))
+      .filter((line) => !/^дальше могу\b/i.test(line))
+      .filter((line) => allowQuestions || !hasDirectQuestionCue(line));
 
     const clean = parts.join(" ").replace(/\s{2,}/g, " ").trim();
-    if (!clean) return "Р“РѕС‚РѕРІРѕ.";
+    if (!clean) return "Готово.";
     const maxLen = finalOutputCharLimit();
     if (clean.length > maxLen) return `${clean.slice(0, Math.max(0, maxLen - 3))}...`;
     return clean;

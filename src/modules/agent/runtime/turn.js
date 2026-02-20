@@ -218,7 +218,11 @@ function createAgentRuntimeTurnInternal(ctx) {
   function canAskUserQuestions() {
     const clarify = normalizeClarifyMode(getRuntimeAwareOption("reasoningClarify", "never"), "never");
     const risky = normalizeRiskyActionsMode(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked"), "allow_if_asked");
-    return clarify !== "never" && risky !== "never";
+    const toolsModeRaw = String(getRuntimeAwareOption("toolsMode", "auto")).trim().toLowerCase();
+    const toolsMode = toolsModeRaw === "none" || toolsModeRaw === "auto" || toolsModeRaw === "prefer" || toolsModeRaw === "require"
+      ? toolsModeRaw
+      : "auto";
+    return clarify !== "never" && risky !== "never" && toolsMode !== "none";
   }
 
   function extractResponseUsage(response) {
@@ -291,9 +295,10 @@ function createAgentRuntimeTurnInternal(ctx) {
     if (!compacted) return { compacted: false, responseId };
     const compactedResponseId = String(compacted?.id || responseId).trim() || responseId;
 
-    app.ai.lastCompactedResponseId = compactedResponseId;
+    // Keep the original response id for continuation calls.
+    // Some compact endpoints may return ids that are not stable for previous_response_id chaining.
+    app.ai.lastCompactedResponseId = responseId;
     app.ai.lastCompactionTs = nowTs;
-    if (compactedResponseId) app.ai.lastCompletedResponseId = compactedResponseId;
     addExternalJournal("responses.compact.auto", `auto compact (${reason})`, {
       turn_id: turnId,
       request_id: requestId,
@@ -311,7 +316,8 @@ function createAgentRuntimeTurnInternal(ctx) {
     });
     return {
       compacted: true,
-      responseId: compactedResponseId,
+      responseId,
+      compactedResponseId,
     };
   }
 
@@ -325,6 +331,16 @@ function createAgentRuntimeTurnInternal(ctx) {
     const cleanHandoffEnabled = getRuntimeAwareOption("cleanContextHandoff", true) !== false;
     const maxCleanHandoffs = normalizeNonNegativeInt(getRuntimeAwareOption("cleanContextHandoffMax", 1), 1, 0, 8);
     app.ai.runtimeProfile = resolveTaskProfile(userText, app?.ai?.options?.taskProfile);
+    addExternalJournal("agent.runtime_profile", "runtime profile resolved", {
+      turn_id: turnId,
+      status: "completed",
+      meta: {
+        mode: String(app?.ai?.runtimeProfile?.mode || ""),
+        selected: String(app?.ai?.runtimeProfile?.selected || ""),
+        reason: String(app?.ai?.runtimeProfile?.reason || ""),
+        overrides: compactForTool(app?.ai?.runtimeProfile?.overrides || {}),
+      },
+    });
     const runtimeToolsMode = app?.ai?.runtimeProfile?.overrides?.toolsMode;
     const toolsModeRaw = String(runtimeToolsMode ?? app?.ai?.options?.toolsMode ?? "auto").trim().toLowerCase();
     const toolsMode = toolsModeRaw === "none" || toolsModeRaw === "auto" || toolsModeRaw === "prefer" || toolsModeRaw === "require"
@@ -751,24 +767,41 @@ function createAgentRuntimeTurnInternal(ctx) {
           if (compactInfo?.responseId && compactInfo.responseId !== String(response?.id || "")) {
             response = { ...(response || {}), id: compactInfo.responseId };
           }
-          response = await callOpenAiResponses(buildAgentResponsesPayload({
-            model: modelId,
-            previousResponseId: response.id,
-            input: [{
-              role: "user",
-              content: [{
-                type: "input_text",
-                text: buildAgentContinuationInstruction(reason, true),
+          try {
+            response = await callOpenAiResponses(buildAgentResponsesPayload({
+              model: modelId,
+              previousResponseId: response.id,
+              input: [{
+                role: "user",
+                content: [{
+                  type: "input_text",
+                  text: buildAgentContinuationInstruction(reason, true),
+                }],
               }],
-            }],
-            turnId,
-            taskText: userText,
-            allowBackground: false,
-          }), {
-            turnId,
-            onDelta: options?.onStreamDelta,
-            onEvent: options?.onStreamEvent,
-          });
+              turnId,
+              taskText: userText,
+              allowBackground: false,
+            }), {
+              turnId,
+              onDelta: options?.onStreamDelta,
+              onEvent: options?.onStreamEvent,
+            });
+          } catch (err) {
+            if (!isPreviousResponseError(err)) throw err;
+            const fallbackReason = `previous_response_id rejected during forced continuation: ${String(err?.message || err || "").slice(0, 220)}`;
+            addExternalJournal("conversation_state.fallback", "previous_response_id rejected during forced continuation", {
+              turn_id: turnId,
+              level: "warning",
+              status: "error",
+              meta: {
+                previous_response_id: String(response?.id || ""),
+                reason: fallbackReason,
+              },
+            });
+            const handoffText = await maybeRunCleanContextHandoff("previous_response_rejected", response, fallbackReason);
+            if (handoffText) return sanitizeAgentOutputText(handoffText);
+            throw err;
+          }
           throwIfCanceled();
           app.ai.streamResponseId = String(response?.id || app.ai.streamResponseId || "");
           rememberResponseUsage(response);
@@ -939,22 +972,39 @@ function createAgentRuntimeTurnInternal(ctx) {
       if (compactInfo?.responseId && compactInfo.responseId !== String(response?.id || "")) {
         response = { ...(response || {}), id: compactInfo.responseId };
       }
-      response = await callOpenAiResponses(buildAgentResponsesPayload({
-        model: modelId,
-        previousResponseId: response.id,
-        // Per OpenAI docs, reasoning context should be preserved either by:
-        // 1) previous_response_id, or 2) manual replay of prior output items in input.
-        // This path uses previous_response_id, so we only send fresh function_call_output.
-        // Re-sending prior reasoning items here can trigger duplicate item-id errors.
-        input: outputs,
-        turnId,
-        taskText: userText,
-        allowBackground: false,
-      }), {
-        turnId,
-        onDelta: options?.onStreamDelta,
-        onEvent: options?.onStreamEvent,
-      });
+      try {
+        response = await callOpenAiResponses(buildAgentResponsesPayload({
+          model: modelId,
+          previousResponseId: response.id,
+          // Per OpenAI docs, reasoning context should be preserved either by:
+          // 1) previous_response_id, or 2) manual replay of prior output items in input.
+          // This path uses previous_response_id, so we only send fresh function_call_output.
+          // Re-sending prior reasoning items here can trigger duplicate item-id errors.
+          input: outputs,
+          turnId,
+          taskText: userText,
+          allowBackground: false,
+        }), {
+          turnId,
+          onDelta: options?.onStreamDelta,
+          onEvent: options?.onStreamEvent,
+        });
+      } catch (err) {
+        if (!isPreviousResponseError(err)) throw err;
+        const fallbackReason = `previous_response_id rejected during tool continuation: ${String(err?.message || err || "").slice(0, 220)}`;
+        addExternalJournal("conversation_state.fallback", "previous_response_id rejected during tool continuation", {
+          turn_id: turnId,
+          level: "warning",
+          status: "error",
+          meta: {
+            previous_response_id: String(response?.id || ""),
+            reason: fallbackReason,
+          },
+        });
+        const handoffText = await maybeRunCleanContextHandoff("previous_response_rejected", response, fallbackReason);
+        if (handoffText) return sanitizeAgentOutputText(handoffText);
+        throw err;
+      }
       throwIfCanceled();
       app.ai.streamResponseId = String(response?.id || app.ai.streamResponseId || "");
       rememberResponseUsage(response);

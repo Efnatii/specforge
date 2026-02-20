@@ -185,8 +185,8 @@ const AI_TOOL_NAME_HINTS = [
 ];
 const AI_CONTINUE_PROMPT_RE = /^\s*(продолжай|продолжить|дальше|далее|продолжение|еще|ещё|continue|go on|next)\s*[.!?]*\s*$/i;
 const AI_SHORT_ACK_PROMPT_RE = /^\s*(да|ага|ок|окей|хорошо|сделай|делай|дальше|далее|продолжай|продолжить|continue|go on|next|удали|delete)\s*[.!?]*\s*$/i;
-const AI_INCOMPLETE_RESPONSE_RE = /(продолж|нужн[аоы]|уточн|подтверд|если хотите|если нужно|would you like|if you want|ответьте|выберите|укажите|что делаем|какой вариант|\?\s*$)/i;
-const AGENT_MAX_FORCED_RETRIES = 24;
+const AI_INCOMPLETE_RESPONSE_RE = /(продолж|нужн[аоы]|уточн|подтверд|если хотите|если нужно|would you like|if you want|ответьте|выберите|укажите|что делаем|какой вариант)/i;
+const AGENT_MAX_FORCED_RETRIES = 3;
 const AGENT_MAX_TOOL_ROUNDS = 160;
 const MARKET_VERIFICATION_MIN_SOURCES = 2;
 const MARKET_VERIFICATION_MAX_SOURCES = 6;
