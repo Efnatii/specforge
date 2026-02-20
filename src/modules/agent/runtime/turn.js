@@ -14,6 +14,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     AGENT_MAX_FORCED_RETRIES,
     AGENT_MAX_TOOL_ROUNDS,
     AI_MUTATION_INTENT_RE,
+    AI_ANALYSIS_INTENT_RE,
   } = config;
 
   const {
@@ -52,6 +53,7 @@ function createAgentRuntimeTurnInternal(ctx) {
     throw new Error("AgentRuntimeTurnModule requires config.AGENT_MAX_TOOL_ROUNDS");
   }
   if (!(AI_MUTATION_INTENT_RE instanceof RegExp)) throw new Error("AgentRuntimeTurnModule requires config.AI_MUTATION_INTENT_RE");
+  if (!(AI_ANALYSIS_INTENT_RE instanceof RegExp)) throw new Error("AgentRuntimeTurnModule requires config.AI_ANALYSIS_INTENT_RE");
 
   if (typeof currentAiModelMeta !== "function") throw new Error("AgentRuntimeTurnModule requires deps.currentAiModelMeta()");
   if (typeof executeAgentTool !== "function") throw new Error("AgentRuntimeTurnModule requires deps.executeAgentTool()");
@@ -215,13 +217,117 @@ function createAgentRuntimeTurnInternal(ctx) {
     return "allow_if_asked";
   }
 
+  function normalizeToolsMode(value, fallback = "auto") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "none" || raw === "auto" || raw === "prefer" || raw === "require") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "none" || fb === "auto" || fb === "prefer" || fb === "require") return fb;
+    return "auto";
+  }
+
+  function normalizeReasoningVerify(value, fallback = "basic") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "off" || raw === "basic" || raw === "strict") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "off" || fb === "basic" || fb === "strict") return fb;
+    return "basic";
+  }
+
+  function analyzeTaskPreflight(userTextRaw, runtimeProfile, options = {}) {
+    const text = String(userTextRaw || "").trim();
+    const selectedProfile = String(runtimeProfile?.selected || "").trim().toLowerCase();
+    const toolsMode = normalizeToolsMode(options?.toolsMode, "auto");
+    const toolsDisabled = toolsMode === "none";
+    const attachmentsCount = normalizeNonNegativeInt(options?.attachmentsCount, 0, 0, 2000000);
+    const actionable = options?.actionable === true;
+    const analysisIntent = AI_ANALYSIS_INTENT_RE.test(text);
+    const workspaceScope = /(source code|repository|repo|codebase|module|file|files|project|attachment|attachments|репозитор|код|проект|модул|файл|вложен)/i.test(text)
+      || attachmentsCount > 0;
+    const explicitDeepCue = /(totally|total|fully|full|end[-\s]?to[-\s]?end|max(?:imum)?|unlimited|deep(?:\s+dive)?|до\s+конца|тоталь|максимум|полност|не\s+ограничивай|глубок\w+\s+разбор)/i.test(text);
+    const deepProfiles = new Set(["source_audit", "research", "longrun", "spec_strict", "proposal", "bulk"]);
+    const strictToolsProfiles = new Set(["source_audit", "research", "price_search", "spec_strict"]);
+    const strictVerifyProfiles = new Set(["source_audit", "research", "spec_strict"]);
+
+    const wantsDeepCompletion = deepProfiles.has(selectedProfile) || explicitDeepCue;
+    const intentToMutate = !toolsDisabled && AI_MUTATION_INTENT_RE.test(text);
+    const expectedMutationsHint = estimateExpectedMutationCount(text, intentToMutate);
+    const intentToUseTools = !toolsDisabled && (actionable || analysisIntent || workspaceScope);
+
+    let minToolCalls = 0;
+    if (!toolsDisabled) {
+      if (intentToMutate) minToolCalls = Math.max(minToolCalls, 1);
+      if (intentToUseTools) {
+        if (selectedProfile === "source_audit" || selectedProfile === "research" || selectedProfile === "longrun") {
+          minToolCalls = Math.max(minToolCalls, 2);
+        } else if (wantsDeepCompletion || analysisIntent || workspaceScope) {
+          minToolCalls = Math.max(minToolCalls, 1);
+        }
+      }
+    }
+
+    const out = {
+      wantsDeepCompletion,
+      intentToUseTools,
+      intentToMutate,
+      minToolCalls,
+      expectedMutationsHint,
+      actionable,
+      analysisIntent,
+      workspaceScope,
+      toolsMode,
+      selectedProfile,
+    };
+
+    if (!toolsDisabled && wantsDeepCompletion && strictToolsProfiles.has(selectedProfile) && (toolsMode === "auto" || toolsMode === "prefer")) {
+      out.overrideToolsMode = "require";
+    }
+    const verifyMode = normalizeReasoningVerify(options?.reasoningVerify, "basic");
+    if (wantsDeepCompletion && strictVerifyProfiles.has(selectedProfile) && verifyMode !== "strict") {
+      out.overrideVerify = "strict";
+    }
+    return out;
+  }
+
+  function evaluateCompletionGuard(preflight, toolStats, progress, options = {}) {
+    if (!preflight || typeof preflight !== "object") return { triggered: false, reason: "" };
+    const guardEnabled = Boolean(preflight.wantsDeepCompletion || preflight.intentToUseTools || preflight.intentToMutate);
+    if (!guardEnabled) return { triggered: false, reason: "" };
+
+    const builtInToolUsed = options?.builtInToolUsed === true;
+    const minToolCalls = Math.max(0, num(preflight.minToolCalls, 0));
+    const effectiveToolCalls = Math.max(0, num(toolStats?.totalToolCalls, 0)) + (builtInToolUsed ? 1 : 0);
+    if (minToolCalls > 0 && effectiveToolCalls < minToolCalls) {
+      return {
+        triggered: true,
+        reason: "completion_guard:min_tools_not_met",
+        details: {
+          min_tool_calls: minToolCalls,
+          effective_tool_calls: effectiveToolCalls,
+          built_in_tool_used: builtInToolUsed,
+        },
+      };
+    }
+
+    const failedTools = Array.isArray(progress?.failedTools) ? progress.failedTools : [];
+    const successfulMutations = Math.max(0, num(toolStats?.successfulMutations, 0));
+    if (preflight.intentToMutate && failedTools.length > 0 && successfulMutations === 0) {
+      return {
+        triggered: true,
+        reason: "completion_guard:failed_tools",
+        details: {
+          failed_tools: failedTools.slice(-3),
+          successful_mutations: successfulMutations,
+        },
+      };
+    }
+
+    return { triggered: false, reason: "" };
+  }
+
   function canAskUserQuestions() {
     const clarify = normalizeClarifyMode(getRuntimeAwareOption("reasoningClarify", "never"), "never");
     const risky = normalizeRiskyActionsMode(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked"), "allow_if_asked");
-    const toolsModeRaw = String(getRuntimeAwareOption("toolsMode", "auto")).trim().toLowerCase();
-    const toolsMode = toolsModeRaw === "none" || toolsModeRaw === "auto" || toolsModeRaw === "prefer" || toolsModeRaw === "require"
-      ? toolsModeRaw
-      : "auto";
+    const toolsMode = normalizeToolsMode(getRuntimeAwareOption("toolsMode", "auto"), "auto");
     return clarify !== "never" && risky !== "never" && toolsMode !== "none";
   }
 
@@ -342,14 +448,77 @@ function createAgentRuntimeTurnInternal(ctx) {
       },
     });
     const runtimeToolsMode = app?.ai?.runtimeProfile?.overrides?.toolsMode;
-    const toolsModeRaw = String(runtimeToolsMode ?? app?.ai?.options?.toolsMode ?? "auto").trim().toLowerCase();
-    const toolsMode = toolsModeRaw === "none" || toolsModeRaw === "auto" || toolsModeRaw === "prefer" || toolsModeRaw === "require"
-      ? toolsModeRaw
-      : "auto";
+    const baseToolsMode = normalizeToolsMode(runtimeToolsMode ?? app?.ai?.options?.toolsMode ?? "auto", "auto");
+    const baseVerifyMode = normalizeReasoningVerify(
+      app?.ai?.runtimeProfile?.overrides?.reasoningVerify ?? app?.ai?.options?.reasoningVerify ?? "basic",
+      "basic",
+    );
+    const attachmentsCount = Array.isArray(app?.ai?.attachments) ? app.ai.attachments.length : 0;
+    const actionablePrompt = isActionableAgentPrompt(userText);
+    const preflightDraft = analyzeTaskPreflight(userText, app.ai.runtimeProfile, {
+      toolsMode: baseToolsMode,
+      attachmentsCount,
+      actionable: actionablePrompt,
+      reasoningVerify: baseVerifyMode,
+    });
+    let appliedToolsModeOverride = "";
+    let appliedVerifyOverride = "";
+    if (app?.ai?.runtimeProfile && typeof app.ai.runtimeProfile === "object") {
+      if (!app.ai.runtimeProfile.overrides || typeof app.ai.runtimeProfile.overrides !== "object") {
+        app.ai.runtimeProfile.overrides = {};
+      }
+      if (
+        preflightDraft.overrideToolsMode
+        && baseToolsMode !== "none"
+        && (baseToolsMode === "auto" || baseToolsMode === "prefer")
+      ) {
+        app.ai.runtimeProfile.overrides.toolsMode = preflightDraft.overrideToolsMode;
+        appliedToolsModeOverride = preflightDraft.overrideToolsMode;
+      }
+      if (preflightDraft.overrideVerify === "strict" && baseVerifyMode !== "strict") {
+        app.ai.runtimeProfile.overrides.reasoningVerify = "strict";
+        appliedVerifyOverride = "strict";
+      }
+    }
+    const toolsMode = normalizeToolsMode(
+      app?.ai?.runtimeProfile?.overrides?.toolsMode ?? app?.ai?.options?.toolsMode ?? "auto",
+      "auto",
+    );
+    const verifyMode = normalizeReasoningVerify(
+      app?.ai?.runtimeProfile?.overrides?.reasoningVerify ?? app?.ai?.options?.reasoningVerify ?? "basic",
+      "basic",
+    );
+    const preflight = analyzeTaskPreflight(userText, app.ai.runtimeProfile, {
+      toolsMode,
+      attachmentsCount,
+      actionable: actionablePrompt,
+      reasoningVerify: verifyMode,
+    });
     const toolsDisabled = toolsMode === "none";
-    const intentToUseTools = !toolsDisabled && isActionableAgentPrompt(userText);
-    const intentToMutate = !toolsDisabled && AI_MUTATION_INTENT_RE.test(userText);
-    const expectedMutations = estimateExpectedMutationCount(userText, intentToMutate);
+    const intentToUseTools = preflight.intentToUseTools;
+    const intentToMutate = preflight.intentToMutate;
+    const expectedMutations = preflight.expectedMutationsHint;
+    addExternalJournal("agent.preflight", "task preflight analyzed", {
+      turn_id: turnId,
+      status: "completed",
+      meta: {
+        selected_profile: preflight.selectedProfile || "",
+        tools_mode: preflight.toolsMode,
+        wants_deep_completion: preflight.wantsDeepCompletion,
+        actionable_prompt: preflight.actionable,
+        analysis_intent: preflight.analysisIntent,
+        workspace_scope: preflight.workspaceScope,
+        intent_to_use_tools: preflight.intentToUseTools,
+        intent_to_mutate: preflight.intentToMutate,
+        min_tool_calls: preflight.minToolCalls,
+        expected_mutations_hint: preflight.expectedMutationsHint,
+        attachments_count: attachmentsCount,
+        overrides_applied: compactForTool({
+          toolsMode: appliedToolsModeOverride || "",
+          reasoningVerify: appliedVerifyOverride || "",
+        }),
+      },
+    });
     const toolStats = {
       totalToolCalls: 0,
       mutationCalls: 0,
@@ -732,8 +901,31 @@ function createAgentRuntimeTurnInternal(ctx) {
         const builtInToolUsed = hasBuiltInToolUsage(response);
         const computerUseCalled = hasComputerUseCall(response);
         const responseIncomplete = isResponseIncomplete(response);
-        const continuationNeeded = responseIncomplete
-          || shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text);
+        const policyContinuationNeeded = shouldForceAgentContinuation(intentToUseTools, intentToMutate, expectedMutations, toolStats, text);
+        const completionGuard = evaluateCompletionGuard(preflight, toolStats, progress, { builtInToolUsed });
+        let continuationNeeded = responseIncomplete || policyContinuationNeeded || completionGuard.triggered;
+        let continuationReason = "";
+        if (responseIncomplete) continuationReason = "response status is incomplete";
+        else if (completionGuard.triggered) continuationReason = completionGuard.reason;
+        else if (policyContinuationNeeded) continuationReason = buildAgentRetryReason(expectedMutations, toolStats, text);
+
+        if (completionGuard.triggered) {
+          addExternalJournal("agent.completion_guard.triggered", "completion guard forced continuation", {
+            turn_id: turnId,
+            request_id: String(response?.__request_id || app.ai.currentRequestId || ""),
+            response_id: String(response?.id || ""),
+            status: "running",
+            level: "warning",
+            meta: {
+              reason: completionGuard.reason,
+              details: compactForTool(completionGuard.details || {}),
+              min_tool_calls: preflight.minToolCalls,
+              total_tool_calls: toolStats.totalToolCalls,
+              built_in_tool_used: builtInToolUsed,
+              retries: toolStats.forcedRetries,
+            },
+          });
+        }
 
         if (!text && computerUseCalled) {
           addExternalJournal("agent.computer_use.unsupported", "computer_use_preview requires browser executor", {
@@ -747,9 +939,7 @@ function createAgentRuntimeTurnInternal(ctx) {
         }
 
         if (continuationNeeded && toolStats.forcedRetries < AGENT_MAX_FORCED_RETRIES) {
-          const reason = responseIncomplete
-            ? "response status is incomplete"
-            : buildAgentRetryReason(expectedMutations, toolStats, text);
+          const reason = continuationReason || "task is not completed";
           toolStats.forcedRetries += 1;
           addTableJournal("agent.retry", `Автоповтор: ${reason}`, {
             turn_id: turnId,
@@ -812,7 +1002,9 @@ function createAgentRuntimeTurnInternal(ctx) {
         if (continuationNeeded) {
           const reason = responseIncomplete
             ? "response remained incomplete after forced retries"
-            : "continuation criteria still not satisfied after forced retries";
+            : continuationReason
+              ? `continuation criteria still not satisfied after forced retries (${continuationReason})`
+              : "continuation criteria still not satisfied after forced retries";
           const handoffText = await maybeRunCleanContextHandoff("continuation_exhausted", response, reason);
           if (handoffText) return sanitizeAgentOutputText(handoffText);
         }
