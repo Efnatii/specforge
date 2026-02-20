@@ -100,6 +100,7 @@ export class AppCoreCompositionModule {
           metadataFrontendBuild: "",
           includeSourcesMode: "off",
           lowBandwidthMode: false,
+          executionLimitsMode: "off",
         },
         webSearchPopoverOpen: false,
         reasoningPopoverOpen: false,

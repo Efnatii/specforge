@@ -64,6 +64,7 @@ function defaultOptions() {
     metadataFrontendBuild: "",
     includeSourcesMode: "off",
     lowBandwidthMode: false,
+    executionLimitsMode: "off",
   };
 }
 
@@ -422,7 +423,7 @@ async function main() {
   }
 
   {
-    const { runtime } = createRuntime({ options: { reasoningMaxTokens: 13000 } });
+    const { runtime } = createRuntime({ options: { reasoningMaxTokens: 13000, executionLimitsMode: "on" } });
     const payload = runtime.buildAgentResponsesPayload({
       model: "gpt-5.2-codex",
       instructions: "sys",
@@ -435,7 +436,7 @@ async function main() {
   }
 
   {
-    const { runtime } = createRuntime({ options: { reasoningMaxTokens: 13000 } });
+    const { runtime } = createRuntime({ options: { reasoningMaxTokens: 13000, executionLimitsMode: "on" } });
     const payload = runtime.buildAgentResponsesPayload({
       model: "gpt-5.2-codex",
       instructions: "sys",

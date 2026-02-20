@@ -83,6 +83,7 @@ function createAiJournalInternal(ctx) {
   };
   const OPTIONAL_TEXT_MODE_ORDER = ["auto", "off", "custom"];
   const BACKGROUND_MODE_ORDER = ["off", "auto", "on"];
+  const EXECUTION_LIMITS_MODE_ORDER = ["off", "auto", "on"];
   const COMPACT_MODE_ORDER = ["off", "auto", "on"];
   const INCLUDE_SOURCES_MODE_ORDER = ["off", "auto", "on"];
   const SERVICE_TIER_ORDER = ["flex", "standard", "priority"];
@@ -259,6 +260,10 @@ function normalizeToolsMode(value, fallback = "auto") {
   return normalizeEnum(value, TOOLS_MODE_ORDER, fallback);
 }
 
+function normalizeExecutionLimitsMode(value, fallback = "off") {
+  return normalizeEnum(value, EXECUTION_LIMITS_MODE_ORDER, fallback);
+}
+
 function normalizeBrevityMode(value, fallback = "normal") {
   return normalizeEnum(value, BREVITY_MODE_ORDER, fallback);
 }
@@ -418,6 +423,7 @@ function loadAiSettings() {
       app.ai.options.safetyIdentifierMode = inferOptionalTextMode(parsed.safetyIdentifierMode, parsed.safetyIdentifier, "");
       app.ai.options.safetyIdentifier = normalizeSafetyIdentifier(parsed.safetyIdentifier, app.ai.options.safetyIdentifier || "");
       app.ai.options.backgroundMode = normalizeBackgroundMode(parsed.backgroundMode, app.ai.options.backgroundMode || "auto");
+      app.ai.options.executionLimitsMode = normalizeExecutionLimitsMode(parsed.executionLimitsMode, app.ai.options.executionLimitsMode || "off");
       app.ai.options.backgroundTokenThreshold = normalizeTokenThreshold(parsed.backgroundTokenThreshold, app.ai.options.backgroundTokenThreshold || 12000, 2000, 2000000);
       app.ai.options.compactMode = normalizeCompactMode(parsed.compactMode, app.ai.options.compactMode || "off");
       app.ai.options.compactThresholdTokens = normalizeTokenThreshold(parsed.compactThresholdTokens, app.ai.options.compactThresholdTokens || 90000, 1000, 4000000);

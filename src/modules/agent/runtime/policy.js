@@ -659,6 +659,14 @@ function createAgentRuntimePolicyInternal(ctx) {
     return "auto";
   }
 
+  function normalizeExecutionLimitsMode(value, fallback = "off") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "off" || raw === "auto" || raw === "on") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "off" || fb === "auto" || fb === "on") return fb;
+    return "off";
+  }
+
   function hasDirectQuestionCue(textRaw) {
     const text = String(textRaw || "").trim();
     if (!text) return false;
@@ -746,6 +754,8 @@ function createAgentRuntimePolicyInternal(ctx) {
   }
 
   function finalOutputCharLimit() {
+    const limitsMode = normalizeExecutionLimitsMode(getEffectiveAiOption("executionLimitsMode", "off"), "off");
+    if (limitsMode === "off") return Number.MAX_SAFE_INTEGER;
     const brevity = String(getEffectiveAiOption("brevityMode", "normal")).trim().toLowerCase();
     const style = String(getEffectiveAiOption("styleMode", "clean")).trim().toLowerCase();
     const output = String(getEffectiveAiOption("outputMode", "bullets")).trim().toLowerCase();

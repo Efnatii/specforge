@@ -763,7 +763,11 @@ export class AgentRuntimeModule {
     const textVerbosity = normalizeTextVerbosity(getRuntimeAwareOption("brevityMode", "normal"), model);
     const serviceTier = toResponsesServiceTier(getRuntimeAwareOption("serviceTier", "standard"));
     const toolsMode = normalizeToolsMode(getRuntimeAwareOption("toolsMode", "auto"));
-    const reasoningMaxTokens = normalizeReasoningMaxTokens(getRuntimeAwareOption("reasoningMaxTokens", 0));
+    const limitModeRaw = String(getRuntimeAwareOption("executionLimitsMode", "off")).trim().toLowerCase();
+    const executionLimitsMode = limitModeRaw === "off" || limitModeRaw === "auto" || limitModeRaw === "on"
+      ? limitModeRaw
+      : "off";
+    const reasoningMaxTokensOption = normalizeReasoningMaxTokens(getRuntimeAwareOption("reasoningMaxTokens", 0));
     const runtimeModeRaw = String(this._app?.ai?.runtimeProfile?.mode || "").trim().toLowerCase();
     const runtimeSelectedProfileRaw = String(this._app?.ai?.runtimeProfile?.selected || "").trim().toLowerCase();
     const taskProfileModeRaw = String(this._app?.ai?.options?.taskProfile || "auto").trim().toLowerCase();
@@ -848,6 +852,10 @@ export class AgentRuntimeModule {
         runtimeSelectedProfile = taskProfileMode;
       }
     }
+    const deepProfilesForUnbounded = new Set(["source_audit", "research", "longrun", "spec_strict", "proposal"]);
+    const unboundedExecution = executionLimitsMode === "off"
+      || (executionLimitsMode === "auto" && deepProfilesForUnbounded.has(runtimeSelectedProfile || runtimeSelectedProfileRaw || ""));
+    const reasoningMaxTokens = unboundedExecution ? 0 : reasoningMaxTokensOption;
     const toolsRaw = toolsMode === "none" ? [] : this._toolSpecModule.agentToolsSpec();
     const supportsComputerUse = isComputerUsePreviewModel(model);
     const tools = supportsComputerUse

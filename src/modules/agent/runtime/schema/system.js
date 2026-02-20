@@ -168,6 +168,7 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
     const riskyActions = normalizeEnum(getRuntimeAwareOption("riskyActionsMode", "allow_if_asked"), ["confirm", "allow_if_asked", "never"], "allow_if_asked");
     const style = normalizeEnum(getRuntimeAwareOption("styleMode", "clean"), ["clean", "verbose"], "clean");
     const citations = normalizeEnum(getRuntimeAwareOption("citationsMode", "off"), ["off", "on"], "off");
+    const limitMode = normalizeEnum(getRuntimeAwareOption("executionLimitsMode", "off"), ["off", "auto", "on"], "off");
     const reasoningMaxTokensRaw = Number(getRuntimeAwareOption("reasoningMaxTokens", 0));
     const reasoningMaxTokens = Number.isFinite(reasoningMaxTokensRaw) && reasoningMaxTokensRaw > 0
       ? Math.max(1, Math.round(reasoningMaxTokensRaw))
@@ -175,7 +176,7 @@ function createAgentRuntimeSystemPromptInternal(ctx) {
 
     const lines = [];
     lines.push(`Task profile: MODE=${profileInfo.mode}; SELECTED=${profileInfo.selected}; REASON=${profileInfo.reason}.`);
-    lines.push(`Runtime profile: SERVICE_TIER=${serviceTier}; DEPTH=${depth}; VERIFY=${verify}; SUMMARY=${summaryMode}; CLARIFY=${clarify}; TOOLS=${toolsMode}; BREVITY=${brevity}; OUTPUT=${output}; RISKY_ACTIONS=${riskyActions}; STYLE=${style}; CITATIONS=${citations}; REASONING_TOKENS=${reasoningMaxTokens > 0 ? reasoningMaxTokens : "auto"}.`);
+    lines.push(`Runtime profile: SERVICE_TIER=${serviceTier}; DEPTH=${depth}; VERIFY=${verify}; SUMMARY=${summaryMode}; CLARIFY=${clarify}; TOOLS=${toolsMode}; BREVITY=${brevity}; OUTPUT=${output}; RISKY_ACTIONS=${riskyActions}; STYLE=${style}; CITATIONS=${citations}; LIMITS=${limitMode}; REASONING_TOKENS=${limitMode === "off" ? "unbounded" : (reasoningMaxTokens > 0 ? reasoningMaxTokens : "auto")}.`);
 
     if (depth === "fast") lines.push("Depth policy: return quickly, minimal branching and short internal analysis.");
     else if (depth === "deep") lines.push("Depth policy: perform deeper analysis, compare alternatives, and do extra self-checks before the final answer.");

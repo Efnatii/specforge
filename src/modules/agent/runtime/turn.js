@@ -265,6 +265,14 @@ function createAgentRuntimeTurnInternal(ctx) {
     return "auto";
   }
 
+  function normalizeLimitMode(value, fallback = "off") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "off" || raw === "auto" || raw === "on") return raw;
+    const fb = String(fallback || "").trim().toLowerCase();
+    if (fb === "off" || fb === "auto" || fb === "on") return fb;
+    return "off";
+  }
+
   function analyzeTaskPreflight(userTextRaw, runtimeProfile, options = {}) {
     const text = String(userTextRaw || "").trim();
     const selectedProfile = String(runtimeProfile?.selected || "").trim().toLowerCase();
@@ -628,12 +636,20 @@ function createAgentRuntimeTurnInternal(ctx) {
         2000000,
       ),
     });
-    const maxForcedRetries = preflight.forceNoLimits
-      ? Math.max(AGENT_MAX_FORCED_RETRIES, 6)
-      : AGENT_MAX_FORCED_RETRIES;
-    const maxToolRounds = preflight.forceNoLimits
-      ? Math.max(AGENT_MAX_TOOL_ROUNDS, 240)
-      : AGENT_MAX_TOOL_ROUNDS;
+    const limitMode = normalizeLimitMode(getRuntimeAwareOption("executionLimitsMode", "off"), "off");
+    const unboundedExecution = limitMode === "off" || (limitMode === "auto" && preflight.wantsDeepCompletion);
+    const maxForcedRetries = unboundedExecution
+      ? Number.POSITIVE_INFINITY
+      : preflight.forceNoLimits
+        ? Math.max(AGENT_MAX_FORCED_RETRIES, 6)
+        : AGENT_MAX_FORCED_RETRIES;
+    const maxToolRounds = unboundedExecution
+      ? Number.POSITIVE_INFINITY
+      : preflight.forceNoLimits
+        ? Math.max(AGENT_MAX_TOOL_ROUNDS, 240)
+        : AGENT_MAX_TOOL_ROUNDS;
+    const maxForcedRetriesLabel = Number.isFinite(maxForcedRetries) ? maxForcedRetries : "unbounded";
+    const maxToolRoundsLabel = Number.isFinite(maxToolRounds) ? maxToolRounds : "unbounded";
     const toolsDisabled = toolsMode === "none";
     const intentToUseTools = preflight.intentToUseTools;
     const intentToMutate = preflight.intentToMutate;
@@ -653,8 +669,9 @@ function createAgentRuntimeTurnInternal(ctx) {
         min_tool_calls: preflight.minToolCalls,
         expected_mutations_hint: preflight.expectedMutationsHint,
         force_no_limits: preflight.forceNoLimits,
-        max_forced_retries: maxForcedRetries,
-        max_tool_rounds: maxToolRounds,
+        execution_limits_mode: limitMode,
+        max_forced_retries: maxForcedRetriesLabel,
+        max_tool_rounds: maxToolRoundsLabel,
         attachments_count: attachmentsCount,
         overrides_applied: compactForTool({
           toolsMode: appliedToolsModeOverride || "",
@@ -784,9 +801,9 @@ function createAgentRuntimeTurnInternal(ctx) {
         response_status: truncate(response?.status || "", 32),
         incomplete_details: compactForTool(response?.incomplete_details || null),
         rounds_used: roundsUsed,
-        max_rounds: maxToolRounds,
+        max_rounds: maxToolRoundsLabel,
         forced_retries: toolStats.forcedRetries,
-        max_forced_retries: maxForcedRetries,
+        max_forced_retries: maxForcedRetriesLabel,
         expected_mutations: expectedMutations,
         successful_mutations: toolStats.successfulMutations,
         total_tool_calls: toolStats.totalToolCalls,
@@ -1365,8 +1382,9 @@ function createAgentRuntimeTurnInternal(ctx) {
         expected_mutations: expectedMutations,
         successful_mutations: toolStats.successfulMutations,
         retries: toolStats.forcedRetries,
-        max_forced_retries: maxForcedRetries,
-        max_tool_rounds: maxToolRounds,
+        execution_limits_mode: limitMode,
+        max_forced_retries: maxForcedRetriesLabel,
+        max_tool_rounds: maxToolRoundsLabel,
         rounds_used: roundsUsed,
         built_in_tool_calls: toolStats.builtInToolCalls,
         force_no_limits: preflight.forceNoLimits,
